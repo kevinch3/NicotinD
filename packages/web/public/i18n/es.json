@@ -1771,5 +1771,11 @@
   "getError.search": "La búsqueda falló",
   "getRow.copies": "{count} copias",
   "getRow.getTitled": "Obtener {title}",
-  "getRow.cancelTitled": "Cancelar {title}"
+  "getRow.cancelTitled": "Cancelar {title}",
+  "copyPicker.titleOf": "Copias de {title}",
+  "copyPicker.count": "{count} copias",
+  "copyPicker.free": "libre",
+  "copyPicker.queue": "cola {count}",
+  "copyPicker.none": "Aún no se vio ninguna copia",
+  "copyPicker.getThis": "Obtener esta copia"
 }

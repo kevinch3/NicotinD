@@ -28,6 +28,7 @@ const NOT_A_NAME = {
   ],
   // Fixed UI copy or a count line, no user content in it.
   uiCopy: [
+    'components/copy-picker/copy-picker.component.html',
     'components/get-album-card/get-album-card.component.html',
     'components/get-album-card/get-album-card.component.html',
     'components/get-album-card/get-album-card.component.html',

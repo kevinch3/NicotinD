@@ -52,6 +52,8 @@ import {
 } from '../../lib/folder-utils';
 import { folderAlbumIdentity, sameAlbum } from '@nicotind/core';
 import { GetNoticeComponent } from '../../components/get-notice/get-notice.component';
+import { CopyPickerComponent } from '../../components/copy-picker/copy-picker.component';
+import { folderToCopy, type CopyCandidate } from '../../lib/copy-candidate';
 import {
   GetTrackRowComponent,
   type TrackRowState,
@@ -248,6 +250,7 @@ function isAlreadyDownloading(err: unknown): boolean {
   selector: 'app-search',
   imports: [
     GetAlbumCardComponent,
+    CopyPickerComponent,
     GetTrackRowComponent,
     GetNoticeComponent,
     OverflowRevealDirective,
@@ -883,16 +886,44 @@ export class SearchComponent implements OnInit, OnDestroy {
     };
   }
 
-  /** A catalog card's copies, in the folders lane. */
+  /** The work "Choose a copy" is open for, with every copy the page search saw. */
+  readonly copiesOpen = signal<{
+    title: string;
+    artist: string;
+    status: () => AlbumHuntStatus;
+    copies: CopyCandidate[];
+  } | null>(null);
+
+  /** A catalog card's copies, in the picker. */
   showCatalogCopies(album: CatalogAlbum): void {
     const availability = this.catalogAvailability().get(album.foreignAlbumId);
     if (!availability) return;
-    this.showProviderCopies({
-      key: album.foreignAlbumId,
+    this.copiesOpen.set({
       title: album.title,
       artist: album.artistName,
-      availability,
+      status: () => this.catalogHuntStatus(album),
+      copies: availability.folders.map((f) => folderToCopy(f, album.trackCount)),
     });
+  }
+
+  /** A source-only album's copies, in the picker. */
+  openProviderCopies(album: ProviderOnlyAlbum): void {
+    this.copiesOpen.set({
+      title: album.title,
+      artist: album.artist,
+      status: () => this.providerAlbumStatus(album),
+      copies: album.availability.folders.map((f) => folderToCopy(f)),
+    });
+  }
+
+  copiesStatusLabel(status: AlbumHuntStatus): string {
+    return status.phase === 'idle' ? '' : this.catalogHuntLabel(status);
+  }
+
+  /** Get the chosen copy; one already running for the album is replaced. */
+  getCopy(copy: CopyCandidate, replace: boolean): void {
+    this.copiesOpen.set(null);
+    void this.downloadFolder(copy.folder, replace);
   }
 
   /** Show every copy of a provider album in the folders lane, to pick one. */

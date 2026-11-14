@@ -442,7 +442,7 @@
                     [hasCopies]="true"
                     [library]="libraryStateOf(album.artist, album.title)"
                     (get)="getBestProviderCopy(album)"
-                    (copies)="showProviderCopies(album)"
+                    (copies)="openProviderCopies(album)"
                     (cancel)="cancelGet($event)"
                   />
                 }
@@ -941,6 +941,19 @@
       <p class="text-theme-secondary text-lg">{{ 'acquire.emptyTitle' | t }}</p>
       <p class="text-theme-muted text-sm mt-1">{{ 'acquire.emptySubtitle' | t }}</p>
     </div>
+  }
+
+  @if (copiesOpen(); as open) {
+    @let status = open.status();
+    <app-copy-picker
+      [title]="open.title"
+      [artist]="open.artist"
+      [status]="copiesStatusLabel(status)"
+      [copies]="open.copies"
+      [replaces]="status.phase !== 'idle'"
+      (pick)="getCopy($event, status.phase !== 'idle')"
+      (close)="copiesOpen.set(null)"
+    />
   }
 
   <!-- Album-hunt modal — same flow as the discography page -->

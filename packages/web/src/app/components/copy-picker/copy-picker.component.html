@@ -1,0 +1,116 @@
+<div class="fixed inset-0 z-[90] bg-black/60" (click)="close.emit()"></div>
+
+<section
+  role="dialog"
+  aria-modal="true"
+  [attr.aria-label]="'copyPicker.titleOf' | t: { title: title() }"
+  data-testid="copy-picker"
+  appBottomChromeSafe
+  class="fixed z-[91] bg-theme-surface shadow-2xl flex flex-col inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl lg:inset-y-0 lg:left-auto lg:right-0 lg:w-[30rem] lg:max-h-none lg:rounded-none lg:rounded-l-2xl"
+>
+  <header class="px-5 pt-4 pb-3 flex items-start gap-3 border-b border-theme">
+    <div class="flex-1 min-w-0">
+      <h2 appOverflowReveal class="text-base font-semibold text-theme-primary truncate">
+        {{ title() }}
+      </h2>
+      <p appOverflowReveal class="text-xs text-theme-muted truncate">
+        {{ artist() }}
+        @if (status()) {
+          · <span class="text-status-progress" data-testid="copy-picker-status">{{ status() }}</span>
+        }
+      </p>
+      <p class="text-xs text-theme-muted mt-1">
+        {{ 'copyPicker.count' | t: { count: copies().length } }}
+      </p>
+    </div>
+    <button
+      type="button"
+      data-testid="copy-picker-close"
+      (click)="close.emit()"
+      [attr.aria-label]="'getNotice.dismiss' | t"
+      class="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-theme-muted hover:text-theme-primary hover:bg-theme-surface-2"
+    >
+      <app-icon name="close" [size]="16" />
+    </button>
+  </header>
+
+  <div
+    class="flex-1 overflow-y-auto divide-y divide-theme-border"
+    role="radiogroup"
+    appTvNavGroup
+    axis="vertical"
+  >
+    @for (copy of copies(); track copy.key) {
+      <div>
+        <button
+          appTvNavItem
+          type="button"
+          role="radio"
+          [attr.aria-checked]="isSelected(copy)"
+          data-testid="copy-row"
+          [attr.data-key]="copy.key"
+          (click)="choose(copy)"
+          class="w-full text-left px-5 py-3 flex items-start gap-3 hover:bg-theme-surface-2/60"
+          [class.bg-theme-surface-2]="isSelected(copy)"
+        >
+          <span
+            class="mt-1 w-3.5 h-3.5 shrink-0 rounded-full border-2"
+            [class]="
+              isSelected(copy)
+                ? 'border-theme-accent bg-theme-accent'
+                : 'border-theme-muted'
+            "
+          ></span>
+          <span class="flex-1 min-w-0">
+            <span class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm text-theme-primary">
+              <span data-testid="copy-completeness"
+                >{{ completeness(copy) }}
+                @if (copy.matchPct !== undefined) {
+                  <span class="text-xs text-theme-muted">{{ copy.matchPct }}%</span>
+                }
+              </span>
+              <span [class.text-status-done]="copy.lossless" data-testid="copy-format">{{
+                copy.format ?? '—'
+              }}</span>
+              <span>{{ size(copy) }}</span>
+              <span
+                class="text-xs"
+                [class]="copy.freeSlot ? 'text-status-done' : 'text-theme-muted'"
+                data-testid="copy-readiness"
+                >{{
+                  copy.freeSlot
+                    ? ('copyPicker.free' | t)
+                    : ('copyPicker.queue' | t: { count: copy.queueLength })
+                }}</span
+              >
+            </span>
+            <span appOverflowReveal class="block text-xs text-theme-muted truncate mt-0.5">
+              {{ copy.username }} · {{ folderName(copy) }}
+            </span>
+          </span>
+        </button>
+      </div>
+    } @empty {
+      <div class="px-5 py-8 text-center text-sm text-theme-muted" data-testid="copy-picker-empty">
+        {{ 'copyPicker.none' | t }}
+      </div>
+    }
+  </div>
+
+  @if (selected(); as copy) {
+    <footer class="px-5 py-3 border-t border-theme flex flex-wrap items-center gap-3">
+      <p class="flex-1 min-w-0 text-xs text-theme-muted truncate">
+        {{ completeness(copy) }} · {{ copy.format ?? '—' }} · {{ size(copy) }}
+      </p>
+      <button
+        type="button"
+        data-testid="copy-picker-get"
+        (click)="confirm()"
+        class="px-4 py-2 rounded-md text-sm font-semibold bg-theme-accent text-theme-on-accent hover:opacity-90 flex items-center gap-1.5"
+      >
+        <app-icon name="download" [size]="14" />
+        {{ (replaces() ? 'acquire.replaceWithThisCopy' : 'copyPicker.getThis') | t }}
+      </button>
+    </footer>
+  }
+</section>
