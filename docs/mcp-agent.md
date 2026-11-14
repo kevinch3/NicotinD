@@ -88,6 +88,7 @@ audit-logged.
 | `fix_song_metadata` | curate | `services/song-metadata-mutate.ts` `mutateSongMetadata` + `song.metadata` audit; `composer`/`conductor` since #1083, so a composer filed as `artist` is moved in one call; `work`/`movement` since #1369 |
 | `lookup_album_metadata` | read | `services/candidate-sources.ts` `gatherCandidates` — the album-scoped candidate search behind the web metadata-fix modal |
 | `fix_album_metadata` | curate | `services/metadata-fix.ts` `applyMetadataFix` + `album.metadata` audit |
+| `split_album` | curate (confirm) | `services/album-split.ts` `splitAlbum` + `album.metadata` audit |
 | `set_album_cover` | curate | `services/album-cover-mutate.ts` `applyAlbumCover` + `album.cover` audit |
 | `set_album_classification` | curate | `LibraryCurator.setManualOverride` + `album.classify` audit |
 | `flag_for_review` | curate | `services/curation-flags.ts` `createCurationFlag` + `curation.flag` audit; typed cards through `parseTypedCaseInput` |
@@ -460,6 +461,17 @@ wraps an existing tested module — nothing new was invented:
   moves files). One consequence is load-bearing: album ids are name-derived, so a
   rename **re-mints the id** — the response's `albumId` is the new one and the
   tool description tells the agent to use it thereafter.
+- **`split_album`** wraps `splitAlbum` (#1866): one album row holding several
+  releases (a double-album rip) becomes one album per group of `songIds`.
+  `fix_album_metadata` re-keys the whole row, and `fix_song_metadata({album})` is a
+  tag write that can silently revert on `.opus` (#760), so neither could split.
+  The split writes a durable per-song override (`library_song_album_overrides`,
+  loaded into the same map as album overrides under `songOverrideKey`, applied after
+  them in `resolveTags`), then rescans only those files, so the new rows come from
+  the scanner itself and a full rescan reproduces them. The table is in
+  `SONG_CARRY_TABLES`, so a re-land carries it, and in the config export. Each song
+  is read back; misses come back as `notApplied`. Songs no group names stay put.
+  Refuses an empty group, a foreign song, a song in two groups. Requires `confirm`.
 - **`set_album_cover`** wraps the new `services/album-cover-mutate.ts`
   `applyAlbumCover` — extracted from the inline `POST /albums/:id/cover` body so
   HTTP and MCP share one tested module (fifth instance of the shared-mutation

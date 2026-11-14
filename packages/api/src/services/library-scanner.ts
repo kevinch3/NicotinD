@@ -24,7 +24,11 @@ import {
   isReservedTopLevel,
   reservedDirsFor,
 } from './library-paths.js';
-import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
+import {
+  loadOverrides,
+  songOverrideKey,
+  type MetadataOverrideValue,
+} from './metadata-override-store.js';
 import {
   confirmAtomicNames,
   isKnownMember,
@@ -513,8 +517,13 @@ function resolveTags(
   // by the **raw** albumId derived from the on-disk tags above, then substitute
   // the corrected names/year so downstream artistId/albumId re-bucket. Stable
   // across rescans — tags never change, so the raw key is reproducible.
-  const ov = overrides?.get(albumIdFor(albumArtist, album));
-  if (ov) {
+  // A song-scoped override (#1866) applies after it and wins for that song: it is
+  // how one album row holding two releases is split.
+  for (const ov of [
+    overrides?.get(albumIdFor(albumArtist, album)),
+    overrides?.get(songOverrideKey(songId(t.relPath))),
+  ]) {
+    if (!ov) continue;
     if (ov.artist != null) {
       albumArtist = ov.artist;
       if (!albumArtistIsVA) {

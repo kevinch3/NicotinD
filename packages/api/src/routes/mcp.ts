@@ -33,6 +33,7 @@ import {
 import { applyAlbumCover } from '../services/album-cover-mutate.js';
 import { identifySongById, type IdentifySongRefusal } from '../services/identify.js';
 import { applyMetadataFix, type FixLidarr } from '../services/metadata-fix.js';
+import { splitAlbum, type SplitGroup } from '../services/album-split.js';
 import { VALID_CLASSIFICATIONS, type Classification } from '../services/library-curator.js';
 import type { LibraryCurator } from '../services/library-curator.js';
 import { completeAlbum } from '../services/album-complete.js';
@@ -1098,6 +1099,74 @@ export const MCP_TOOLS: McpTool[] = [
         rescanned: result.rescanned,
         verified: result.verified,
       });
+    },
+  },
+  {
+    name: 'split_album',
+    description:
+      'Split ONE album row that actually holds several releases (a double-album rip like "Winelight / The Best Is Yet to Come", a reissue plus its bonus disc) into separate albums. Each group names its songIds and the album they belong to (album, optional year, releaseType album|ep|single|compilation, artist = album artist, defaulting to the current one). Writes a durable per-song album override the scanner re-applies on every rescan and carries across a re-land, then rescans only those files; never moves or retags files, so song ids, likes and playlists stay. Songs no group names stay on the source album. Refuses an empty group, a song not on the album, or a song in two groups. Album ids are name-derived: use the albumIds in the response. Reads every song back and lists any that did not land under notApplied. Requires confirm: true. Audit-logged.',
+    access: 'curate',
+    destructive: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        albumId: { type: 'string', description: 'The album row to split.' },
+        groups: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              songIds: { type: 'array', items: { type: 'string' } },
+              album: { type: 'string' },
+              year: { type: 'number' },
+              releaseType: { type: 'string', enum: ['album', 'ep', 'single', 'compilation'] },
+              artist: { type: 'string', description: 'Album artist; defaults to the current one.' },
+            },
+            required: ['songIds', 'album'],
+          },
+        },
+        confirm: { type: 'boolean', description: 'Must be true.' },
+      },
+      required: ['albumId', 'groups', 'confirm'],
+    },
+    handler: async ({ db, identity, metadata }, args) => {
+      const albumId = str(args.albumId);
+      const rawGroups = Array.isArray(args.groups)
+        ? (args.groups as Record<string, unknown>[])
+        : [];
+      const groups: SplitGroup[] = rawGroups.map((g) => {
+        const type = str(g.releaseType);
+        return {
+          songIds: Array.isArray(g.songIds) ? g.songIds.map(str).filter(Boolean) : [],
+          album: str(g.album),
+          year: typeof g.year === 'number' ? g.year : undefined,
+          releaseType:
+            VALID_CLASSIFICATIONS.has(type) && type !== 'unknown'
+              ? (type as MetadataReleaseType)
+              : undefined,
+          artist: str(g.artist).trim() || undefined,
+        };
+      });
+      const old = db
+        .query<{ name: string; artist: string }, [string]>(
+          'SELECT name, artist FROM library_albums WHERE id = ?',
+        )
+        .get(albumId);
+      const result = await splitAlbum(db, metadata, albumId, groups);
+      if (!result.ok) return JSON.stringify({ error: result.error });
+      recordAudit(
+        db,
+        { sub: identity.userId, username: `agent:${identity.tokenId}` },
+        'album.metadata',
+        {
+          targetKind: 'album',
+          targetId: albumId,
+          detail: `split "${old?.artist} — ${old?.name}" into ${result.albums
+            .map((a) => `"${a.album}" (${a.songIds.length})`)
+            .join(', ')} (via MCP agent)`,
+        },
+      );
+      return JSON.stringify(result, null, 2);
     },
   },
   {

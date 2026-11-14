@@ -46,6 +46,11 @@ export interface SongCarryTable {
 
 export const SONG_CARRY_TABLES: readonly SongCarryTable[] = [
   {
+    table: 'library_song_album_overrides',
+    column: 'song_id',
+    why: "a curator's split of one album row into two releases (#1866); nothing re-derives it, and losing it silently re-merges the album",
+  },
+  {
     table: 'playlist_songs',
     column: 'song_id',
     why: 'membership a user chose; reads INNER JOIN, so a dangling row silently shortens the playlist (#259)',
