@@ -38,7 +38,12 @@ export class AutoHuntService {
   /** The failure toast on screen, so a run of failures groups into one (#1509). */
   private failureToast: { id: string; failures: GetFailure[] } | null = null;
   /** Gets this session asked for, by job id, until the feed says how each ended. */
-  private readonly asked = new Map<string, { title: string; openManual: () => void }>();
+  private readonly asked = new Map<
+    string,
+    { title: string; lidarrId: number; openManual: () => void }
+  >();
+  /** The reason each album's last Get this session failed, until it is asked again. */
+  private readonly failed = signal<ReadonlyMap<number, string>>(new Map());
   /**
    * Albums clicked whose job is not visible yet, refcounted: the auto-hunt and
    * the manual modal can hold the same album at once.
@@ -67,6 +72,20 @@ export class AutoHuntService {
   constructor() {
     // The server owns a Get from the click on, so its failure arrives on the feed.
     effect(() => this.settleAsked(this.transfer.acquisitionJobs()));
+  }
+
+  /** Why this album's last Get failed, or null — a card says so and offers its copies. */
+  failureFor(lidarrId: number | null | undefined): string | null {
+    return lidarrId == null ? null : (this.failed().get(lidarrId) ?? null);
+  }
+
+  private markFailed(lidarrId: number, reason: string | null): void {
+    this.failed.update((m) => {
+      const next = new Map(m);
+      if (reason === null) next.delete(lidarrId);
+      else next.set(lidarrId, reason);
+      return next;
+    });
   }
 
   statusFor(lidarrId: number): AlbumHuntStatus {
@@ -121,6 +140,7 @@ export class AutoHuntService {
   reset(): void {
     this.pending.set(new Map());
     this.asked.clear();
+    this.failed.set(new Map());
     this.failureToast = null;
   }
 
@@ -131,6 +151,7 @@ export class AutoHuntService {
    */
   hunt(album: DiscographyAlbum, artistName: string, openManual: () => void): void {
     if (this.statusFor(album.lidarrId).phase !== 'idle') return;
+    this.markFailed(album.lidarrId, null);
     this.beginSearch(album.lidarrId);
     void this.request(album, artistName, openManual).finally(() => this.endSearch(album.lidarrId));
   }
@@ -148,7 +169,7 @@ export class AutoHuntService {
           localAlbumId: album.localAlbumId,
         }),
       );
-      this.asked.set(jobId, { title: album.title, openManual });
+      this.asked.set(jobId, { title: album.title, lidarrId: album.lidarrId, openManual });
       // Awaited so the hold is released only once the job is in the feed — the
       // card goes searching → job with no idle gap.
       await this.transfer.kickPoll();
@@ -167,6 +188,7 @@ export class AutoHuntService {
           actions: [this.viewInDownloads(() => id)],
         });
       } else {
+        this.markFailed(album.lidarrId, outcome.message);
         this.showFailure({ title: album.title, reason: outcome.message }, openManual);
       }
     }
@@ -193,6 +215,7 @@ export class AutoHuntService {
       this.asked.delete(job.id);
       // A cancel is the person's own doing, not news.
       if (job.state === 'failed' && !job.cancelRequested) {
+        this.markFailed(ask.lidarrId, job.error ?? '');
         this.showFailure({ title: ask.title, reason: job.error ?? '' }, ask.openManual);
       }
     }

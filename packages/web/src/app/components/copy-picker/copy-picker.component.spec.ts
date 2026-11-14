@@ -19,7 +19,10 @@ const copy = (username: string, free: boolean): CopyCandidate =>
     12,
   );
 
-function render(copies: CopyCandidate[], opts: { replaces?: boolean; status?: string } = {}) {
+function render(
+  copies: CopyCandidate[],
+  opts: { replaces?: boolean; status?: string; searching?: boolean; notice?: string | null } = {},
+) {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [CopyPickerComponent],
@@ -42,6 +45,8 @@ function render(copies: CopyCandidate[], opts: { replaces?: boolean; status?: st
   setInputValue(c.copies, copies);
   setInputValue(c.replaces, opts.replaces ?? false);
   setInputValue(c.status, opts.status ?? '');
+  setInputValue(c.searching, opts.searching ?? false);
+  setInputValue(c.notice, opts.notice ?? null);
   const picked: CopyCandidate[] = [];
   let closed = 0;
   c.pick.subscribe((x) => picked.push(x));
@@ -87,6 +92,18 @@ describe('CopyPickerComponent', () => {
     const { q } = render([]);
     expect(q('copy-picker-empty')).not.toBeNull();
     expect(q('copy-picker-get')).toBeNull();
+  });
+
+  it('while the hunt scores copies, says so; an empty list reads as still looking', () => {
+    const { q } = render([], { searching: true });
+    expect(q('copy-picker-scoring')).not.toBeNull();
+    expect(q('copy-picker-empty')!.textContent).toContain('Looking for copies');
+  });
+
+  it('shows why a list may be incomplete', () => {
+    const { q } = render([], { notice: 'The source is busy' });
+    expect(q('copy-picker-notice')!.textContent).toContain('The source is busy');
+    expect(q('copy-picker-scoring')).toBeNull();
   });
 
   it('closes from its button', () => {

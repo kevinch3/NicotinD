@@ -11,6 +11,7 @@ import type {
   CatalogAlbum,
   CatalogArtist,
   DiscographyAlbum,
+  FolderCandidate,
   DownloadSettings,
   ProvisioningAccepted,
 } from '../../services/api/api-types';
@@ -53,7 +54,18 @@ import {
 import { folderAlbumIdentity, sameAlbum } from '@nicotind/core';
 import { GetNoticeComponent } from '../../components/get-notice/get-notice.component';
 import { CopyPickerComponent } from '../../components/copy-picker/copy-picker.component';
-import { folderToCopy, type CopyCandidate } from '../../lib/copy-candidate';
+import {
+  folderToCopy,
+  huntToCopy,
+  mergeCopies,
+  type CopyCandidate,
+} from '../../lib/copy-candidate';
+import { runScoredHunt, huntDownloadPayload } from '../../lib/scored-hunt';
+import {
+  classifyHuntDownloadError,
+  classifyHuntDownloadResult,
+} from '../../lib/hunt-download-outcome';
+import { ToastService } from '../../services/toast.service';
 import {
   GetTrackRowComponent,
   type TrackRowState,
@@ -80,7 +92,6 @@ import {
 } from '../../lib/acquisition-candidate';
 import { parseLinkIntent, resolverClaims, type LinkIntent } from '../../lib/link-intent';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
-import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { SourceChipComponent } from '../../components/source-chip/source-chip.component';
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
@@ -246,6 +257,14 @@ function isAlreadyDownloading(err: unknown): boolean {
   return e?.status === 409 && e.error?.error === 'already-downloading';
 }
 
+/** The work "Choose a copy" is open for, with the copies the page search saw. */
+interface CopiesView {
+  title: string;
+  artist: string;
+  status: () => AlbumHuntStatus;
+  copies: CopyCandidate[];
+}
+
 @Component({
   selector: 'app-search',
   imports: [
@@ -257,7 +276,6 @@ function isAlreadyDownloading(err: unknown): boolean {
     FormsModule,
     FolderBrowserComponent,
     RouterLink,
-    AlbumHuntModalComponent,
     SourceChipComponent,
     SkeletonComponent,
     TranslatePipe,
@@ -282,6 +300,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly plugins = inject(PluginService);
   readonly auth = inject(AuthService);
   private autoHunt = inject(AutoHuntService);
+  private toasts = inject(ToastService);
   /** Remembers each Get so its songs join the queue when they land (#1294). */
   private getThenHear = inject(GetThenHearService);
   private p2r = inject(PullToRefreshService);
@@ -335,8 +354,6 @@ export class SearchComponent implements OnInit, OnDestroy {
   // artist to Lidarr, so we no longer do it unprompted — the folder results below
   // are the primary "get this album" path). Null when not in a fallback.
   readonly rawFallbackAlbum = signal<CatalogAlbum | null>(null);
-  readonly huntingAlbum = signal<DiscographyAlbum | null>(null);
-  readonly huntingArtistName = signal('');
 
   // Link-intent card: a pasted/shared URL recognized as one acquisition
   // candidate. Replaces the old standalone "Get from a link" box + job list —
@@ -887,28 +904,93 @@ export class SearchComponent implements OnInit, OnDestroy {
   }
 
   /** The work "Choose a copy" is open for, with every copy the page search saw. */
-  readonly copiesOpen = signal<{
-    title: string;
-    artist: string;
-    status: () => AlbumHuntStatus;
-    copies: CopyCandidate[];
-  } | null>(null);
+  readonly copiesOpen = signal<CopiesView | null>(null);
+  /** The scored hunt behind the open picker: its album, and where it stands. */
+  private copiesHunt: { seq: number; lidarrId: number; localAlbumId?: string } | null = null;
+  private copiesSeq = 0;
+  readonly scoredCopies = signal<FolderCandidate[]>([]);
+  readonly copiesSearching = signal(false);
+  readonly copiesNotice = signal<string | null>(null);
+  /** The picker's rows: scored copies first, as they arrive, then the rest. */
+  readonly pickerCopies = computed(() => {
+    const open = this.copiesOpen();
+    return open ? mergeCopies(this.scoredCopies().map(huntToCopy), open.copies) : [];
+  });
 
-  /** A catalog card's copies, in the picker. */
+  private openCopies(view: CopiesView): number {
+    this.copiesSeq += 1;
+    this.copiesHunt = null;
+    this.scoredCopies.set([]);
+    this.copiesSearching.set(false);
+    this.copiesNotice.set(null);
+    this.copiesOpen.set(view);
+    return this.copiesSeq;
+  }
+
+  closeCopies(): void {
+    this.copiesSeq += 1;
+    this.copiesHunt = null;
+    this.copiesOpen.set(null);
+    this.copiesSearching.set(false);
+  }
+
+  /**
+   * A catalog card's copies, in the picker: what the page search saw at once,
+   * then the album hunt's scored copies in place once Lidarr knows the album.
+   */
   showCatalogCopies(album: CatalogAlbum): void {
     const availability = this.catalogAvailability().get(album.foreignAlbumId);
-    if (!availability) return;
-    this.copiesOpen.set({
+    const seq = this.openCopies({
       title: album.title,
       artist: album.artistName,
       status: () => this.catalogHuntStatus(album),
-      copies: availability.folders.map((f) => folderToCopy(f, album.trackCount)),
+      copies: (availability?.folders ?? []).map((f) => folderToCopy(f, album.trackCount)),
     });
+    if (this.plugins.networkSource()) void this.scoreCatalogCopies(album, seq);
+  }
+
+  private async scoreCatalogCopies(album: CatalogAlbum, seq: number): Promise<void> {
+    const live = () => seq === this.copiesSeq && !this.destroyed;
+    this.copiesSearching.set(true);
+    try {
+      const { discAlbum, artistName } = await this.resolveCatalog(album);
+      if (!live()) return;
+      this.copiesHunt = { seq, lidarrId: discAlbum.lidarrId, localAlbumId: discAlbum.localAlbumId };
+      const hunt = await runScoredHunt(
+        this.downloadsApi,
+        discAlbum.lidarrId,
+        artistName,
+        discAlbum.title,
+        { skew: true, onBase: (candidates) => live() && this.scoredCopies.set(candidates) },
+      );
+      if (!live()) return;
+      this.scoredCopies.set(hunt.candidates);
+      this.copiesNotice.set(
+        hunt.sourceOffline
+          ? this.i18n.t('copyPicker.offline')
+          : hunt.rateLimited
+            ? this.i18n.t('copyPicker.rateLimited')
+            : hunt.cutShort
+              ? this.i18n.t('copyPicker.cutShort')
+              : null,
+      );
+    } catch (err) {
+      // An album Lidarr does not track can't be scored; the unscored copies stand.
+      if (live() && httpErrorCode(err) !== 'ALBUM_NOT_IN_LIDARR') {
+        this.copiesNotice.set(
+          this.i18n.t('copyPicker.scoreFailed', {
+            reason: httpErrorMessage(err, this.i18n.t('getError.prepare')),
+          }),
+        );
+      }
+    } finally {
+      if (live()) this.copiesSearching.set(false);
+    }
   }
 
   /** A source-only album's copies, in the picker. */
   openProviderCopies(album: ProviderOnlyAlbum): void {
-    this.copiesOpen.set({
+    this.openCopies({
       title: album.title,
       artist: album.artist,
       status: () => this.providerAlbumStatus(album),
@@ -920,10 +1002,59 @@ export class SearchComponent implements OnInit, OnDestroy {
     return status.phase === 'idle' ? '' : this.catalogHuntLabel(status);
   }
 
-  /** Get the chosen copy; one already running for the album is replaced. */
+  /**
+   * Get the chosen copy; one already running for the album is replaced. A scored
+   * copy goes through hunt-download, with the other scored copies as alternates.
+   */
   getCopy(copy: CopyCandidate, replace: boolean): void {
-    this.copiesOpen.set(null);
-    void this.downloadFolder(copy.folder, replace);
+    const hunt = this.copiesHunt;
+    const scored = this.scoredCopies();
+    const title = this.copiesOpen()?.title ?? '';
+    this.closeCopies();
+    if (copy.scored && hunt) void this.getScoredCopy(copy.scored, scored, hunt, title, replace);
+    else void this.downloadFolder(copy.folder, replace);
+  }
+
+  private async getScoredCopy(
+    pick: FolderCandidate,
+    all: FolderCandidate[],
+    hunt: { lidarrId: number; localAlbumId?: string },
+    title: string,
+    replace: boolean,
+  ): Promise<void> {
+    this.autoHunt.beginSearch(hunt.lidarrId);
+    try {
+      const res = await firstValueFrom(
+        this.downloadsApi.huntDownload(
+          hunt.lidarrId,
+          huntDownloadPayload(pick, all, hunt.localAlbumId),
+          replace,
+        ),
+      );
+      if (classifyHuntDownloadResult(res) === 'already-complete') {
+        this.toasts.show({ message: this.i18n.t('getToast.alreadyHave', { title }), kind: 'info' });
+      }
+      await this.transfers.kickPoll();
+    } catch (err) {
+      const outcome = classifyHuntDownloadError(err);
+      if (outcome.kind === 'already-complete') {
+        this.toasts.show({ message: this.i18n.t('getToast.alreadyHave', { title }), kind: 'info' });
+      } else if (outcome.kind === 'already-downloading') {
+        this.toasts.show({
+          message: this.i18n.t('getToast.alreadyDownloading', { title }),
+          kind: 'info',
+        });
+      } else {
+        this.resolveError.set(outcome.message);
+      }
+    } finally {
+      this.autoHunt.endSearch(hunt.lidarrId);
+    }
+  }
+
+  /** Why this album's last Get failed, for the card. */
+  catalogFailure(album: CatalogAlbum): string | null {
+    return this.autoHunt.failureFor(this.resolvedLidarrIds().get(album.foreignAlbumId));
   }
 
   /** Show every copy of a provider album in the folders lane, to pick one. */
@@ -974,37 +1105,8 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.resolveError.set(null);
     this.setResolving(album.foreignAlbumId, true);
     try {
-      const resolved = await this.untilProvisioned(
-        () =>
-          firstValueFrom(
-            this.api.catalogResolve({
-              foreignAlbumId: album.foreignAlbumId,
-              artistMbid: album.artistMbid,
-              artistName: album.artistName,
-              albumTitle: album.title,
-            }),
-          ),
-        album.artistName,
-      );
-      const discAlbum: DiscographyAlbum = {
-        lidarrId: resolved.lidarrAlbumId,
-        foreignAlbumId: album.foreignAlbumId,
-        title: resolved.title || album.title,
-        releaseDate: album.year,
-        albumType: album.albumType,
-        secondaryTypes: album.secondaryTypes,
-        totalTracks: resolved.totalTracks || album.trackCount,
-        localTrackCount: 0,
-        status: 'missing',
-        coverArtUrl: album.coverUrl,
-        tracks: [],
-      };
-      const artistName = resolved.artistName || album.artistName;
-      this.resolvedLidarrIds.update((m) =>
-        new Map(m).set(album.foreignAlbumId, resolved.lidarrAlbumId),
-      );
-      this.huntingArtistName.set(artistName);
-      this.autoHunt.hunt(discAlbum, artistName, () => this.huntingAlbum.set(discAlbum));
+      const { discAlbum, artistName } = await this.resolveCatalog(album);
+      this.autoHunt.hunt(discAlbum, artistName, () => this.showCatalogCopies(album));
     } catch (err) {
       // A compilation/best-of that exists globally but not in the artist's Lidarr
       // discography can't be hunted the guided way. Rather than dead-end, auto-fall
@@ -1021,6 +1123,43 @@ export class SearchComponent implements OnInit, OnDestroy {
     } finally {
       this.setResolving(album.foreignAlbumId, false);
     }
+  }
+
+  /** The catalog album as a Lidarr album the hunt can run against (#644 waits included). */
+  private async resolveCatalog(
+    album: CatalogAlbum,
+  ): Promise<{ discAlbum: DiscographyAlbum; artistName: string }> {
+    const resolved = await this.untilProvisioned(
+      () =>
+        firstValueFrom(
+          this.api.catalogResolve({
+            foreignAlbumId: album.foreignAlbumId,
+            artistMbid: album.artistMbid,
+            artistName: album.artistName,
+            albumTitle: album.title,
+          }),
+        ),
+      album.artistName,
+    );
+    this.resolvedLidarrIds.update((m) =>
+      new Map(m).set(album.foreignAlbumId, resolved.lidarrAlbumId),
+    );
+    return {
+      artistName: resolved.artistName || album.artistName,
+      discAlbum: {
+        lidarrId: resolved.lidarrAlbumId,
+        foreignAlbumId: album.foreignAlbumId,
+        title: resolved.title || album.title,
+        releaseDate: album.year,
+        albumType: album.albumType,
+        secondaryTypes: album.secondaryTypes,
+        totalTracks: resolved.totalTracks || album.trackCount,
+        localTrackCount: 0,
+        status: 'missing',
+        coverArtUrl: album.coverUrl,
+        tracks: [],
+      },
+    };
   }
 
   private setResolving(foreignAlbumId: string, on: boolean): void {
@@ -1097,10 +1236,6 @@ export class SearchComponent implements OnInit, OnDestroy {
     const album = this.rawFallbackAlbum();
     if (!album?.artistMbid) return;
     await this.doLoadDiscography(album.artistMbid, album.artistName);
-  }
-
-  closeHunt(): void {
-    this.huntingAlbum.set(null);
   }
 
   // ─── Link-intent card (merged "Get from a link") ────────────────────
