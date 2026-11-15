@@ -560,6 +560,11 @@ Lidarr does not know. Body: optional `artistName`, `albumTitle`, `localAlbumId`.
 - The hunt waits its turn in the service's own `HuntQueue` and runs `acquireAlbum` with
   `reservedJobId`, which attaches the addon job to the reservation (`attachAddonRef`) and does not
   create a second row.
+- **A bulk Get is a queue, not a burst** (#1824). The service's queue holds up to `MAX_WAITING`
+  (1,000) reservations, not the interactive hunt queue's 50, and runs one at a time, so a person
+  queueing a whole discography gets every album accepted and searched at the source's pace. A test
+  queues 60 and asserts all 60 reach the addon with never two searches in flight. It used to break
+  down past ~25 albums while each chain lived in the tab.
 - The pick clears `GET_MIN_MATCH_PCT` (60). The unattended sweeps keep 80: a person asked for this
   album by name, a sweep must not guess.
 - `acquireAlbum` walks down to `MAX_PICK_ATTEMPTS` (3) confident candidates. A peer that cannot be
