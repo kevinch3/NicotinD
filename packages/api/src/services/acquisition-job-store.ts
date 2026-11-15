@@ -1835,9 +1835,20 @@ function jobByteAgg(db: Database, jobId: string): ByteAggRow | null {
   );
 }
 
+/**
+ * The Activity feed, newest first: every active job, plus the newest `limit` finished ones. The
+ * limit used to bound the whole feed, so a download still running behind 50 newer finished jobs
+ * vanished from the page and could not be cancelled there (#1942).
+ */
 export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] {
   const jobs = db
-    .query<JobRow, [number]>(`SELECT * FROM acquisition_jobs ORDER BY created_at DESC LIMIT ?`)
+    .query<JobRow, [number]>(
+      `SELECT * FROM acquisition_jobs WHERE state = 'active'
+       UNION ALL
+       SELECT * FROM (SELECT * FROM acquisition_jobs WHERE state <> 'active'
+                       ORDER BY created_at DESC LIMIT ?)
+       ORDER BY created_at DESC`,
+    )
     .all(limit);
   return jobs.map((row) => {
     const counts = new Map<string, number>();
