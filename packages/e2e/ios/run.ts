@@ -168,6 +168,31 @@ async function clickVisible(selector: string): Promise<number> {
   return n;
 }
 
+/**
+ * The Now Playing cover once it has stopped moving: fully on screen, the same rect
+ * twice in a row. The sheet slides in on a transform, and a swipe that lands
+ * mid-slide does not skip (measured on a reopen that only waited for "on screen").
+ */
+async function settledCover(): Promise<{ x: number; y: number; w: number; h: number }> {
+  let last = '';
+  return poll(
+    'a cover settled fully on screen',
+    async () => {
+      const r = await js<{ x: number; y: number; w: number; h: number } | null>(`
+        const el = document.querySelector('[data-testid="now-playing-cover-art"]');
+        if (!el) return null;
+        const b = el.getBoundingClientRect();
+        if (b.height === 0 || b.top < 0 || b.bottom > window.innerHeight) return null;
+        return { x: b.x, y: b.y, w: b.width, h: b.height };`);
+      const now = r ? JSON.stringify(r) : '';
+      const settled = now !== '' && now === last;
+      last = now;
+      return settled ? r : null;
+    },
+    20_000,
+  );
+}
+
 let token = '';
 let albumId = '';
 let offset: Point | undefined;
@@ -231,6 +256,8 @@ const attached =
   sessionUp &&
   (await step('webview: the app page is attachable', async () => {
     await inPage();
+    const href = await js<string>('return location.href;');
+    if (!href.startsWith('capacitor://')) throw new Error(`attached to ${href}, not the app`);
     return js<Record<string, unknown>>(`return {
     href: location.href,
     platform: window.Capacitor?.getPlatform?.() ?? null,
@@ -301,24 +328,8 @@ if (attached) {
     await inNative();
     await driver.actions(tapActions(target));
     await inPage();
-    let last = '';
-    const rect = await poll(
-      'a cover settled fully on screen',
-      async () => {
-        const r = await js<{ x: number; y: number; w: number; h: number } | null>(`
-          const el = document.querySelector('[data-testid="now-playing-cover-art"]');
-          if (!el) return null;
-          const b = el.getBoundingClientRect();
-          if (b.height === 0 || b.top < 0 || b.bottom > window.innerHeight) return null;
-          return { x: b.x, y: b.y, w: b.width, h: b.height };`);
-        const now = r ? JSON.stringify(r) : '';
-        const settled = now !== '' && now === last;
-        last = now;
-        return settled ? r : null;
-      },
-      20_000,
-    );
-    coverCentre = { x: rect!.x + rect!.w / 2, y: rect!.y + rect!.h / 2 };
+    const rect = await settledCover();
+    coverCentre = { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
     return { tappedAt: target, cover: rect, centre: coverCentre };
   });
 
@@ -401,12 +412,8 @@ if (attached) {
     await inNative();
     await driver.actions(tapActions(target));
     await inPage();
-    await poll(
-      'the cover on screen',
-      () => visibleCentre('[data-testid="now-playing-cover-art"]').catch(() => null),
-      20_000,
-    );
-    await Bun.sleep(800);
+    const rect = await settledCover();
+    coverCentre = { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
     return swipeCheck(COMMIT_DX, true, 0);
   });
 }
