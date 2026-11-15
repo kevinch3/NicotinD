@@ -342,6 +342,16 @@ same PR that hit it.
   navigation: blocking the main thread for 8s delays the goto to 7.878s and it
   then succeeds (measured). Note a second mid-spec `page.goto` is ordinary here
   — 39 specs do one — so it is not itself a smell.
+  **Read the `renderer-liveness` attachment first.** The suite's `page` fixture
+  (`helpers.ts`) probes every failed test's page with a trivial `evaluate` raced
+  against `RENDERER_PROBE_TIMEOUT_MS` (`renderer-liveness.ts`) and attaches the
+  verdict: `alive` rules the wedge out, `wedged` is this signature without the
+  forensic pass, `closed` means the page was gone before the probe ran. It runs
+  only on failure, so a passing test pays nothing. Playwright's own
+  failure screenshot runs before the probe and waits on the renderer, so a page
+  that was blocked for a few seconds and recovered reads `alive`; only one that
+  never comes back reads `wedged` (measured with a main-thread loop: 8 s reads
+  `alive`, an endless one reads `wedged`).
 
 - **Five routes in one test is five routes in one 30s budget.** That budget is
   spent by *navigations*, not by assertions.

@@ -3,6 +3,7 @@ import { expect, test as base } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { E2E_MUSIC_DIR } from './fixture-music';
+import { RENDERER_PROBE_TIMEOUT_MS, livenessReport, probeRenderer } from './renderer-liveness';
 
 export { expect };
 export type { APIRequestContext, BrowserContext, Locator, Page } from '@playwright/test';
@@ -51,6 +52,21 @@ export const test = base.extend<{ freshPlaybackSession: void }>({
     },
     { auto: true },
   ],
+  // A failed test says whether its renderer still answered (#1185), so a wedge
+  // is named in the report instead of read out of a trace.
+  page: async ({ page }, use, testInfo) => {
+    await use(page);
+    if (testInfo.status === testInfo.expectedStatus) return;
+    const verdict = await probeRenderer(page);
+    await testInfo.attach('renderer-liveness', {
+      body: livenessReport(
+        verdict,
+        page.isClosed() ? '(closed)' : page.url(),
+        RENDERER_PROBE_TIMEOUT_MS,
+      ),
+      contentType: 'text/plain',
+    });
+  },
 });
 
 /** Admin seeded by auth.setup.ts (first user => admin). */
