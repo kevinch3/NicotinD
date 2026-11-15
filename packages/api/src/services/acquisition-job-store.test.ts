@@ -431,6 +431,33 @@ describe('reconcileOrganizedItems (#262)', () => {
   });
 });
 
+/**
+ * #1942. The feed was the 50 newest jobs whatever their state, so once a busy
+ * day passed 50, a download still running behind newer finished jobs vanished
+ * from Activity. On prod, 6 of 13 active jobs were missing. Every active job is
+ * in the feed; the limit bounds only the finished history.
+ */
+describe('listJobFeed keeps every active job (#1942)', () => {
+  it('lists an old active job behind more finished jobs than the limit', () => {
+    const running = createJob(db, { kind: 'album-hunt', method: 'slskd', albumTitle: 'Presence' });
+    db.run(`UPDATE acquisition_jobs SET created_at = 1 WHERE id = ?`, [running]);
+    for (let i = 0; i < 60; i++) {
+      const id = createJob(db, { kind: 'album-hunt', method: 'slskd', albumTitle: `Done ${i}` });
+      db.run(
+        `UPDATE acquisition_jobs SET state = 'done', stage = 'done', created_at = ? WHERE id = ?`,
+        [1000 + i, id],
+      );
+    }
+
+    const feed = listJobFeed(db);
+
+    expect(feed.some((j) => j.id === running)).toBe(true);
+    expect(feed.filter((j) => j.state === 'done')).toHaveLength(50);
+    // Still newest first, so the running job sorts last.
+    expect(feed.at(-1)!.id).toBe(running);
+  });
+});
+
 describe('listJobFeed import fallback', () => {
   it("reads an item-less import job's progress from import_jobs", () => {
     const id = createJob(db, { id: 'imp-1', kind: 'import', method: 'import' });

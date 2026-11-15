@@ -1872,6 +1872,13 @@ sums to the release.
 `unavailable` and `notOffered` are deliberately distinct: the first is a track the source *had* and
 could not deliver, the second one it never listed. Collapsing them would re-hide the thing this fixed.
 
+**A job the source has not itemised yet has no shortfall** (#1937). While a Get waits in the hunt
+queue, `expected` is 0, so `canonical - expected` printed the whole tracklist as missing. Prod
+2026-11-15: 22 resolving cards read `· 64 not offered` (R.E.M. *Monster*) before their hunt had run.
+`canonicalShortfall` returns null at `expected === 0`, which is the gate the server's
+`notOfferedTitles` already applies (`live.length === 0`). Without it, the card listed tracks as not
+offered while `canResource` said there was nothing to re-source.
+
 #### One denominator, and `expected` is not it (#1067)
 
 Whether a job may *grow its own scope* mid-flight — attach the not-offered titles to a second peer —
@@ -1958,9 +1965,10 @@ nothing is active yet — so the next feed refresh is up to **30 seconds** away.
 `kickPoll()` exists for exactly this ("call after initiating a download") and is
 called by `AutoHuntService`, the album-hunt modal and the eight Downloads-page
 mutations; the **URL/link lane was the one omission**, so a pasted
-Spotify/YouTube/archive link bumped the nav badge — which reads
+Spotify/YouTube/archive link bumped the nav badge — which then read
 `acquire.activeJobs()`, refreshed by the submit itself — while the Downloads
-card stayed up to half a minute stale. `submitLinkIntent()` and `retryLinkJob()`
+card stayed up to half a minute stale. (Since #1938 the badge reads the same
+merged feed as the card, so the kick is what moves both.) `submitLinkIntent()` and `retryLinkJob()`
 now kick the poll too, and only on success: a rejected submit has no job to show.
 
 Separately, a playlist card that walks `0 of 1 → 2 of 14 → 7 of 32` is the
@@ -2279,6 +2287,16 @@ without making it *actionable*. Prod on 2026-08-23 showed the gap: the card stat
 failures, offered no Retry, and rendered one arbitrary truncated reason standing in for all
 of them.
 
+### A partial reads Partial, not Done (#1939)
+
+A card that closed `done` with tracks missing wore the same green **Done** as a complete one.
+On prod on 2026-11-15, Divididos *Canciones de cuna al palo* read `Done · 1 of 14 · 13 not
+offered` beside "No other peer had the rest when we looked". `isPartialDone`
+(`lib/pipeline-stage.ts`) marks a done card whose committed total is larger than what landed, and
+its badge reads **Partial** in the warning tone (`partialBadge`, `.status-warn`). This needed #1936
+first: the total is the edition the job is for, so a standard edition that landed whole stays
+Done. A total the source never committed (`10 so far`) cannot be judged, so that card stays Done.
+
 ### Retry reaches the jobs that actually partial
 
 `canRetry` is derived twice — once per lane. The acquire lane
@@ -2509,6 +2527,8 @@ explains the missing tracks.
 The web groups transfers via the pure `lib/download-groups.ts` (`groupByAlbum`/`albumGroupTitle`/`albumGroupTotal`), which prefers the hunt metadata and falls back to the peer folder name + file count for **direct (non-hunt)** downloads that have no job.
 
 `jobId` is the card's identity in the feed (issue #261): the server has always known which acquisition job enqueued a folder, but the client used to discard it and re-derive grouping from `albumId`, which is why one hunt kept splitting into several cards. See [docs/acquisition-jobs.md](acquisition-jobs.md) "One job = one card".
+
+**Feed order** (`byFeedOrder`): active stages first (downloading, organizing, scanning, then resolving and queued), with terminal stages last. Inside a stage the newest card comes first, except for waiting rows: `resolving` and `queued` sort **oldest first**, because the hunt queue is FIFO. The next card to start heads its block, and a row only ever moves up. Newest-first used to put it at the bottom, so on a 25-album Get the list reshuffled about every 20 s, each time a hunt finished (#1938). `isUnfinished` is the one predicate behind the header's "N in progress" and every nav badge.
 
 **Method badge mapping covers the slskd addon (issue #532)**: `methodForBackend` (`lib/download-groups.ts`) normalizes addon ids to their base method (`ytdlp-addon`→`ytdlp`, `bundled-archive`→`archive`, and — the cutover regression — `slskd`/`slskd-addon`→`slskd`); anything unmapped renders the `unknown` "?Unknown source" badge, which is exactly how every album-hunt card looked post-cutover while `BADGES.slskd` existed unused. Unmapped no longer means unnamed: `DownloadItem.backend` keeps the raw id, and `methodBadge(method, name)` names a third-party addon by its manifest (docs/source-agnostic-acquisition.md "Sources are named by their manifest").
 

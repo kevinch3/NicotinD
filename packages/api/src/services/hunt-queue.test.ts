@@ -147,3 +147,29 @@ describe('HuntQueue (#1625)', () => {
     expect(() => q.enqueue('d', () => hold.promise)).toThrow(HuntQueueFullError);
   });
 });
+
+/**
+ * #1938. A Get's job row knows its job id, which is the hunt's key, not the
+ * queue's entry id. The Activity card reads its place in line by that key.
+ */
+describe('HuntQueue.statusOfKey (#1938)', () => {
+  it("reads the live hunt for a key: searching, or waiting with what's ahead", async () => {
+    const q = new HuntQueue<string>();
+    const a = deferred<string>();
+    q.enqueue('job-a', () => a.promise);
+    q.enqueue('job-b', () => a.promise);
+    q.enqueue('job-c', () => a.promise);
+    await tick();
+    expect(q.statusOfKey('job-a')?.state).toBe('searching');
+    expect(q.statusOfKey('job-c')).toMatchObject({ state: 'queued', position: 2 });
+  });
+
+  it('has nothing for a key that finished or was never queued', async () => {
+    const q = new HuntQueue<string>();
+    q.enqueue('job-a', async () => 'A');
+    await tick();
+    await tick();
+    expect(q.statusOfKey('job-a')).toBeNull();
+    expect(q.statusOfKey('nobody')).toBeNull();
+  });
+});

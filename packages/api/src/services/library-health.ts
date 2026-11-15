@@ -1,6 +1,7 @@
 import { dirname, join } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import type { Lidarr } from '../lidarr/index.js';
+import { fetchStandardTracklist } from './standard-edition.js';
 import {
   titlesMissingFromOwned,
   lrcOverrunSec,
@@ -1024,7 +1025,7 @@ const LIVE_TRACKLIST_CONCURRENCY = 8;
 export async function libraryHealthWithLidarr(
   db: Database,
   opts: LibraryHealthOptions,
-  lidarr: Pick<Lidarr, 'track'> | null | undefined,
+  lidarr: Pick<Lidarr, 'track' | 'album'> | null | undefined,
 ): Promise<LibraryHealthReport> {
   if (!lidarr) return libraryHealth(db, opts);
   // One job read for both passes — the candidate scan below and the report
@@ -1061,18 +1062,21 @@ export function pickHealthDimensions(
  */
 export async function incompleteAlbums(
   db: Database,
-  lidarr: Pick<Lidarr, 'track'> | null | undefined,
+  lidarr: Pick<Lidarr, 'track' | 'album'> | null | undefined,
 ): Promise<ConfirmedIncomplete[]> {
   const jobs = newestJobPerPair(db);
   const live = lidarr ? await liveTracklists(db, jobs, lidarr) : undefined;
   return confirmedIncomplete(db, jobs, live).confirmed;
 }
 
-/** Lidarr's live tracklist per candidate album; a failed fetch keeps the stored list. */
+/**
+ * Lidarr's live standard-edition tracklist per candidate album (#1936), the list a hunt would
+ * enqueue against; a failed fetch keeps the stored list.
+ */
 async function liveTracklists(
   db: Database,
   jobs: readonly JobCanonicalTracklist[],
-  lidarr: Pick<Lidarr, 'track'>,
+  lidarr: Pick<Lidarr, 'track' | 'album'>,
 ): Promise<Map<number, string[]>> {
   const ids = [
     ...new Set(
@@ -1088,7 +1092,7 @@ async function liveTracklists(
         try {
           live.set(
             id,
-            (await lidarr.track.listByAlbum(id)).map((t) => t.title),
+            (await fetchStandardTracklist(lidarr, id)).map((t) => t.title),
           );
         } catch {
           /* stored tracklist stands for this album */

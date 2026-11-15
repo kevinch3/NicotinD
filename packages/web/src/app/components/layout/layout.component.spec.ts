@@ -106,13 +106,13 @@ describe('LayoutComponent — player + tab-bar safe margin', () => {
 });
 
 describe('LayoutComponent — desktop downloads badge', () => {
-  it('sums active transfers, in-flight acquire jobs and uploads into downloadCount', () => {
+  it("badges the nav with the Downloads header's unfinished count plus uploads (#1938)", () => {
     const playerStub = {
       currentTrack: signal<{ id: string } | null>(null),
       setRadioProvider: () => {},
     };
     const transfersStub = {
-      activeDownloadCount: signal(2),
+      unfinishedCount: signal(2),
       startPolling: () => {},
       stopPolling: () => {},
       acquisitionJobs: signal<unknown[]>([]),
@@ -153,12 +153,11 @@ describe('LayoutComponent — desktop downloads badge', () => {
     const fixture = TestBed.createComponent(LayoutComponent);
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.downloadCount()).toBe(6);
+    expect(fixture.componentInstance.downloadCount()).toBe(3);
     // The shell is what keeps "get, then hear it" listening app-wide (#1294).
     expect(start).toHaveBeenCalledTimes(1);
 
-    transfersStub.activeDownloadCount.set(0);
-    acquireStub.activeJobs.set([]);
+    transfersStub.unfinishedCount.set(0);
     uploadsStub.inFlight.set(0);
     expect(fixture.componentInstance.downloadCount()).toBe(0);
   });
@@ -294,7 +293,7 @@ describe('LayoutComponent — pull-to-refresh wiring on the REAL template', () =
     const setupStub = { isOffline: () => false };
     const preserveStub = { totalUsage: () => 0, clearAll: async () => {} };
     const transfersStub = {
-      activeDownloadCount: signal(0),
+      unfinishedCount: signal(0),
       startPolling: () => {},
       stopPolling: () => {},
       acquisitionJobs: signal<unknown[]>([]),

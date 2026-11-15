@@ -27,6 +27,36 @@ export const Queued: Story = {
   },
 };
 
+/**
+ * A bulk Get waiting its turn in core's hunt queue (#1938): the badge names the
+ * wait, and the line after it says how many searches are ahead and roughly how
+ * long. It used to read "Resolving link…" with no sense of either.
+ */
+export const WaitingToSearch: Story = {
+  args: {
+    item: {
+      ...demoDownloadItem,
+      stage: 'resolving',
+      percent: undefined,
+      progress: undefined,
+      queue: { state: 'waiting', ahead: 7, etaMs: 140_000 },
+    },
+  },
+};
+
+/** The source could not search; core asks again on its own (#1938). */
+export const SourceOfflineRetrying: Story = {
+  args: {
+    item: {
+      ...demoDownloadItem,
+      stage: 'resolving',
+      percent: undefined,
+      progress: undefined,
+      queue: { state: 'retrying', retryAt: Date.now() + 120_000 },
+    },
+  },
+};
+
 export const Organizing: Story = {
   args: {
     item: {

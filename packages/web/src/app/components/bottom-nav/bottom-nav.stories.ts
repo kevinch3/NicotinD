@@ -40,10 +40,10 @@ export const Listener: Story = { ...withState({ role: 'listener' }) };
 export const Acquirer: Story = { ...withState({ role: 'user' }) };
 
 /**
- * The badge sums two independent sources — slskd transfers and in-flight URL
- * acquisitions. Mobile once omitted the acquire jobs, so a yt-dlp download
- * showed a badge on desktop and none on the phone; this story seeds one of
- * each, so the number is only correct when both are counted.
+ * The badge counts every unfinished card of the merged feed: network jobs and
+ * in-flight URL acquisitions. Mobile once omitted the acquire jobs, so a yt-dlp
+ * download showed a badge on desktop and none on the phone; this story seeds
+ * one of each lane, so the number is only correct when both are counted.
  */
 export const WithDownloadBadge: Story = {
   ...withState({

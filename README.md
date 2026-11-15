@@ -3,6 +3,8 @@
 <p align="center">
   <a href="https://kevinch3.github.io/NicotinD/demo/"><img src="https://img.shields.io/badge/demo-try%20it%20in%20your%20browser-2ea44f" alt="Try the demo" /></a>
   <a href="https://github.com/kevinch3/NicotinD/releases/latest"><img src="https://img.shields.io/github/v/release/kevinch3/NicotinD?label=release&color=4c7dd0" alt="Latest release" /></a>
+  <a href="https://f-droid.org/packages/ar.kevinroberts.nicotind/"><img src="https://img.shields.io/f-droid/v/ar.kevinroberts.nicotind?label=F-Droid&logo=fdroid&color=1976d2" alt="NicotinD on F-Droid" /></a>
+  <a href="https://f-droid.org/packages/ar.kevinroberts.nicotind.tv/"><img src="https://img.shields.io/f-droid/v/ar.kevinroberts.nicotind.tv?label=F-Droid%20TV&logo=fdroid&color=1976d2" alt="NicotinD TV on F-Droid" /></a>
   <a href="https://github.com/kevinch3/NicotinD/actions/workflows/ci.yml"><img src="https://github.com/kevinch3/NicotinD/actions/workflows/ci.yml/badge.svg?branch=master" alt="CI status" /></a>
   <a href="https://github.com/kevinch3/NicotinD/actions/workflows/deploy.yml"><img src="https://github.com/kevinch3/NicotinD/actions/workflows/deploy.yml/badge.svg" alt="Build &amp; Deploy status" /></a>
   <a href="https://github.com/kevinch3/NicotinD/pkgs/container/nicotind"><img src="https://img.shields.io/badge/ghcr.io-kevinch3%2Fnicotind-2496ED?logo=docker&logoColor=white" alt="Docker image on GHCR" /></a>
@@ -81,6 +83,19 @@ passthrough, and the lighter streaming-only profile:
 **No root, no Docker?** Docker (and rootless Podman) need root to set up, and the `.deb`
 installs system-wide. On a host where you only have a user account, run the server from
 source as a systemd user service: **[docs/bare-metal.md](docs/bare-metal.md)**.
+
+## Get the apps
+
+The Android apps connect to your server; install them from F-Droid.
+
+| Android phones and tablets | Android TV |
+| :---: | :---: |
+| <a href="https://f-droid.org/packages/ar.kevinroberts.nicotind/"><img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get NicotinD on F-Droid" height="70" /></a> | <a href="https://f-droid.org/packages/ar.kevinroberts.nicotind.tv/"><img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get NicotinD TV on F-Droid" height="70" /></a> |
+
+Every [GitHub release](https://github.com/kevinch3/NicotinD/releases/latest) also carries both APKs,
+the desktop builds (AppImage, deb, macOS dmg) and an unsigned iOS IPA, and any browser can install the
+web app as a PWA. More on each client: [docs/mobile-app.md](docs/mobile-app.md),
+[docs/tv-ux.md](docs/tv-ux.md).
 
 ## How it works
 

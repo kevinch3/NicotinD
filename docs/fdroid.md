@@ -354,8 +354,8 @@ Three things in `scanner.py` decide that shape, and all three are worth knowing 
   no such list today: none of the six gradle-referenced plugin subtrees contains a flagged file.
   Re-check that if a plugin is added — the failure is a deleted build file, not a scan error.
   `@capacitor/haptics` (#1376) was checked by reading its tree: Java, a manifest and a `build.gradle`
-  with the same repository block as the other `@capacitor/*` plugins, no binaries. Its first release
-  still needs the recipe and the reproducibility comparison re-run.
+  with the same repository block as the other `@capacitor/*` plugins, no binaries. It first shipped in
+  `v0.8.96`; `v0.8.109` and `v0.8.111`, both carrying it, reproduced (see *Reproducible builds*).
 
 Verified by running fdroidserver's own `scan_source()` against this checkout, and by intersecting
 the flagged set with every `node_modules` path the gradle build references. (Locally that scan also

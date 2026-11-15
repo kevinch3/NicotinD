@@ -245,8 +245,8 @@ jobs:
       - name: Test (API + core + addon-sdk + mobile + desktop + scripts)
         run: bun test packages/api/src packages/core/src packages/addon-sdk/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 
-      - name: Test (e2e playground + iOS lane helpers)
-        run: bun test packages/e2e/playground packages/e2e/ios
+      - name: Test (e2e playground + Android and iOS lane helpers)
+        run: bun test packages/e2e/playground packages/e2e/android packages/e2e/ios
 
   # Split out of `ci` (see the header comment there). 135s of vitest shares nothing
   # with the type/lint gates, so it runs beside them rather than after them.

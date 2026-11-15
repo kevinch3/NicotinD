@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import type { Lidarr, LidarrAlbum, LidarrArtist, LidarrTrack } from '../lidarr/index.js';
+import type {
+  Lidarr,
+  LidarrAlbum,
+  LidarrAlbumRelease,
+  LidarrArtist,
+  LidarrTrack,
+} from '../lidarr/index.js';
 import { applySchema } from '../db';
 import {
   DiscographyService,
@@ -77,6 +83,7 @@ function makeTrack(id: number, albumId: number, title: string): LidarrTrack {
 function makeLidarrStub(opts: {
   albums: LidarrAlbum[];
   tracksByAlbum: Record<number, LidarrTrack[]>;
+  tracksByRelease?: Record<number, LidarrTrack[]>;
   monitoredArtist?: LidarrArtist;
   lookupArtist?: LidarrArtist;
 }) {
@@ -99,6 +106,7 @@ function makeLidarrStub(opts: {
     },
     track: {
       listByAlbum: mock(async (albumId: number) => opts.tracksByAlbum[albumId] ?? []),
+      listByRelease: mock(async (releaseId: number) => opts.tracksByRelease?.[releaseId] ?? []),
     },
   } as unknown as Lidarr;
 
@@ -235,6 +243,55 @@ describe('DiscographyService', () => {
 
     const result = disc(await new DiscographyService(lidarr, db).getArtistDiscography('ar1'));
     expect(result.albums[0]).toMatchObject({ status: 'present', localAlbumId: 'al1' });
+  });
+
+  // #1936, measured on prod: Lidarr monitors *Monster*'s 64-track box set, while
+  // 23 of its 29 releases have 12. Owning those 12 is owning the album.
+  it('grades an album against its standard edition, not the box set Lidarr monitors', async () => {
+    insertArtist(db, 'ar1', 'R.E.M.');
+    insertAlbum(db, 'al1', 'Monster', 'ar1');
+    insertSong(db, 's1', 'al1', 'Crush With Eyeliner', 'ar1');
+    insertSong(db, 's2', 'al1', 'King of Comedy', 'ar1');
+    db.run(`UPDATE library_albums SET song_count = 2 WHERE id = 'al1'`);
+    const release = (id: number, trackCount: number, monitored: boolean) =>
+      ({ id, trackCount, monitored, status: 'Official' }) as LidarrAlbumRelease;
+
+    const { lidarr } = makeLidarrStub({
+      albums: [
+        makeLidarrAlbum({
+          id: 1,
+          title: 'Monster',
+          statistics: { trackCount: 3, totalTrackCount: 3, sizeOnDisk: 0, percentOfTracks: 0 },
+          releases: [release(10, 2, false), release(11, 2, false), release(12, 3, true)],
+        }),
+      ],
+      tracksByAlbum: {
+        1: [
+          makeTrack(11, 1, 'Crush With Eyeliner'),
+          makeTrack(12, 1, 'King of Comedy'),
+          makeTrack(13, 1, 'Revolution'),
+        ],
+      },
+      tracksByRelease: {
+        10: [makeTrack(11, 1, 'Crush With Eyeliner'), makeTrack(12, 1, 'King of Comedy')],
+      },
+      monitoredArtist: {
+        id: 99,
+        foreignArtistId: 'mbid-rem',
+        artistName: 'R.E.M.',
+        sortName: 'R.E.M.',
+        status: 'ended',
+        images: [],
+        monitored: true,
+      },
+    });
+
+    const result = disc(await new DiscographyService(lidarr, db).getArtistDiscography('ar1'));
+    expect(result.albums[0]).toMatchObject({
+      status: 'present',
+      totalTracks: 2,
+      localTrackCount: 2,
+    });
   });
 
   // Seen on prod (Ed Sheeran): Lidarr listed four albums titled "÷ (Deluxe)", and the

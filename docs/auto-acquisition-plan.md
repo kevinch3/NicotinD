@@ -120,7 +120,7 @@ version is smaller and reuses more:
   `wantedMissing(1, maxPerSweep)` — page 1, forever — which would be albums the library already
   holds. It now reads fixed pages (`AUTO_ACQUIRE_PAGE_SIZE`, at most `AUTO_ACQUIRE_MAX_PAGES` per
   sweep) from a cursor that persists across sweeps, skips an album `albumAlreadyComplete` says we
-  hold (using the record's `statistics.totalTrackCount` when Lidarr states it), and only an album
+  hold (using the record's standard-edition count, `standardTrackCount`, #1936), and only an album
   actually attempted spends `maxPerSweep`. A page the budget cuts short is re-read next sweep; the
   short last page wraps the cursor to 1. The optional admin status panel (§4 above) was **not** built; the existing
   `/api/discography/jobs` view already surfaces what the loop queued.

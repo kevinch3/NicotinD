@@ -6,6 +6,7 @@ import { LibraryApiService } from './api/library-api.service';
 import type { AcquireJob, AcquisitionJobView } from '@nicotind/core';
 import type { TransferEntry } from '../lib/transfer-types';
 import { detectNewCompletion } from '../lib/transfer-utils';
+import { buildDownloadFeed, isUnfinished, mergeAcquisitionJobs } from '../lib/download-groups';
 import { createVisibilityPoller, type VisibilityPoller } from '../lib/visibility-poller';
 import { LibraryEventsService } from './library-events.service';
 
@@ -68,11 +69,16 @@ export class TransferService {
    *  state for events unrelated to what the viewer is looking at. */
   readonly newlyLandedAlbumIds = signal<ReadonlySet<string>>(new Set());
 
-  // Count of in-flight network jobs (unified feed). Shared by the header
-  // indicator and the mobile bottom-nav badge so they never drift.
-  readonly activeDownloadCount = computed(
+  /**
+   * Every unfinished card on Activity, read from the same merged feed the Downloads header counts,
+   * so a badge can never disagree with it (#1938). It used to count only `downloading` jobs: 14
+   * on the badge beside "41 in progress".
+   */
+  readonly unfinishedCount = computed(
     () =>
-      this.acquisitionJobs().filter((j) => j.kind !== 'url' && j.stage === 'downloading').length,
+      mergeAcquisitionJobs(buildDownloadFeed(this.acquireJobs()), this.acquisitionJobs()).filter(
+        isUnfinished,
+      ).length,
   );
 
   // Paused while the tab is hidden (#717) — this poller feeds only derived

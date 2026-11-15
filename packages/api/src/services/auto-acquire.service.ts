@@ -4,6 +4,7 @@ import type { Lidarr, LidarrAlbum } from '../lidarr/index.js';
 import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { acquireAlbum } from './album-acquire.js';
 import { albumAlreadyComplete } from './library-completeness.js';
+import { standardTrackCount } from './standard-edition.js';
 
 const log = createLogger('auto-acquire');
 
@@ -133,7 +134,7 @@ export class AutoAcquireService {
     if (!artistName || !album.title) return false;
     // Checked here when Lidarr states the track total, saving acquireAlbum's
     // per-album tracklist call; without it acquireAlbum makes the same check.
-    const total = album.statistics?.totalTrackCount ?? 0;
+    const total = standardTrackCount(album);
     if (total > 0 && albumAlreadyComplete(this.db, artistName, album.title, total)) return false;
     try {
       const { outcome, detail } = await acquireAlbum(

@@ -11,7 +11,7 @@ export interface StageBadge {
   /** English text, and the fallback when no catalog has the key. */
   label: string;
   /** Coarse tone the component maps to theme classes. */
-  tone: 'active' | 'pending' | 'error' | 'done';
+  tone: 'active' | 'pending' | 'error' | 'done' | 'warn';
 }
 
 const BADGES: Record<PipelineStage, StageBadge> = {
@@ -26,6 +26,26 @@ const BADGES: Record<PipelineStage, StageBadge> = {
   done: { key: 'downloads.stage.done', label: 'Done', tone: 'done' },
   error: { key: 'downloads.stage.error', label: 'Error', tone: 'error' },
 };
+
+/**
+ * A done card with tracks of its edition missing (#1939). It wore the same green Done as a
+ * complete one, beside "13 not offered". The total is the edition the job is for since #1936, so
+ * fewer landed than that is a partial. A total the source never committed ("10 so far") cannot be
+ * judged, so that card stays Done.
+ */
+export function isPartialDone(item: {
+  stage: PipelineStage;
+  progress?: { done: number; total: number };
+  totalCommitted?: boolean;
+}): boolean {
+  if (item.stage !== 'done' || item.totalCommitted === false || !item.progress) return false;
+  return item.progress.done < item.progress.total;
+}
+
+/** The badge a partial done card wears in place of Done. */
+export function partialBadge(): StageBadge {
+  return { key: 'downloads.stage.partial', label: 'Partial', tone: 'warn' };
+}
 
 export function stageBadge(stage: PipelineStage): StageBadge {
   return BADGES[stage] ?? BADGES.queued;

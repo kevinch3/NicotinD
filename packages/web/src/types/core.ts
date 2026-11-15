@@ -6,6 +6,7 @@ export type {
   AcquireJob,
   AcquisitionJobKind,
   AcquisitionJobView,
+  JobQueueStatus,
   AcquisitionMethod,
   PipelineStage,
   SongAcquisition,
@@ -123,7 +124,10 @@ export * from '../../../core/src/version';
 // shared derivation so the API read model and the web adapter can never
 // disagree about what a download is called. See docs/download-pipeline.md.
 export * from '../../../core/src/utils/download-title';
-export * from '../../../core/src/utils/download-failure';
+// Straight from the addon-sdk source, as `hunt-queries` below: core's module is only a
+// re-export of the `@nicotind/addon-sdk/download-failure` subpath, which Storybook's webpack
+// resolves to nothing, so `parseJobFailureSummary` was undefined in a story (#1938).
+export * from '../../../addon-sdk/src/download-failure';
 export * from '../../../core/src/utils/folder-name';
 // Album identity (#1539): the web's Get surfaces match live jobs by the same
 // `sameAlbum` rule the server's duplicate guard uses. Browser-safe.

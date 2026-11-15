@@ -2,7 +2,7 @@
 
 **Status:** built 2026-11-15. A manual GitHub Actions workflow, `.github/workflows/ios-simulator.yml`.
 Run it from Actions → "iOS simulator" → Run workflow, or `gh workflow run ios-simulator.yml`. About
-16 minutes a run; all 10 checks pass (run 43711192318, iPhone 17 Pro simulator, iOS 26).
+12 minutes a run; all 12 checks pass (run 43718538598, iPhone 17 Pro simulator, iOS 26).
 
 **Why it exists.** No other lane runs the iOS app. The Android lanes ([e2e-tv-emulator.md](e2e-tv-emulator.md))
 drive real APKs, and the Chromium suite ([e2e.md](e2e.md)) runs desktop Chromium. iOS WebKit
@@ -81,8 +81,9 @@ nobody can log into, that artifact is the debugging session.
 12. The same committed swipe still skips and now calls nothing. This runs every time, so check 9's
     "once" cannot come from a spy that counts everything: the count has to follow the setting.
 
-**Cost per run** (run 43711192318): web build 23 s, Simulator app build 1.5 min, Simulator boot 2 min,
-Appium install 1.5 min, WebDriverAgent build 4 min, the checks 3.7 min.
+**Cost per run** (run 43718538598, 12 min in all): web build and iOS project 23 s, Simulator app build
+51 s, Simulator boot 1.2 min, Appium install 1.2 min, WebDriverAgent build 2.4 min and start 1 min, the
+checks 3.4 min (of which the Appium session start was 1.9 min).
 
 ## Not covered yet
 

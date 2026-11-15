@@ -2,6 +2,7 @@ import type {
   AcquireJob,
   AcquisitionJobView,
   AcquisitionMethod,
+  JobQueueStatus,
   PipelineStage,
   TrackStatus,
 } from '@nicotind/core';
@@ -104,6 +105,8 @@ export interface DownloadItem {
   canonicalTotal?: number;
   /** Tracks the release has that this source never offered — renders "· K not offered". */
   notOffered?: number;
+  /** A reserved Get's place in core's hunt queue, while it waits for its source (#1938). */
+  queue?: JobQueueStatus;
   /**
    * Whether the denominator is a fact about the release or just a tally of what
    * has arrived. With no commitment `progress.total` falls back to `COUNT(*)`
@@ -252,15 +255,16 @@ export function hasCommittedTotal(job: {
  * How many tracks the release has that this source never offered, or null when
  * there is no shortfall to report — no tracklist, or a source that covered it
  * whole. A source offering *more* than the tracklist (bonus tracks) is not a
- * shortfall either, so it returns null rather than a negative. Exported for the
- * card's own unit tests.
+ * shortfall either, so it returns null rather than a negative. Neither is a job
+ * the source has not itemised yet: it has declined nothing (#1937), the same
+ * gate as the server's `notOfferedTitles`. Exported for the card's own unit tests.
  */
 export function canonicalShortfall(progress: {
   expected: number;
   canonical: number | null;
 }): number | null {
   const { canonical, expected } = progress;
-  if (canonical === null || canonical <= expected) return null;
+  if (canonical === null || expected === 0 || canonical <= expected) return null;
   return canonical - expected;
 }
 
@@ -342,7 +346,7 @@ export function acquireJobToDownloadItem(job: AcquireJob): DownloadItem {
   };
 }
 
-// Active stages first, terminal last; within a stage, most-recently-started first.
+// Active stages first, terminal last. Within a stage, newest first, except for waiting rows.
 const STAGE_ORDER: Record<PipelineStage, number> = {
   downloading: 0,
   organizing: 1,
@@ -353,6 +357,25 @@ const STAGE_ORDER: Record<PipelineStage, number> = {
   error: 5,
   done: 6,
 };
+
+/**
+ * Waiting rows run oldest first (the hunt queue is FIFO), so they sort that way: the next one to
+ * start heads its block, and a row only ever moves up. Newest first used to put it at the bottom,
+ * and the list reshuffled every time a hunt finished (#1938).
+ */
+const OLDEST_FIRST: ReadonlySet<PipelineStage> = new Set(['resolving', 'queued']);
+
+function byFeedOrder(a: DownloadItem, b: DownloadItem): number {
+  const byStage = STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage];
+  if (byStage !== 0) return byStage;
+  const age = (a.startedAt ?? 0) - (b.startedAt ?? 0);
+  return OLDEST_FIRST.has(a.stage) ? age : -age;
+}
+
+/** A card still in flight — the one count the Downloads header and every nav badge print (#1938). */
+export function isUnfinished(item: Pick<DownloadItem, 'stage'>): boolean {
+  return item.stage !== 'done' && item.stage !== 'error';
+}
 
 /**
  * Fold the unified acquisition jobs (`GET /api/downloads/jobs`) into the feed.
@@ -448,6 +471,7 @@ export function mergeAcquisitionJobs(
       // the ordinary card is untouched.
       canonicalTotal: notOffered === null ? undefined : (job.progress.canonical ?? undefined),
       notOffered: notOffered ?? undefined,
+      queue: job.queue,
       unavailable: job.progress.unavailable > 0 ? job.progress.unavailable : undefined,
       error: job.error ?? undefined,
       failures: failureGroupsFor(job.error),
@@ -479,19 +503,11 @@ export function mergeAcquisitionJobs(
     });
   }
 
-  return merged.sort((a, b) => {
-    const byStage = STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage];
-    if (byStage !== 0) return byStage;
-    return (b.startedAt ?? 0) - (a.startedAt ?? 0);
-  });
+  return merged.sort(byFeedOrder);
 }
 
 /** Sort URL acquire jobs into the unified feed shape for the Active tab. */
 export function buildDownloadFeed(jobs: AcquireJob[]): DownloadItem[] {
   const items = jobs.map(acquireJobToDownloadItem);
-  return items.sort((a, b) => {
-    const byStage = STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage];
-    if (byStage !== 0) return byStage;
-    return (b.startedAt ?? 0) - (a.startedAt ?? 0);
-  });
+  return items.sort(byFeedOrder);
 }

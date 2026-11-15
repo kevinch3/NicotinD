@@ -2,7 +2,7 @@ import { Component, computed, inject, signal, viewChild, type ElementRef } from 
 import { ActivatedRoute, Router } from '@angular/router';
 import { SearchComponent } from '../search/search.component';
 import { DownloadsComponent } from '../downloads/downloads.component';
-import { AcquireService } from '../../services/acquire.service';
+import { ActivityCountService } from '../../services/activity-count.service';
 import { TransferService } from '../../services/transfer.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { AuthService } from '../../services/auth.service';
@@ -77,7 +77,6 @@ export class GetComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly transfers = inject(TransferService);
-  private readonly acquire = inject(AcquireService);
   private readonly auth = inject(AuthService);
   private readonly uploads = inject(ImportUploadService);
   private readonly toasts = inject(ToastService);
@@ -129,14 +128,8 @@ export class GetComponent {
     return { state, percent: this.dropPercent(), albumCount: summary.albumCount };
   });
 
-  // Same formula both nav badges use — slskd transfers, in-flight URL
-  // acquisitions, and uploads that have not become a job yet.
-  readonly activeCount = computed(
-    () =>
-      this.transfers.activeDownloadCount() +
-      this.acquire.activeJobs().length +
-      this.uploads.inFlight(),
-  );
+  // The number both nav badges print, and the Downloads header's (#1938).
+  readonly activeCount = inject(ActivityCountService).count;
 
   // Drag events fire per element, so a naive enter/leave pair flickers as the
   // pointer crosses children. Counting depth is the standard fix.

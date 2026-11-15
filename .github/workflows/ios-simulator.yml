@@ -10,10 +10,6 @@ name: iOS simulator
 
 on:
   workflow_dispatch:
-  # TEMPORARY while the lane is built: a dispatch-only workflow cannot run
-  # until it is on master. Removed before merge.
-  push:
-    branches: [test/ios-simulator-lane]
 
 concurrency:
   group: ios-simulator-${{ github.ref }}
