@@ -6,6 +6,9 @@ committed music library, then drives the Angular SPA in Chromium. It complements
 the unit tiers (`bun test` for the API, vitest for web) by covering the wiring no
 unit can: boot → auth → scan → stream → playback → plugin gating.
 
+> **iOS runs in a manual CI lane on a macOS runner** (`ios-simulator.yml`, Appium against the app's
+> WKWebView on the Simulator), because the Simulator cannot run on Linux. → [e2e-ios-simulator.md](e2e-ios-simulator.md)
+
 > **There is a second lane for Android TV.** `bun run e2e:tv` drives the real APK on an
 > emulator. It exists because a Chromium run structurally cannot model one thing: an Android
 > WebView has **spatial navigation** and desktop Chrome does not, so a desktop test can't

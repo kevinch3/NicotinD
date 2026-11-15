@@ -169,6 +169,11 @@ await step('appium: start a session on the simulator', async () => {
     'appium:automationName': 'XCUITest',
     'appium:udid': UDID,
     'appium:app': APP_PATH,
+    // The workflow boots the Simulator with `simctl boot`, which has no window.
+    // Without this, Appium restarts it "with the UI visible" and that second boot
+    // overran its 120 s budget on the macos-26 runner (measured 2026-11-15).
+    'appium:isHeadless': true,
+    'appium:simulatorStartupTimeout': 300_000,
     // The software keyboard, not the Mac's: #1635 lives in what it does to the viewport.
     'appium:connectHardwareKeyboard': false,
     'appium:fullContextList': true,
@@ -180,15 +185,17 @@ await step('appium: start a session on the simulator', async () => {
   sessionUp = true;
 });
 
-const attached = await step('webview: the app page is attachable', async () => {
-  await inPage();
-  return js<Record<string, unknown>>(`return {
+const attached =
+  sessionUp &&
+  (await step('webview: the app page is attachable', async () => {
+    await inPage();
+    return js<Record<string, unknown>>(`return {
     href: location.href,
     platform: window.Capacitor?.getPlatform?.() ?? null,
     dpr: window.devicePixelRatio,
     viewport: [window.innerWidth, window.innerHeight],
   };`);
-});
+  }));
 
 if (attached) {
   await step('page: sign in and open an album', async () => {

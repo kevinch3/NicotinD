@@ -122,3 +122,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   → [dependency-management.md](../dependency-management.md)
 - **OSS best-practices roadmap**: prioritized adoption plan of Immich/Home-Assistant practices.
   → [oss-best-practices.md](../oss-best-practices.md)
+- **iOS Simulator lane**: a manual macOS workflow that builds a Debug Simulator app and drives its
+  WKWebView over Appium, through a plain-`fetch` W3C client. Page → screen mapping from one tap
+  (`viewportOffset`); haptics checked at the Capacitor bridge (`hapticCalls`); Simulator picked by runtime
+  (`pickSimulator`). → [e2e-ios-simulator.md](../e2e-ios-simulator.md)
