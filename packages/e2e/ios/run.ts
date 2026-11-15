@@ -179,6 +179,10 @@ await step('appium: start a session on the simulator', async () => {
     // The software keyboard, not the Mac's: #1635 lives in what it does to the viewport.
     'appium:connectHardwareKeyboard': false,
     'appium:fullContextList': true,
+    // The Simulator's web inspector names the app after its executable ("App",
+    // Capacitor's target), not its bundle id, so Appium skipped its page until
+    // told to match it (measured 2026-11-15). Named exactly, not '*'.
+    'appium:additionalWebviewBundleIds': ['process-App'],
     'appium:webviewConnectTimeout': 30_000,
     'appium:wdaLaunchTimeout': 300_000,
     'appium:wdaConnectionTimeout': 300_000,

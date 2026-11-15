@@ -38,6 +38,10 @@ nobody can log into, that artifact is the debugging session.
   web apps (measured 2026-11-15). So the workflow sets `ios.webContentsDebuggingEnabled` in the generated
   `capacitor.config.json` of its throwaway project, then checks that the built `.app` carries it. The
   committed config and the release build are untouched.
+- **`additionalWebviewBundleIds: ['process-App']`.** The Simulator's web inspector reports the app as
+  `process-App`, after its executable, not as `ar.kevinroberts.nicotind`. Appium matches web apps by
+  bundle id, so it listed the page and then skipped it (measured 2026-11-15). The entry names the app
+  exactly rather than `*`, so the lane cannot attach to another process's page.
 - **One calibration tap.** Gestures are native (`NATIVE_APP` W3C actions, screen points), while element
   positions come from the page (CSS pixels). On iOS a CSS pixel is a point, so one tap at a known screen
   point, plus the `clientX/Y` the page records for it, gives the whole mapping (`viewportOffset`). That
