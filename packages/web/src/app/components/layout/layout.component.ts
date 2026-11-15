@@ -19,6 +19,7 @@ import { LikeService } from '../../services/like.service';
 import { RecommendationExclusionsService } from '../../services/recommendation-exclusions.service';
 import { LibraryEventsService } from '../../services/library-events.service';
 import { GetThenHearService } from '../../services/get-then-hear.service';
+import { blurFocusedFieldOnNavigation } from '../../lib/blur-on-navigation';
 import { MAIN_BOTTOM_PAD_CLASS } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
@@ -181,8 +182,11 @@ export class LayoutComponent implements OnInit, OnDestroy {
     inject(NavigationService);
     this.router.events.pipe(takeUntilDestroyed()).subscribe((e) => {
       if (e instanceof NavigationEnd) this.currentUrl.set(e.urlAfterRedirects);
-      if (e instanceof NavigationStart) this.setNavigating(true);
-      else if (
+      if (e instanceof NavigationStart) {
+        blurFocusedFieldOnNavigation(this.router.url, e.url);
+        this.setNavigating(true);
+      }
+      if (
         e instanceof NavigationEnd ||
         e instanceof NavigationCancel ||
         e instanceof NavigationError
