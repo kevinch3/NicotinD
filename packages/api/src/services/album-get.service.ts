@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { createLogger } from '@nicotind/core';
+import { createLogger, type JobQueueStatus } from '@nicotind/core';
 import type { Lidarr } from '../lidarr/index.js';
 import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { acquireAlbum, type AcquireResult } from './album-acquire.js';
@@ -55,6 +55,8 @@ export interface AlbumGetDeps {
   minMatchPct?: number;
   coverCacheDir?: string;
   retryDelayMs?: (attempt: number) => number | null;
+  /** Clock for the retry time a waiting card shows; tests pin it. */
+  now?: () => number;
   schedule?: (fn: () => void, ms: number) => void;
 }
 
@@ -79,9 +81,13 @@ export class AlbumGetService {
   private readonly attempts = new Map<string, Promise<void>>();
   private readonly retryDelayMs: (attempt: number) => number | null;
   private readonly schedule: (fn: () => void, ms: number) => void;
+  private readonly now: () => number;
+  /** When each Get the source could not search is asked again (#1938). */
+  private readonly retryAt = new Map<string, number>();
 
   constructor(private readonly deps: AlbumGetDeps) {
     this.retryDelayMs = deps.retryDelayMs ?? albumGetRetryDelayMs;
+    this.now = deps.now ?? Date.now;
     this.schedule =
       deps.schedule ??
       ((fn, ms) => {
@@ -165,6 +171,18 @@ export class AlbumGetService {
     return rows.length;
   }
 
+  /**
+   * Where a reserved Get waits (#1938): its turn in this service's hunt queue, its search running,
+   * or the retry scheduled after the source could not search. Null once the source has the job.
+   */
+  queueStatus(jobId: string): JobQueueStatus | null {
+    const s = this.queue.statusOfKey(jobId);
+    if (s?.state === 'queued') return { state: 'waiting', ahead: s.position, etaMs: s.etaMs };
+    if (s?.state === 'searching') return { state: 'searching', etaMs: s.etaMs };
+    const at = this.retryAt.get(jobId);
+    return at === undefined ? null : { state: 'retrying', retryAt: at };
+  }
+
   /** Resolves once the job's current attempt has run — for tests and shutdown. */
   async settled(jobId: string): Promise<void> {
     await this.attempts.get(jobId);
@@ -242,7 +260,9 @@ export class AlbumGetService {
           failReservedJob(db, get.jobId, detail ?? 'The download source stayed unavailable.');
           return;
         }
+        this.retryAt.set(get.jobId, this.now() + delay);
         this.schedule(() => {
+          this.retryAt.delete(get.jobId);
           if (isReservedJobPending(db, get.jobId)) this.enqueue(get, attempt + 1);
         }, delay);
         return;

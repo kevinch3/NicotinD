@@ -1328,3 +1328,49 @@ describe('POST /jobs/:id/retry re-hunts a failed album (#1511)', () => {
     expect((await post(makeApp().app, 'nope')).status).toBe(404);
   });
 });
+
+/**
+ * #1938. A resolving Get carries its place in core's hunt queue, so the card
+ * can say "3 ahead · ~1 min" instead of "Resolving link…". Only a resolving
+ * row asks: a job its source has is no longer waiting in line.
+ */
+describe('GET /jobs queue status (#1938)', () => {
+  it("attaches a resolving job's place in line, and nothing to any other row", async () => {
+    testDb.run('DELETE FROM acquisition_jobs');
+    testDb.run('DELETE FROM acquisition_job_items');
+    const waiting = createJob(testDb, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      stage: 'resolving',
+      albumTitle: 'Monster',
+      files: [],
+    });
+    const running = createJob(testDb, { kind: 'album-hunt', method: 'slskd', albumTitle: 'Up' });
+    const lookups: string[] = [];
+    const app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route(
+      '/',
+      downloadRoutes(new ProviderRegistry(), undefined, undefined, undefined, undefined, (id) => {
+        lookups.push(id);
+        return { state: 'waiting', ahead: 3, etaMs: 60_000 };
+      }),
+    );
+
+    const jobs = (await (await app.request('/jobs')).json()) as Array<{
+      id: string;
+      queue?: unknown;
+    }>;
+
+    expect(jobs.find((j) => j.id === waiting)!.queue).toEqual({
+      state: 'waiting',
+      ahead: 3,
+      etaMs: 60_000,
+    });
+    expect(jobs.find((j) => j.id === running)!.queue).toBeUndefined();
+    expect(lookups).toEqual([waiting]);
+  });
+});

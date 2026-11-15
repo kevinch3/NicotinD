@@ -871,6 +871,8 @@ export function createApp({
   app.route('/api/playback', playbackRoutes());
   // The track Get (#1885): same reservation as the album Get, the source's
   // `tracks` intent. Served under /api/downloads, behind its auth and acquirer gate.
+  // Assigned once Lidarr is wired below; until then (or without Lidarr) only track Gets queue.
+  let albumGetForQueue: AlbumGetService | null = null;
   const trackGet = new TrackGetService({
     db,
     getAddon: () => activeRemoteAcquisitionAddon(plugins),
@@ -893,6 +895,7 @@ export function createApp({
         minMatchPct: config.watchlist.minMatchPct,
       },
       trackGet,
+      (jobId) => albumGetForQueue?.queueStatus(jobId) ?? trackGet.queueStatus(jobId),
     ),
   );
   // Mounted before the library routes so `/events` is not shadowed by a
@@ -1124,6 +1127,7 @@ export function createApp({
     });
     // A restart between a click and its hunt must not drop the album.
     albumGet.resumePending();
+    albumGetForQueue = albumGet;
     app.route(
       '/api/discography',
       discographyRoutes({

@@ -6,6 +6,7 @@ export type {
   AcquireJob,
   AcquisitionJobKind,
   AcquisitionJobView,
+  JobQueueStatus,
   AcquisitionMethod,
   PipelineStage,
   SongAcquisition,
