@@ -336,12 +336,11 @@ if (attached) {
   // The same committed swipe with haptics Off must still skip and call nothing.
   // It runs every time, so the "once" above is never a spy that sees everything:
   // the count has to move with the setting.
+  // As a user does it: close the sheet, open Settings from the tab bar, press Off.
   await step('settings: turn haptics Off', async () => {
     await inPage();
-    // In-app navigation (the router follows popstate), so the queue survives.
-    await js(`history.pushState(null, '', '/settings');
-      dispatchEvent(new PopStateEvent('popstate', { state: null }));
-      return true;`);
+    await driver.click(await driver.find('css selector', '[data-testid="now-playing-close"]'));
+    await driver.click(await driver.find('css selector', 'a[href="/settings"]'));
     const off = await poll(
       'the Off button',
       () => driver.find('css selector', '[data-testid="settings-haptics-off"]').catch(() => null),
@@ -359,26 +358,17 @@ if (attached) {
   });
 
   await step('swipe: with haptics Off, a committed swipe skips and calls nothing', async () => {
-    await js(`history.back(); return true;`);
+    // The mini player is on every page; open Now Playing from it with a real tap.
+    const target = toScreen(await visibleCentre('[data-testid="player-title"]'), offset!);
+    await inNative();
+    await driver.actions(tapActions(target));
+    await inPage();
     await poll(
-      'the album page again',
-      () => js<boolean>(`return location.pathname.startsWith('/library/albums/');`),
-      15_000,
+      'the cover on screen',
+      () => visibleCentre('[data-testid="now-playing-cover-art"]').catch(() => null),
+      20_000,
     );
-    // Re-open Now Playing if the navigation closed it.
-    const open = await visibleCentre('[data-testid="now-playing-cover-art"]').catch(() => null);
-    if (!open) {
-      const target = toScreen(await visibleCentre('[data-testid="player-title"]'), offset!);
-      await inNative();
-      await driver.actions(tapActions(target));
-      await inPage();
-      await poll(
-        'the cover on screen',
-        () => visibleCentre('[data-testid="now-playing-cover-art"]').catch(() => null),
-        20_000,
-      );
-      await Bun.sleep(800);
-    }
+    await Bun.sleep(800);
     return swipeCheck(COMMIT_DX, true, 0);
   });
 }
