@@ -18,6 +18,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `isBloatedFolder`, `FallbackHost`, `isStalled`, `stallThresholdMs` and `TransferPoller` live in the
   `kevinch3/nicotind-slskd-addon` repo, not here. Core keeps `buildSkewedQueries`/`buildTrackQueries`.
   `matchPct` is recall-only by design. → [album-hunt.md](../album-hunt.md)
+- **The standard edition is the album**: hunts, completeness and the catalog count score against the
+  most common release, not Lidarr's monitored box set; a hand-picked folder adds the extras it carries.
+  `pickStandardRelease`, `standardTracklist`, `folderEditionTitles`. → [album-hunt.md](../album-hunt.md)
 - **Source-offline gate**: an addon's `ready` answers "can a hunt sent here succeed", so a source
   that is up but logged out of its network is not mistaken for an empty result; `sourceOffline`
   (`addonIsReady`, `sourceOffline`) makes the acquire defer instead of recording a miss; the

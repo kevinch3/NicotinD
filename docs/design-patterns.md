@@ -81,7 +81,7 @@ These are documented in full elsewhere; `CLAUDE.md` links straight to them.
 
   | Constant | Budget | Applies to | Why |
   |---|---|---|---|
-  | `TIMEOUT_LOCAL_MS` | 10s | 10 methods (`album.get`/`listByArtist`/`wantedMissing`, `artist.list`/`get`/profiles/root-folders, `track.listByAlbum`) | Lidarr answers from its own SQLite over the Docker-internal network |
+  | `TIMEOUT_LOCAL_MS` | 10s | 11 methods (`album.get`/`listByArtist`/`wantedMissing`, `artist.list`/`get`/profiles/root-folders, `track.listByAlbum`/`listByRelease`) | Lidarr answers from its own SQLite over the Docker-internal network |
   | `TIMEOUT_LOOKUP_MS` | 20s | `album.lookup`, `artist.lookup` | These proxy to Lidarr's upstream metadata server. Capped at 20 rather than 30 because both sit on GET routes the **web interceptor aborts at 30s** — a 30s server budget could never fire first, making it decorative |
   | `TIMEOUT_PROVISION_MS` | 60s | `artist.add` only | `POST /api/v1/artist` synchronously imports the artist's entire discography before responding |
 

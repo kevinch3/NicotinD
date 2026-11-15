@@ -13,6 +13,7 @@ import {
 import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { AddonRequestError, type HuntLane } from './addons/client.js';
 import { mapAddonJob, sanitizeAddonError } from './addons/job-poller.js';
+import { fetchStandardTracklist } from './standard-edition.js';
 
 const log = createLogger('album-acquire');
 
@@ -163,7 +164,7 @@ export async function acquireAlbum(
     if (!release) return { outcome: 'in-flight' };
   }
   try {
-    const tracks = await lidarr.track.listByAlbum(lidarrAlbumId);
+    const tracks = await fetchStandardTracklist(lidarr, lidarrAlbumId);
 
     // Already on disk (any edition) → done, no download.
     if (albumAlreadyComplete(db, artistName, albumTitle, tracks.length || 1)) {

@@ -6,6 +6,7 @@ import { corroboratesLidarrHit } from './lidarr-confidence.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
 import { stripFeaturingSuffix } from './path-sanitize.js';
 import { artistAlbumAlreadyComplete } from './library-completeness.js';
+import { standardTracklist } from './standard-edition.js';
 
 const log = createLogger('discography');
 
@@ -260,12 +261,16 @@ export class DiscographyService {
    * One album's tracklist, reused for {@link TRACKLIST_CACHE_TTL_MS}: every page
    * open used to ask Lidarr for every album's tracks (#1855). An empty answer is
    * never kept — it is what Lidarr returns before its refresh has the tracks, and
-   * what a failed call degrades to.
+   * what a failed call degrades to. It is the standard edition's (#1936), the list a Get counts
+   * as complete, so the page and the Get agree on what the album is.
    */
-  private async tracklist(albumId: number): Promise<LidarrTrack[]> {
+  private async tracklist(album: LidarrAlbum): Promise<LidarrTrack[]> {
+    const albumId = album.id;
     const hit = this.tracklists.get(albumId);
     if (hit && this.now() - hit.at < TRACKLIST_CACHE_TTL_MS) return hit.tracks;
-    const tracks = await this.lidarr.track.listByAlbum(albumId).catch(() => [] as LidarrTrack[]);
+    const tracks = await standardTracklist(this.lidarr, albumId, album.releases).catch(
+      () => [] as LidarrTrack[],
+    );
     this.tracklists.delete(albumId);
     if (tracks.length > 0) {
       if (this.tracklists.size >= TRACKLIST_CACHE_MAX) {
@@ -283,7 +288,7 @@ export class DiscographyService {
 
     for (let i = 0; i < albums.length; i += concurrency) {
       const batch = albums.slice(i, i + concurrency);
-      const fetched = await Promise.all(batch.map((a) => this.tracklist(a.id)));
+      const fetched = await Promise.all(batch.map((a) => this.tracklist(a)));
       batch.forEach((a, idx) => result.set(a.id, fetched[idx]));
     }
 
@@ -333,7 +338,10 @@ export class DiscographyService {
       : [];
 
     const localNormalizedTitles = new Set(localAlbumSongs.map((s) => trackKey(s.title)));
-    const totalTracks = lidarrAlbum.statistics?.totalTrackCount ?? tracks.length;
+    // The tracklist's own length (the standard edition, #1936). Lidarr's statistics count the
+    // monitored release, often a box set, so they only stand in when the tracklist is empty.
+    const totalTracks =
+      tracks.length > 0 ? tracks.length : (lidarrAlbum.statistics?.totalTrackCount ?? 0);
 
     let localTrackCount = 0;
     const discographyTracks: DiscographyTrack[] = tracks.map((t) => {

@@ -18,6 +18,7 @@ import {
   listReservedAlbumGets,
 } from './acquisition-job-store.js';
 import { HuntQueue } from './hunt-queue.js';
+import { standardTracklist } from './standard-edition.js';
 
 const log = createLogger('album-get');
 
@@ -100,10 +101,10 @@ export class AlbumGetService {
     if (!release) return { status: 'already-downloading' };
     let releaseNamed: (() => void) | null = null;
     try {
-      const [album, tracks] = await Promise.all([
-        lidarr.album.get(req.lidarrAlbumId).catch(() => null),
-        lidarr.track.listByAlbum(req.lidarrAlbumId).catch(() => []),
-      ]);
+      const album = await lidarr.album.get(req.lidarrAlbumId).catch(() => null);
+      const tracks = await standardTracklist(lidarr, req.lidarrAlbumId, album?.releases).catch(
+        () => [],
+      );
       const artistName = req.artistName ?? album?.artist?.artistName;
       const albumTitle = req.albumTitle ?? album?.title;
       if (!artistName || !albumTitle) return { status: 'unknown-album' };
