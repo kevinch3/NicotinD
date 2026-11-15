@@ -16,11 +16,15 @@ import { TranslateService } from '../../services/translate.service';
 })
 export class PipelineStageBadgeComponent {
   readonly stage = input.required<PipelineStage>();
+  /** Words that say more than the stage can, e.g. a Get's place in the hunt queue (#1938). */
+  readonly labelOverride = input<string | null>(null, { alias: 'label' });
 
   private readonly i18n = inject(TranslateService);
 
   readonly badge = computed(() => stageBadge(this.stage()));
-  readonly label = computed(() => stageLabel(this.stage(), (key) => this.i18n.t(key)));
+  readonly label = computed(
+    () => this.labelOverride() ?? stageLabel(this.stage(), (key) => this.i18n.t(key)),
+  );
 
   readonly toneClass = computed(() => {
     switch (this.badge().tone) {

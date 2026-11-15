@@ -19,6 +19,8 @@ import {
 } from './download-item.component';
 import { resolveAlbumRoute, resolvePlaylistRoute } from '../../lib/route-utils';
 import type { DownloadItem } from '../../lib/download-groups';
+import BASE_CATALOG from '../../../../public/i18n/en.json';
+import ES_CATALOG from '../../../../public/i18n/es.json';
 
 /**
  * Open the card. Since #1066 the tracklist, sources, failures and the Now/Next
@@ -48,6 +50,7 @@ import { setInputValue, changeInputValue } from '../../../testing/signal-input';
 @Component({ selector: 'app-pipeline-stage-badge', standalone: true, template: '' })
 class StubPipelineStageBadgeComponent {
   @Input() stage: unknown;
+  @Input() label: unknown;
 }
 
 function item(over: Partial<DownloadItem> = {}): DownloadItem {
@@ -880,5 +883,81 @@ describe('download-item track label (issue #1540)', () => {
       'Lovers Game',
     );
     expect(trackLabel({ title: '', status: 'pending' })).toBe('—');
+  });
+});
+
+/**
+ * #1938. A Get waiting its turn in core's hunt queue said "Resolving link…",
+ * the URL lane's words, with no sense of how long. The badge now names the
+ * state and the line after it says where the job is.
+ */
+describe('download-item queue status (#1938)', () => {
+  // The spec harness loads no catalog, so the service answers with keys; each key is
+  // asserted present in the base catalog instead (the plugin-card convention).
+  function setup(one: DownloadItem) {
+    TestBed.configureTestingModule({
+      imports: [DownloadItemComponent],
+      providers: [provideRouter([])],
+    });
+    TestBed.overrideComponent(DownloadItemComponent, {
+      set: {
+        imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent, TranslatePipe],
+      },
+    });
+    const fixture = TestBed.createComponent(DownloadItemComponent);
+    setInputValue(fixture.componentInstance.item, one);
+    fixture.detectChanges();
+    return fixture;
+  }
+  const queueLine = (fixture: ReturnType<typeof setup>) =>
+    (fixture.nativeElement.querySelector('[data-testid="download-queue"]') as HTMLElement | null)
+      ?.textContent;
+
+  it('names the wait on the badge and says how many are ahead', () => {
+    const fixture = setup(
+      item({ stage: 'resolving', queue: { state: 'waiting', ahead: 3, etaMs: 65_000 } }),
+    );
+    expect(fixture.componentInstance.queueBadge()).toBe('downloads.queue.state.waiting');
+    expect(queueLine(fixture)).toContain('downloads.queue.ahead');
+    expect(queueLine(fixture)).toContain('downloads.queue.minutes');
+  });
+
+  it('says a running search on the badge alone', () => {
+    const fixture = setup(
+      item({ stage: 'resolving', queue: { state: 'searching', etaMs: 9_000 } }),
+    );
+    expect(fixture.componentInstance.queueBadge()).toBe('downloads.queue.state.searching');
+    expect(queueLine(fixture)).toBeUndefined();
+  });
+
+  it('counts down to the retry after the source could not search', () => {
+    const fixture = setup(
+      item({ stage: 'resolving', queue: { state: 'retrying', retryAt: Date.now() + 125_000 } }),
+    );
+    expect(fixture.componentInstance.queueBadge()).toBe('downloads.queue.state.retrying');
+    expect(queueLine(fixture)).toContain('downloads.queue.retryIn');
+  });
+
+  it("keeps the stage's own words without a place in line", () => {
+    const fixture = setup(item({ stage: 'downloading' }));
+    expect(fixture.componentInstance.queueBadge()).toBeNull();
+    expect(queueLine(fixture)).toBeUndefined();
+  });
+
+  it('has every queue string in the base catalog, and in Spanish', () => {
+    const keys = [
+      'downloads.queue.state.waiting',
+      'downloads.queue.state.searching',
+      'downloads.queue.state.retrying',
+      'downloads.queue.next',
+      'downloads.queue.ahead',
+      'downloads.queue.underMinute',
+      'downloads.queue.minutes',
+      'downloads.queue.retryIn',
+    ];
+    for (const key of keys) {
+      expect(BASE_CATALOG).toHaveProperty([key]);
+      expect(ES_CATALOG).toHaveProperty([key]);
+    }
   });
 });

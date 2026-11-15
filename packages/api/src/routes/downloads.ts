@@ -4,7 +4,12 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
 import { RemoteAddonPlugin } from '../services/addons/remote-addon-plugin.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
-import { createLogger, folderAlbumIdentity, type DownloadReceipt } from '@nicotind/core';
+import {
+  createLogger,
+  folderAlbumIdentity,
+  type DownloadReceipt,
+  type JobQueueStatus,
+} from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { getCurrentUser, requireAcquirer } from '../middleware/current-user.js';
 import { ForbiddenError, asRole, canCurate } from '@nicotind/core';
@@ -118,6 +123,8 @@ export function downloadRoutes(
   discardDeps?: DownloadDiscardDeps,
   albumRetry?: AlbumRetryDeps,
   trackGet?: TrackGetService,
+  /** A reserved Get's place in core's hunt queue, by job id (#1938). */
+  queueStatus?: (jobId: string) => JobQueueStatus | null,
 ) {
   const app = new OpenAPIHono<AuthEnv>();
   // Self-contained error mapping (the download-review.ts pattern): the
@@ -305,6 +312,8 @@ export function downloadRoutes(
         job.destinationAlbums.length === 1
           ? job.destinationAlbums[0]!.albumId
           : resolveJobAlbumId(db, job.id, job.artistName, job.albumTitle),
+      // Only a row still waiting for its source has a place in line.
+      queue: job.stage === 'resolving' ? (queueStatus?.(job.id) ?? undefined) : undefined,
     }));
     return c.json(jobs, 200);
   });

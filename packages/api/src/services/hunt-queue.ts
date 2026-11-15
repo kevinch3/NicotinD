@@ -130,6 +130,18 @@ export class HuntQueue<R> {
     }
   }
 
+  /**
+   * The live (waiting or running) hunt for `key`, for a caller that knows the key rather than the
+   * entry id: a Get's job row, whose Activity card shows its place in line (#1938).
+   */
+  statusOfKey(key: string): HuntStatus<R> | null {
+    for (const [id, e] of this.entries) {
+      if (e.key === key && (e.state === 'queued' || e.state === 'searching'))
+        return this.status(id);
+    }
+    return null;
+  }
+
   /** Resolves with the hunt's result once it ran; rejects with its failure. */
   async wait(id: string): Promise<R> {
     const e = this.entries.get(id);

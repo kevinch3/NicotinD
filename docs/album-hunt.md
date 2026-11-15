@@ -615,6 +615,15 @@ Lidarr does not know. Body: optional `artistName`, `albumTitle`, `localAlbumId`.
   queueing a whole discography gets every album accepted and searched at the source's pace. A test
   queues 60 and asserts all 60 reach the addon with never two searches in flight. It used to break
   down past ~25 albums while each chain lived in the tab.
+- **The card says where it waits** (#1938). While a Get is `resolving`, the jobs feed asks the
+  service for its place (`queueStatus`, read from the hunt queue by job id through
+  `HuntQueue.statusOfKey`, or from a scheduled retry), and the card shows it:
+  - *Waiting to search · 3 ahead · ~1 min*
+  - *Searching*
+  - *Source offline · retrying in ~2 min*
+
+  Before this, a 25-album Get read "Resolving link…" on every card for up to 9 minutes: the URL
+  lane's words, with no position. Track Gets answer from their own queue the same way.
 - The pick clears `GET_MIN_MATCH_PCT` (60). The unattended sweeps keep 80: a person asked for this
   album by name, a sweep must not guess.
 - `acquireAlbum` walks down to `MAX_PICK_ATTEMPTS` (3) confident candidates. A peer that cannot be

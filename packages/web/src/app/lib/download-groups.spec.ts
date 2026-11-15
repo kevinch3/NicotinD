@@ -865,6 +865,19 @@ describe('feed order (#1938)', () => {
   });
 });
 
+describe('queue status on the card (#1938)', () => {
+  it("carries a resolving Get's place in line onto its card", () => {
+    const queue = { state: 'waiting' as const, ahead: 4, etaMs: 80_000 };
+    const [card] = mergeAcquisitionJobs([], [acqJob({ stage: 'resolving', queue })]);
+    expect(card!.queue).toEqual(queue);
+  });
+
+  it('leaves it unset on a card with no place in line', () => {
+    const [card] = mergeAcquisitionJobs([], [acqJob({ stage: 'downloading' })]);
+    expect(card!.queue).toBeUndefined();
+  });
+});
+
 describe('isUnfinished (#1938)', () => {
   it('is every stage but done and error', () => {
     const stages = [
