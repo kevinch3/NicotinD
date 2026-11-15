@@ -1,6 +1,6 @@
 import { Component, input, computed, inject } from '@angular/core';
 import type { PipelineStage } from '@nicotind/core';
-import { stageBadge, stageLabel } from '../../lib/pipeline-stage';
+import { partialBadge, stageBadge, stageLabel } from '../../lib/pipeline-stage';
 import { TranslateService } from '../../services/translate.service';
 
 /**
@@ -16,11 +16,19 @@ import { TranslateService } from '../../services/translate.service';
 })
 export class PipelineStageBadgeComponent {
   readonly stage = input.required<PipelineStage>();
+  /** A done card with tracks missing reads Partial, in the warning tone (#1939). */
+  readonly partial = input(false);
 
   private readonly i18n = inject(TranslateService);
 
-  readonly badge = computed(() => stageBadge(this.stage()));
-  readonly label = computed(() => stageLabel(this.stage(), (key) => this.i18n.t(key)));
+  readonly badge = computed(() =>
+    this.partial() && this.stage() === 'done' ? partialBadge() : stageBadge(this.stage()),
+  );
+  readonly label = computed(() =>
+    this.partial() && this.stage() === 'done'
+      ? this.i18n.t(partialBadge().key)
+      : stageLabel(this.stage(), (key) => this.i18n.t(key)),
+  );
 
   readonly toneClass = computed(() => {
     switch (this.badge().tone) {
@@ -30,6 +38,8 @@ export class PipelineStageBadgeComponent {
         return 'status-error';
       case 'done':
         return 'status-done';
+      case 'warn':
+        return 'status-warn';
       default:
         return 'bg-theme-surface-2 text-theme-muted';
     }

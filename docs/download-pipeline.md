@@ -2287,6 +2287,16 @@ without making it *actionable*. Prod on 2026-08-23 showed the gap: the card stat
 failures, offered no Retry, and rendered one arbitrary truncated reason standing in for all
 of them.
 
+### A partial reads Partial, not Done (#1939)
+
+A card that closed `done` with tracks missing wore the same green **Done** as a complete one.
+On prod on 2026-11-15, Divididos *Canciones de cuna al palo* read `Done · 1 of 14 · 13 not
+offered` beside "No other peer had the rest when we looked". `isPartialDone`
+(`lib/pipeline-stage.ts`) marks a done card whose committed total is larger than what landed, and
+its badge reads **Partial** in the warning tone (`partialBadge`, `.status-warn`). This needed #1936
+first: the total is the edition the job is for, so a standard edition that landed whole stays
+Done. A total the source never committed (`10 so far`) cannot be judged, so that card stays Done.
+
 ### Retry reaches the jobs that actually partial
 
 `canRetry` is derived twice — once per lane. The acquire lane

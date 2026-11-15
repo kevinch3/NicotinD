@@ -8,6 +8,7 @@ import { currentAndNextTracks, trackBreakdown } from '../../lib/track-status';
 import { formatQuality } from '../../lib/download-status';
 import { formatBytes } from '../../lib/disk-usage';
 import { PipelineStageBadgeComponent } from '../pipeline-stage-badge/pipeline-stage-badge.component';
+import { isPartialDone } from '../../lib/pipeline-stage';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 import { timeAgo } from '../../lib/relative-time';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -248,6 +249,9 @@ export class DownloadItemComponent {
   readonly failureLabel = failureClassLabel;
 
   readonly badge = computed(() => methodBadge(this.item().method, this.sourceName()));
+
+  /** Done with tracks of its edition missing: the badge reads Partial, not a green Done (#1939). */
+  readonly partial = computed(() => isPartialDone(this.item()));
   /** Gates the "N tracks landed — Discard" line on a cancelled partial (#810). */
   readonly showPartialDiscard = computed(() => canShowPartialDiscard(this.item()));
   /** Compact "· FLAC · 1411 kbps" / "· 320 kbps" chip text, '' when unknown. */

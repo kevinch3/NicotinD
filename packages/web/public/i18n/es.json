@@ -832,6 +832,7 @@
   "downloads.resource.refreshed": "Ese par no se pudo usar, así que la lista se actualizó. Confirma para intentarlo de nuevo.",
   "downloads.discardPartial": "Descartar",
   "downloads.stage.done": "Listo",
+  "downloads.stage.partial": "Parcial",
   "downloads.stage.error": "Error",
   "errors.accountDisabled": "Cuenta deshabilitada",
   "errors.generic": "Algo salió mal",

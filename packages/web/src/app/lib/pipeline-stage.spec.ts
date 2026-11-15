@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { stageBadge, stageIndex, STAGE_STEPS } from './pipeline-stage';
+import { isPartialDone, partialBadge, stageBadge, stageIndex, STAGE_STEPS } from './pipeline-stage';
 
 describe('stageBadge', () => {
   it('labels and tones each stage', () => {
@@ -43,5 +43,43 @@ describe('stageIndex', () => {
   });
   it('returns -1 for the off-pipeline error stage', () => {
     expect(stageIndex('error')).toBe(-1);
+  });
+});
+
+/**
+ * #1939. A card that closed with 1 of 14 tracks wore the same green Done as a
+ * complete one, beside "13 not offered". Since #1936 the denominator is the
+ * edition the job is for, so "fewer landed than that" is a partial.
+ */
+describe('isPartialDone (#1939)', () => {
+  const card = (over: Parameters<typeof isPartialDone>[0]) => isPartialDone(over);
+
+  it('is a done card with tracks of its edition missing', () => {
+    expect(card({ stage: 'done', progress: { done: 1, total: 14 } })).toBe(true);
+  });
+
+  it('is not a complete card', () => {
+    expect(card({ stage: 'done', progress: { done: 11, total: 11 } })).toBe(false);
+  });
+
+  it('is not a card whose total the source never committed ("10 so far")', () => {
+    expect(card({ stage: 'done', progress: { done: 10, total: 12 }, totalCommitted: false })).toBe(
+      false,
+    );
+  });
+
+  it('is not a card still in flight, or one with no count at all', () => {
+    expect(card({ stage: 'downloading', progress: { done: 3, total: 10 } })).toBe(false);
+    expect(card({ stage: 'done' })).toBe(false);
+  });
+});
+
+describe('partialBadge (#1939)', () => {
+  it('reads Partial in the warning tone, from its own key', () => {
+    expect(partialBadge()).toEqual({
+      key: 'downloads.stage.partial',
+      label: 'Partial',
+      tone: 'warn',
+    });
   });
 });

@@ -59,7 +59,7 @@
         <p appOverflowReveal class="text-xs text-theme-secondary truncate mt-0.5">{{ item().subtitle }}</p>
       }
       <div class="flex items-center gap-2 mt-1 flex-wrap min-w-0">
-        <app-pipeline-stage-badge [stage]="item().stage" />
+        <app-pipeline-stage-badge [stage]="item().stage" [partial]="partial()" />
         @if (showProgressCount()) {
           <!-- Denominator is the release's tracklist when the source offered less
                of it than the release has, so "98 of 100" can't stand in for a
