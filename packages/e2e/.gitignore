@@ -8,6 +8,8 @@ node_modules/
 .tmp-data-onboarding/
 .tmp-data-tv/
 .tmp-music-tv/
+.tmp-data-phone/
+.tmp-music-phone/
 .tmp-data-tvbuild/
 # Screenshot baselines are Linux renderings (CI's); a run elsewhere writes its own, uncommitted.
 tests/**/*-darwin.png

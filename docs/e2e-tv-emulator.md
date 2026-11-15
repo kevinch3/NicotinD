@@ -1,4 +1,4 @@
-# Android TV emulator e2e lane
+# Android emulator e2e lanes (TV and phone)
 
 **Status:** shipped 2026-08-07. `bun run e2e:tv` — 14 tests, ~2.8 min from cold. Three of
 those are `test.fail()` expected failures pinning issue #436 (see "Expected failures").
@@ -6,25 +6,37 @@ those are `test.fail()` expected failures pinning issue #436 (see "Expected fail
 **Origin:** verifying issue #432 on a real TV emulator found #436, a focus trap the
 114-test Chromium suite ([e2e.md](e2e.md)) structurally cannot detect.
 
+**The phone lane** (`bun run e2e:phone`, 2026-11-15) shares this lane's lifecycle and drives the
+phone APK on a Pixel 6 AVD; see [The phone lane](#the-phone-lane). Most of this page applies to
+both. Where it says "TV", the phone lane has its own value in `android/targets.ts`.
+
 ## Running it
 
 ```bash
 bun run e2e:tv                       # everything: emulator, APK, server, tests
 bun run e2e:tv -- --grep "notch"     # extra args pass through to playwright
+bun run e2e:phone                    # the phone lane, same lifecycle
 ```
 
 One-time prerequisites (no sudo; see the env notes in this repo's tooling docs):
 
 - Android SDK at `ANDROID_HOME` (defaults to `~/Android/Sdk`) with `platform-tools` and
-  `emulator`, plus a JDK on `PATH` for gradle.
+  `emulator`, plus **JDK 21** for gradle (`JAVA_HOME`; Capacitor 8's AGP refuses 17).
 - A TV AVD named `nicotind-tv` (override with `E2E_TV_AVD`):
   ```bash
   avdmanager create avd -n nicotind-tv -k "system-images;android-36;google-tv;x86_64" -d tv_1080p
   ```
+- For the phone lane, a phone AVD named `nicotind-phone` (override with `E2E_PHONE_AVD`). The
+  `google_apis` image, not `google_apis_playstore`, so the lane is not behind a Google sign-in:
+  ```bash
+  sdkmanager "system-images;android-36;google_apis;x86_64"
+  avdmanager create avd -n nicotind-phone -k "system-images;android-36;google_apis;x86_64" -d pixel_6
+  ```
 
-`E2E_TV_PORT` (default 8587) and `E2E_TV_SERIAL` override the server port and target device.
-Do not invoke `playwright test --config=playwright.tv.config.ts` directly — it skips
-preflight and fails in the `device` fixture with a pointer back to `bun run e2e:tv`.
+`E2E_TV_PORT` (default 8587) and `E2E_TV_SERIAL` override the server port and target device;
+`E2E_PHONE_PORT` (default 8591) and `E2E_PHONE_SERIAL` do the same for the phone lane.
+Do not invoke `playwright test --config=playwright.tv.config.ts` (or `.phone.`) directly — it skips
+preflight and fails in the `device` fixture with a pointer back to the `bun run` command.
 
 ## Why this exists
 
@@ -147,7 +159,15 @@ launch a local browser. Specs in `tests-tv/` import `test` from `tv/fixtures.ts`
 
 ## Preflight lifecycle
 
-`bun run e2e:tv` → `tv/preflight.ts` → `playwright test -c playwright.tv.config.ts`.
+`bun run e2e:tv` → `android/preflight.ts --target=tv` → `playwright test -c playwright.tv.config.ts`;
+`bun run e2e:phone` is the same file with `--target=phone`. The lanes differ only in
+`android/targets.ts` (package, AVD, port, gradle flavour, web configuration, config file), so the
+lifecycle has no per-lane branch to drift.
+
+**Build before boot.** The web build and gradle each peak around 1.5 GB, and a booted AVD holds about
+2.5 GB. On this 16 GB machine with a browser open, an emulator running during the build left 1.7 GB
+free (measured 2026-11-15). Nothing in the build needs a device, so the preflight builds first. A
+reused, already-booted emulator is unaffected.
 
 **No build caching, no skips.** Measured costs:
 
@@ -186,7 +206,9 @@ harness rather than a naming change:
 ### Fixed decisions
 
 - **Port 8587, own data dir.** 8585 is the Chromium lane, 8586 is onboarding. A separate
-  port lets both suites run concurrently and prevents a TV run poisoning the Chromium DB.
+  port lets both suites run concurrently and prevents a TV run poisoning the Chromium DB. The
+  phone lane takes 8591 (8588 is the Chromium suite's TV-bundle server; 8589–8590 its fixture
+  Lidarr and LRCLIB) and `.tmp-data-phone`.
 - **Fixture music copied to a temp dir.** A server's enrichment writes tags into the FLACs
   it scans; pointing the TV server at the checked-in `packages/e2e/fixtures/music` dirties
   the working tree. Observed during the #432 investigation and manually reverted. The
@@ -234,6 +256,47 @@ approximates a TV; this runs the real TV bundle on a real TV device.
 Login → library → play → Now Playing → Settings. The target is not UI logic (Chromium covers
 it) but WebView-only failure modes: CORS through `nativeAppCors`, the service worker not
 intercepting `/api/stream` (`ngsw-bypass`), and media-session wiring.
+
+## The phone lane
+
+`bun run e2e:phone`, `playwright.phone.config.ts`, specs in `tests-phone/*.phone.spec.ts` importing
+`test` from `phone/fixtures.ts`. Same shape as the TV lane: local only, one worker, no retries.
+
+**Why it exists.** The Chromium suite emulates a phone with CDP touch events and can only record
+`navigator.vibrate`. The APK does two things no browser models: its touches go through Android's input
+pipeline, and its haptics call `@capacitor/haptics`, which drives the platform `Vibrator`. The emulator
+has a virtual vibrator that **logs every request**, so a native haptic is assertable without a person
+holding a phone. That was #1376's open check.
+
+**Measured facts it rests on** (Pixel 6 AVD, API 36 `google_apis`, 2026-11-15):
+
+- `dumpsys vibrator_manager` lists "Recent vibrations" with the calling package, usage and what was
+  played. A committed swipe-to-skip logged one `usage: TOUCH` vibration from `ar.kevinroberts.nicotind`,
+  50 ms at amplitude 0.43 (the `commit` → impact `LIGHT` row). A short swipe logged nothing.
+- The history is capped per usage, so `haptics.since(mark)` compares timestamps against the device
+  clock (`date +'%m-%d %H:%M:%S.%3N'`) instead of counting rows. A full history stops growing.
+- The WebView does **not** start at the top of the screen: its origin was `[0,128]`, at device pixel
+  ratio 2.625. `swipe()` reads the origin from `uiautomator dump` and converts CSS pixels, then fires
+  `adb shell input swipe`. Without the offset, a swipe lands 49 CSS px too high.
+- A phone AVD boots to the keyguard, so the preflight also runs `wm dismiss-keyguard` (a no-op on TV).
+
+**The spec.** `haptics.phone.spec.ts`:
+- A committed swipe on the Now Playing cover (260 px against `SKIP_THRESHOLD_PX` 80) changes the
+  track and logs exactly one `TOUCH` vibration.
+- A 15 px swipe changes nothing and logs none.
+
+Both were mutation-checked. With haptics set to Off, the first test fails with "Expected: 1, Received:
+0" (the skip still happens). With a full-length "cancelled" swipe, the second test fails on the changed
+title. Cold run, boot included: 92 s.
+
+**What it cannot check:**
+- How a tick *feels*. That is still the manual check in [mobile-app.md](mobile-app.md) "Haptics".
+- iOS. The iOS Simulator runs only on macOS, and it plays no haptics.
+
+**Observed once, not explained.** In one cold TV run on 2026-11-15, 12 of 18 tests timed out on
+clicks that never saw a stable element (Playwright's stability check needs rendered frames). The next
+cold run and two warm runs on the same code passed as `origin/master` does. If it recurs, capture
+`adb exec-out screencap` and `dumpsys window | grep mCurrentFocus` before suspecting the specs.
 
 ## Out of scope, with reasons
 

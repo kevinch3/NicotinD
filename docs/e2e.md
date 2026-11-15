@@ -13,6 +13,10 @@ unit can: boot → auth → scan → stream → playback → plugin gating.
 > D-pad reachability, focus escape, or the hardware Back key belongs there, not here. →
 > [e2e-tv-emulator.md](e2e-tv-emulator.md)
 >
+> **Native haptics and real Android touches belong in the phone lane** (`bun run e2e:phone`). This
+> suite can only record `navigator.vibrate`; the APK's ticks go to the platform vibrator, which the
+> phone AVD logs. → [e2e-tv-emulator.md](e2e-tv-emulator.md) "The phone lane"
+>
 > **And a `tv` project in this suite renders the real TV bundle.** The TV route tree is a
 > build-time fork (`isTvBuild()`), so stamping the `tv-build` class on the phone bundle — what the
 > older `*-tv.spec.ts` files do — never mounts it. The `tv` project serves `ng build --configuration
