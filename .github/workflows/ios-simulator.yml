@@ -119,17 +119,33 @@ jobs:
           npm install -g "appium@${APPIUM_VERSION}"
           appium driver install "xcuitest@${XCUITEST_DRIVER_VERSION}"
 
-      # Prebuilt in its own step: built inside the first session it took over 4
-      # minutes and the session request gave up first (measured 2026-11-15).
-      # The session then launches this build with `usePrebuiltWDA`.
+      # WebDriverAgent is built and started here, not inside the Appium session:
+      # its start-up took anywhere from 90 s to over 300 s across runs, and a
+      # session request that long dies on the client's 300 s fetch limit
+      # (measured 2026-11-15). Appium attaches to it with `webDriverAgentUrl`.
       - name: Build WebDriverAgent
         run: |
           set -euo pipefail
           wda="$HOME/.appium/node_modules/appium-xcuitest-driver/node_modules/appium-webdriveragent"
+          echo "WDA_PROJECT=$wda/WebDriverAgent.xcodeproj" >> "$GITHUB_ENV"
           xcodebuild build-for-testing -project "$wda/WebDriverAgent.xcodeproj" \
             -scheme WebDriverAgentRunner -destination "id=$IOS_UDID" \
             -derivedDataPath "$RUNNER_TEMP/wda" CODE_SIGNING_ALLOWED=NO -quiet
-          echo "IOS_WDA_DERIVED_DATA=$RUNNER_TEMP/wda" >> "$GITHUB_ENV"
+
+      - name: Start WebDriverAgent
+        run: |
+          set -euo pipefail
+          nohup xcodebuild test-without-building -project "$WDA_PROJECT" \
+            -scheme WebDriverAgentRunner -destination "id=$IOS_UDID" \
+            -derivedDataPath "$RUNNER_TEMP/wda" > "$RUNNER_TEMP/wda.log" 2>&1 &
+          for _ in $(seq 600); do
+            if curl -sf http://127.0.0.1:8100/status > /dev/null; then
+              echo "IOS_WDA_URL=http://127.0.0.1:8100" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "WebDriverAgent did not answer on :8100"; tail -50 "$RUNNER_TEMP/wda.log"; exit 1
 
       - name: Start Appium
         run: |
@@ -167,7 +183,7 @@ jobs:
         if: always()
         run: |
           mkdir -p "$RUNNER_TEMP/ios-results"
-          cp "$RUNNER_TEMP/appium.log" "$RUNNER_TEMP/server.log" "$RUNNER_TEMP/ios-results/" 2>/dev/null || true
+          cp "$RUNNER_TEMP/appium.log" "$RUNNER_TEMP/server.log" "$RUNNER_TEMP/wda.log" "$RUNNER_TEMP/ios-results/" 2>/dev/null || true
           if [ -n "${IOS_UDID:-}" ]; then
             xcrun simctl spawn "$IOS_UDID" log show --last 20m --style compact \
               --predicate 'process == "App"' > "$RUNNER_TEMP/ios-results/app.log" 2>&1 || true

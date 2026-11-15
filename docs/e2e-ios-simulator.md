@@ -1,7 +1,8 @@
 # iOS Simulator e2e lane
 
 **Status:** built 2026-11-15. A manual GitHub Actions workflow, `.github/workflows/ios-simulator.yml`.
-Run it from Actions → "iOS simulator" → Run workflow, or `gh workflow run ios-simulator.yml`.
+Run it from Actions → "iOS simulator" → Run workflow, or `gh workflow run ios-simulator.yml`. About
+16 minutes a run; all 10 checks pass (run 43711192318, iPhone 17 Pro simulator, iOS 26).
 
 **Why it exists.** No other lane runs the iOS app. The Android lanes ([e2e-tv-emulator.md](e2e-tv-emulator.md))
 drive real APKs, and the Chromium suite ([e2e.md](e2e.md)) runs desktop Chromium. iOS WebKit
@@ -42,11 +43,20 @@ nobody can log into, that artifact is the debugging session.
   `process-App`, after its executable, not as `ar.kevinroberts.nicotind`. Appium matches web apps by
   bundle id, so it listed the page and then skipped it (measured 2026-11-15). The entry names the app
   exactly rather than `*`, so the lane cannot attach to another process's page.
+- **Headless, and WebDriverAgent outside the session.** The workflow boots the Simulator with
+  `simctl boot` and passes `isHeadless: true`. Without it Appium restarted the Simulator to show its
+  window, and that boot overran its 120 s budget. WebDriverAgent is built and started in workflow steps
+  (the start waits on `:8100/status`), and Appium attaches with `webDriverAgentUrl`. Started inside the
+  session, its start-up took from 90 s to over 300 s across runs, and past 300 s the session request
+  died on the client's `fetch` limit.
+- **Real taps where the app listens for touch.** WebDriver's element click inside a page is a synthetic
+  JavaScript click. The Play button accepts it. The mini player did not open Now Playing for it, so the
+  lane taps the title natively (W3C actions in `NATIVE_APP`).
 - **One calibration tap.** Gestures are native (`NATIVE_APP` W3C actions, screen points), while element
   positions come from the page (CSS pixels). On iOS a CSS pixel is a point, so one tap at a known screen
   point, plus the `clientX/Y` the page records for it, gives the whole mapping (`viewportOffset`). That
   avoids assuming anything about safe areas, `contentInset: 'always'` or the status bar.
-- **Haptics are checked at the bridge.** The Simulator plays no haptics and logs none. The page wraps
+- **Haptics are checked at the bridge, against the setting.** The Simulator plays no haptics and logs none. The page wraps
   `Capacitor.toNative`, the single function every plugin call crosses, and the lane asserts that a
   committed skip calls `Haptics.impact` once and a cancelled swipe calls nothing. That proves the wiring
   from gesture to native plugin. It does not prove the Taptic Engine fires; only a device can.
@@ -60,10 +70,18 @@ nobody can log into, that artifact is the debugging session.
 4. The page signs in by seeding `localStorage` and opens the album.
 5. The bridge spy is installed.
 6. Play the album; a player title appears.
-7. Open Now Playing; the cover settles.
-8. Calibrate page → screen with one tap.
-9. A committed swipe on the cover skips and calls Haptics once.
-10. A cancelled swipe neither skips nor calls Haptics.
+7. Calibrate page → screen with one tap on the album heading, which ignores taps. Measured offset: 0, 0,
+   because the WebView fills the screen.
+8. Open Now Playing with a real tap on the mini player; the cover settles fully on screen.
+9. A committed swipe on the cover (260 points against `SKIP_THRESHOLD_PX` 80) skips and calls
+   `Haptics.impact` once. Measured: "Opening Static" → "Second Wind", one call.
+10. A 15-point swipe neither skips nor calls Haptics.
+11. Turn haptics Off in Settings, navigating inside the app so the queue survives.
+12. The same committed swipe still skips and now calls nothing. This runs every time, so check 9's
+    "once" cannot come from a spy that counts everything: the count has to follow the setting.
+
+**Cost per run** (run 43711192318): web build 23 s, Simulator app build 1.5 min, Simulator boot 2 min,
+Appium install 1.5 min, WebDriverAgent build 4 min, the checks 3.7 min.
 
 ## Not covered yet
 

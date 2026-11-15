@@ -35,8 +35,8 @@ const APP_PATH = required('IOS_APP_PATH');
 const UDID = required('IOS_UDID');
 const PORT = process.env.IOS_API_PORT ?? '8591';
 const OUT = process.env.IOS_OUT_DIR ?? 'ios-results';
-/** Where the workflow prebuilt WebDriverAgent; unset means Appium builds it inside the session. */
-const WDA_DERIVED_DATA = process.env.IOS_WDA_DERIVED_DATA;
+/** A WebDriverAgent the workflow already started; unset means Appium starts one in the session. */
+const WDA_URL = process.env.IOS_WDA_URL;
 const API = `http://127.0.0.1:${PORT}`;
 const USER = { username: 'ios-admin', password: 'ios-password-123' };
 /** lib/swipe-to-skip.ts SKIP_THRESHOLD_PX is 80 (CSS px = points on iOS). */
@@ -203,9 +203,7 @@ await step('appium: start a session on the simulator', async () => {
     'appium:wdaConnectionTimeout': 300_000,
     'appium:newCommandTimeout': 600,
     'appium:showXcodeLog': true,
-    ...(WDA_DERIVED_DATA
-      ? { 'appium:usePrebuiltWDA': true, 'appium:derivedDataPath': WDA_DERIVED_DATA }
-      : {}),
+    ...(WDA_URL ? { 'appium:webDriverAgentUrl': WDA_URL } : {}),
   });
   sessionUp = true;
 });
@@ -229,7 +227,7 @@ if (attached) {
       `localStorage.setItem('nicotind_server_url', arguments[0]);
        localStorage.setItem('nicotind_token', arguments[1]);
        localStorage.setItem('nicotind_username', arguments[2]);
-       localStorage.setItem('nicotind_role', 'admin'); localStorage.setItem('nicotind-haptics', 'off'); // MUTATION, reverted next commit
+       localStorage.setItem('nicotind_role', 'admin');
        setTimeout(() => location.replace(arguments[3]), 0);
        return true;`,
       [`http://localhost:${PORT}`, token, USER.username, `${origin}/library/albums/${albumId}`],
@@ -305,32 +303,84 @@ if (attached) {
     return { tappedAt: target, cover: rect, centre: coverCentre };
   });
 
-  for (const [name, dx, expectSkip] of [
-    ['swipe: a committed swipe skips and calls Haptics once', COMMIT_DX, true],
-    ['swipe: a cancelled swipe neither skips nor calls Haptics', CANCEL_DX, false],
-  ] as const) {
-    await step(name, async () => {
-      if (!offset || !coverCentre) throw new Error('not calibrated');
-      await inPage();
-      const before = await title();
-      const callsBefore = hapticCalls(await nativeCalls()).length;
+  /** One swipe on the cover; asserts whether it skipped and how many Haptics calls crossed the bridge. */
+  const swipeCheck = async (dx: number, expectSkip: boolean, expectHaptics: number) => {
+    if (!offset || !coverCentre) throw new Error('not calibrated');
+    await inPage();
+    const before = await title();
+    const callsBefore = hapticCalls(await nativeCalls()).length;
+    await inNative();
+    await driver.actions(
+      swipeActions(toScreen(coverCentre, offset), dx, dx === CANCEL_DX ? 250 : 200),
+    );
+    await Bun.sleep(1500);
+    await inPage();
+    const after = await title();
+    const haptics = hapticCalls(await nativeCalls()).slice(callsBefore);
+    const skipped = after !== before;
+    const result = { before, after, skipped, haptics };
+    if (skipped !== expectSkip) throw new Error(`skipped=${skipped}: ${JSON.stringify(result)}`);
+    if (haptics.length !== expectHaptics) {
+      throw new Error(`haptic calls=${haptics.length}: ${JSON.stringify(result)}`);
+    }
+    return result;
+  };
+
+  await step('swipe: a committed swipe skips and calls Haptics once', () =>
+    swipeCheck(COMMIT_DX, true, 1),
+  );
+  await step('swipe: a cancelled swipe neither skips nor calls Haptics', () =>
+    swipeCheck(CANCEL_DX, false, 0),
+  );
+
+  // The same committed swipe with haptics Off must still skip and call nothing.
+  // It runs every time, so the "once" above is never a spy that sees everything:
+  // the count has to move with the setting.
+  await step('settings: turn haptics Off', async () => {
+    await inPage();
+    // In-app navigation (the router follows popstate), so the queue survives.
+    await js(`history.pushState(null, '', '/settings');
+      dispatchEvent(new PopStateEvent('popstate', { state: null }));
+      return true;`);
+    const off = await poll(
+      'the Off button',
+      () => driver.find('css selector', '[data-testid="settings-haptics-off"]').catch(() => null),
+      15_000,
+    );
+    await driver.click(off);
+    return poll(
+      'Off pressed',
+      () =>
+        js<boolean>(
+          `return document.querySelector('[data-testid="settings-haptics-off"]')?.getAttribute('aria-pressed') === 'true';`,
+        ),
+      5_000,
+    );
+  });
+
+  await step('swipe: with haptics Off, a committed swipe skips and calls nothing', async () => {
+    await js(`history.back(); return true;`);
+    await poll(
+      'the album page again',
+      () => js<boolean>(`return location.pathname.startsWith('/library/albums/');`),
+      15_000,
+    );
+    // Re-open Now Playing if the navigation closed it.
+    const open = await visibleCentre('[data-testid="now-playing-cover-art"]').catch(() => null);
+    if (!open) {
+      const target = toScreen(await visibleCentre('[data-testid="player-title"]'), offset!);
       await inNative();
-      await driver.actions(
-        swipeActions(toScreen(coverCentre, offset), dx, dx === CANCEL_DX ? 250 : 200),
-      );
-      await Bun.sleep(1500);
+      await driver.actions(tapActions(target));
       await inPage();
-      const after = await title();
-      const haptics = hapticCalls(await nativeCalls()).slice(callsBefore);
-      const skipped = after !== before;
-      const result = { before, after, skipped, haptics };
-      if (skipped !== expectSkip) throw new Error(`skipped=${skipped}: ${JSON.stringify(result)}`);
-      if (haptics.length !== (expectSkip ? 1 : 0)) {
-        throw new Error(`haptic calls=${haptics.length}: ${JSON.stringify(result)}`);
-      }
-      return result;
-    });
-  }
+      await poll(
+        'the cover on screen',
+        () => visibleCentre('[data-testid="now-playing-cover-art"]').catch(() => null),
+        20_000,
+      );
+      await Bun.sleep(800);
+    }
+    return swipeCheck(COMMIT_DX, true, 0);
+  });
 }
 
 await driver.quit();
