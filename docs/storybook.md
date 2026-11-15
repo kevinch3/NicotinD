@@ -174,11 +174,11 @@ is actually exercised.
 ## Seeding download state (`StoryState`)
 
 `storyProviders({ downloadingTransfers, activeAcquireJobs, pendingReviews })` seeds the
-three independent sources behind the download badge. They are set as the **upstream**
-signals, not the derived count: `TransferService.activeDownloadCount` and
-`AcquireService.activeJobs` are `computed()`, so writing the derived value is impossible —
-and faking it would bypass the very kind/state filter the badge depends on, which is the
-thing worth testing.
+sources behind the download badge: `TransferService`'s two feeds, network jobs and URL
+acquisitions. They are set as the **upstream** signals, not the derived count:
+`TransferService.unfinishedCount` (read through `ActivityCountService`, #1938) is a
+`computed()`, so writing it is impossible, and faking it would bypass the merge and stage
+filter the badge depends on, which is the thing worth testing.
 
 Neither service polls until `startPolling()` is called, so a story that injects them stays
 inert: no timer to stop, no request to intercept.

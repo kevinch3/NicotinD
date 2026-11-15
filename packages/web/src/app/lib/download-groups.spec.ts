@@ -7,6 +7,7 @@ import {
   jobPercent,
   methodForBackend,
   buildDownloadFeed,
+  isUnfinished,
   mergeAcquisitionJobs,
   hasCommittedTotal,
   type DownloadItem,
@@ -824,6 +825,61 @@ describe('buildDownloadFeed', () => {
       job({ id: 'failed', state: 'failed', stage: 'error' }),
     ]);
     expect(feed.map((i) => i.stage)).toEqual(['downloading', 'error', 'done']);
+  });
+});
+
+/**
+ * #1938. The hunt queue runs oldest first, and the waiting rows used to sort
+ * newest first, so the next row to start sat at the bottom of its block and
+ * jumped to the top every ~20 s. Waiting rows sort oldest first; everything
+ * else stays newest first.
+ */
+describe('feed order (#1938)', () => {
+  const at = (id: string, stage: AcquisitionJobView['stage'], createdAt: number) =>
+    acqJob({ id, stage, createdAt, state: stage === 'done' ? 'done' : 'active' });
+
+  it('lists waiting rows in the order they will run', () => {
+    const feed = mergeAcquisitionJobs(
+      [],
+      [at('r-new', 'resolving', 300), at('r-old', 'resolving', 100), at('r-mid', 'resolving', 200)],
+    );
+    expect(feed.map((i) => i.key)).toEqual(['job:r-old', 'job:r-mid', 'job:r-new']);
+  });
+
+  it('keeps queued rows oldest first too', () => {
+    const feed = mergeAcquisitionJobs([], [at('q-new', 'queued', 300), at('q-old', 'queued', 100)]);
+    expect(feed.map((i) => i.key)).toEqual(['job:q-old', 'job:q-new']);
+  });
+
+  it('keeps every other stage newest first', () => {
+    const feed = mergeAcquisitionJobs(
+      [],
+      [
+        at('d-old', 'downloading', 100),
+        at('d-new', 'downloading', 300),
+        at('x-old', 'done', 50),
+        at('x-new', 'done', 400),
+      ],
+    );
+    expect(feed.map((i) => i.key)).toEqual(['job:d-new', 'job:d-old', 'job:x-new', 'job:x-old']);
+  });
+});
+
+describe('isUnfinished (#1938)', () => {
+  it('is every stage but done and error', () => {
+    const stages = [
+      'resolving',
+      'queued',
+      'downloading',
+      'organizing',
+      'scanning',
+      'error',
+      'done',
+    ] as const;
+    const unfinished = stages.filter((stage) =>
+      isUnfinished(mergeAcquisitionJobs([], [acqJob({ stage })])[0]!),
+    );
+    expect(unfinished).toEqual(['resolving', 'queued', 'downloading', 'organizing', 'scanning']);
   });
 });
 

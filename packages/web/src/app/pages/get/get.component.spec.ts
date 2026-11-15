@@ -6,7 +6,6 @@ import { GetComponent, parseGetTab } from './get.component';
 import { SearchComponent } from '../search/search.component';
 import { DownloadsComponent } from '../downloads/downloads.component';
 import { TransferService } from '../../services/transfer.service';
-import { AcquireService } from '../../services/acquire.service';
 import { AuthService } from '../../services/auth.service';
 import { ImportUploadService } from '../../services/import-upload.service';
 
@@ -18,7 +17,6 @@ class DownloadsStub {}
 
 interface SetupOpts {
   active?: number;
-  jobs?: number;
   canImport?: boolean;
   upload?: ImportUploadService['upload'];
   /** The service's shared in-flight count; a test's `upload` drives it. */
@@ -54,14 +52,10 @@ function setup(tab?: string, opts: SetupOpts = {}) {
       {
         provide: TransferService,
         useValue: {
-          activeDownloadCount: signal(opts.active ?? 0),
+          unfinishedCount: signal(opts.active ?? 0),
           acquisitionJobs: signal([]),
           kickPoll: vi.fn().mockResolvedValue(undefined),
         },
-      },
-      {
-        provide: AcquireService,
-        useValue: { activeJobs: signal(new Array(opts.jobs ?? 0).fill({})) },
       },
       ...extra,
     ],
@@ -135,8 +129,8 @@ describe('GetComponent', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it('badges the Downloads tab with transfers plus in-flight acquire jobs', () => {
-    const { fixture } = setup(undefined, { active: 2, jobs: 3 });
+  it("badges the Activity tab with the Downloads header's unfinished count (#1938)", () => {
+    const { fixture } = setup(undefined, { active: 5 });
     expect(fixture.componentInstance.activeCount()).toBe(5);
     const badge = fixture.nativeElement.querySelector(
       '[data-testid="get-tab-downloads-badge"]',

@@ -90,7 +90,12 @@ function makeAcquireJob(state: AcquireJob['state']): AcquireJob {
   };
 }
 
-describe('TransferService.activeDownloadCount', () => {
+/**
+ * #1938. The tab and nav badges said 14 while the Downloads header said 41: the
+ * badge counted only `downloading` jobs, the header every unfinished card.
+ * One count now, read from the same merged feed the header renders.
+ */
+describe('TransferService.unfinishedCount', () => {
   let service: TransferService;
 
   beforeEach(() => {
@@ -105,30 +110,31 @@ describe('TransferService.activeDownloadCount', () => {
   });
 
   it('is 0 with no downloads', () => {
-    expect(service.activeDownloadCount()).toBe(0);
+    expect(service.unfinishedCount()).toBe(0);
   });
 
-  it('counts in-flight network jobs (unified feed since phase 3)', () => {
-    service.acquisitionJobs.set([makeJobView('downloading'), makeJobView('done', 'aj-2')]);
-    expect(service.activeDownloadCount()).toBe(1);
+  it('counts every unfinished card, waiting ones included', () => {
+    service.acquisitionJobs.set([
+      makeJobView('resolving', 'aj-1'),
+      makeJobView('queued', 'aj-2'),
+      makeJobView('downloading', 'aj-3'),
+      makeJobView('organizing', 'aj-4'),
+      makeJobView('done', 'aj-5'),
+    ]);
+    expect(service.unfinishedCount()).toBe(4);
   });
 
-  it('excludes URL jobs (they badge via acquire jobs)', () => {
-    service.acquisitionJobs.set([{ ...makeJobView('downloading'), kind: 'url' }]);
-    expect(service.activeDownloadCount()).toBe(0);
-  });
-
-  it('is 0 when all jobs are terminal', () => {
-    service.acquisitionJobs.set([makeJobView('done'), makeJobView('done', 'aj-2')]);
-    expect(service.activeDownloadCount()).toBe(0);
+  it('counts an in-flight URL acquisition once, though both lanes report it', () => {
+    service.acquireJobs.set([{ ...makeAcquireJob('running'), id: 'u1' }]);
+    service.acquisitionJobs.set([{ ...makeJobView('downloading', 'u1'), kind: 'url' }]);
+    expect(service.unfinishedCount()).toBe(1);
   });
 
   it('reacts to signal updates', () => {
-    expect(service.activeDownloadCount()).toBe(0);
     service.acquisitionJobs.set([makeJobView('downloading')]);
-    expect(service.activeDownloadCount()).toBe(1);
+    expect(service.unfinishedCount()).toBe(1);
     service.acquisitionJobs.set([]);
-    expect(service.activeDownloadCount()).toBe(0);
+    expect(service.unfinishedCount()).toBe(0);
   });
 });
 

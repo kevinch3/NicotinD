@@ -5,7 +5,6 @@ import { BottomNavComponent } from './bottom-nav.component';
 import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
-import { AcquireService } from '../../services/acquire.service';
 import { ImportUploadService } from '../../services/import-upload.service';
 import BASE_CATALOG from '../../../../public/i18n/en.json';
 import { vi } from 'vitest';
@@ -23,15 +22,13 @@ function setup(
   opts: {
     offline?: boolean;
     active?: number;
-    acquireJobs?: number;
     canAcquire?: boolean;
     canImport?: boolean;
     uploads?: number;
   } = {},
 ) {
   const isOffline = signal(opts.offline ?? false);
-  const activeDownloadCount = signal(opts.active ?? 0);
-  const activeJobs = signal(new Array(opts.acquireJobs ?? 0).fill({}));
+  const unfinishedCount = signal(opts.active ?? 0);
   const canAcquire = signal(opts.canAcquire ?? true);
   const inFlight = signal(opts.uploads ?? 0);
   // Defaults to canAcquire because they agree for every role; they diverge only
@@ -49,8 +46,7 @@ function setup(
       ]),
       { provide: AuthService, useValue: { canAcquire, canImport } },
       { provide: SetupService, useValue: { isOffline } },
-      { provide: TransferService, useValue: { activeDownloadCount } },
-      { provide: AcquireService, useValue: { activeJobs } },
+      { provide: TransferService, useValue: { unfinishedCount } },
       { provide: ImportUploadService, useValue: { inFlight } },
     ],
   });
@@ -58,7 +54,7 @@ function setup(
   const fixture = TestBed.createComponent(BottomNavComponent);
   const router = TestBed.inject(Router);
   fixture.detectChanges();
-  return { fixture, isOffline, activeDownloadCount, activeJobs, router };
+  return { fixture, isOffline, unfinishedCount, router };
 }
 
 function linkFor(
@@ -121,22 +117,14 @@ describe('BottomNavComponent', () => {
     expect(fixture.componentInstance.gridColumns()).toBe('repeat(3, minmax(0, 1fr))');
   });
 
-  it('shows a badge on Get when transfers are active', () => {
-    const { fixture, activeDownloadCount } = setup({ active: 0 });
+  it('shows a badge on Get when anything is unfinished', () => {
+    const { fixture, unfinishedCount } = setup({ active: 0 });
     expect(fixture.nativeElement.querySelector('nav a span')).toBeNull();
 
-    activeDownloadCount.set(4);
+    unfinishedCount.set(4);
     fixture.detectChanges();
     const badge = fixture.nativeElement.querySelector('nav a span') as HTMLElement;
     expect(badge?.textContent?.trim()).toBe('4');
-  });
-
-  it('counts in-flight URL acquisitions too, matching the desktop nav badge', () => {
-    // These two badges used to disagree: mobile omitted acquire jobs, so a
-    // spotdl/yt-dlp download showed a count on desktop and nothing on a phone.
-    const { fixture } = setup({ active: 2, acquireJobs: 3 });
-    const badge = fixture.nativeElement.querySelector('nav a span') as HTMLElement;
-    expect(badge?.textContent?.trim()).toBe('5');
   });
 
   // #1664: an upload is in-flight work before it is a job, and the /get tab

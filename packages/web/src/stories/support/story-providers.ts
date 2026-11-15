@@ -28,8 +28,7 @@ import { fixtureHttpInterceptor } from './http-fixtures';
 import { AuthService } from '../../app/services/auth.service';
 import { TranslateService } from '../../app/services/translate.service';
 import { TransferService } from '../../app/services/transfer.service';
-import { AcquireService } from '../../app/services/acquire.service';
-import type { AcquireJob } from '../../app/services/acquire.service';
+import type { AcquireJob } from '@nicotind/core';
 import type { AcquisitionJobView } from '../../types/core';
 import { ArtistImageSourcesService } from '../../app/services/artist-image-sources.service';
 import { getStoryLang } from './story-lang';
@@ -54,10 +53,10 @@ export interface StoryState {
   /** Tracks already played; the last one is what ⏮ (and the sheet's left neighbour) lands on. */
   history?: Track[];
   /**
-   * Counts behind the download badge. Seeded as the *upstream* signals rather
-   * than the derived count, because `activeDownloadCount`/`activeJobs` are
-   * `computed()` — writing the derived value is impossible, and faking it would
-   * bypass the very filter (kind/state) the badge depends on.
+   * Counts behind the download badge, seeded as the two feeds `TransferService`
+   * merges (network jobs, URL acquisitions). The badge reads the derived
+   * `unfinishedCount` (#1938), a `computed()` that cannot be written, and
+   * faking it would bypass the merge and stage filter it depends on.
    *
    * Neither service polls until `startPolling()` is called, so a story that
    * injects them stays inert; no timer to stop, no request to intercept.
@@ -178,6 +177,15 @@ function runningAcquireJob(id: string): AcquireJob {
     url: 'https://example.invalid/track',
     label: 'A track',
     state: 'running',
+    stage: 'downloading',
+    storage_path: null,
+    albumId: null,
+    albumArtist: null,
+    albumTitle: null,
+    destinationAlbums: [],
+    tracks: [],
+    isPlaylist: false,
+    playlistId: null,
     progress: { done: 1, total: 3 },
     error: null,
     created_at: 0,
@@ -231,7 +239,7 @@ export function storyProviders(state: StoryState = {}): Array<Provider | Environ
         );
       }
       if (state.activeAcquireJobs !== undefined) {
-        inject(AcquireService).jobs.set(
+        inject(TransferService).acquireJobs.set(
           Array.from({ length: state.activeAcquireJobs }, (_, i) => runningAcquireJob(`acq-${i}`)),
         );
       }

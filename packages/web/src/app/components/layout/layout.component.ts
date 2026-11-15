@@ -23,7 +23,7 @@ import { MAIN_BOTTOM_PAD_CLASS } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
-import { ImportUploadService } from '../../services/import-upload.service';
+import { ActivityCountService } from '../../services/activity-count.service';
 import { PreserveService } from '../../services/preserve.service';
 import { PlayerComponent } from '../player/player.component';
 import { NowPlayingComponent } from '../now-playing/now-playing.component';
@@ -151,7 +151,6 @@ export class LayoutComponent implements OnInit, OnDestroy {
   readonly version = inject(APP_VERSION);
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
-  private uploads = inject(ImportUploadService);
   private likes = inject(LikeService);
   private readonly exclusions = inject(RecommendationExclusionsService);
   private readonly libraryEvents = inject(LibraryEventsService);
@@ -274,17 +273,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
     return this.setup.isOffline() && ONLINE_ONLY_ROUTES.has(route);
   }
 
-  // Active download badge on the desktop "Add" nav link — slskd transfers
-  // + in-flight URL acquisitions + uploads not yet a job (the old standalone
-  // header indicator's signal, folded into the nav item now that the dedicated
-  // header button is gone; the mobile tab bar and the /get Downloads tab carry
-  // the same count).
-  readonly downloadCount = computed(
-    () =>
-      this.transfers.activeDownloadCount() +
-      this.acquire.activeJobs().length +
-      this.uploads.inFlight(),
-  );
+  // The badge on the desktop "Add" nav link: the one Activity count the phone tab bar, the /get
+  // tab and the Downloads header share (#1938).
+  readonly downloadCount = inject(ActivityCountService).count;
 
   // Bottom padding so fixed chrome never covers the last list item — the tab bar
   // plus the mini player's measured height, see lib/player-chrome.ts.
