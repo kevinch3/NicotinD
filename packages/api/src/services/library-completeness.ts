@@ -39,9 +39,28 @@ function localAlbumsOfArtist(
 }
 
 /**
+ * How many distinct tracks a local album holds: one per (disc, track) position,
+ * plus one per song with no track number (#1842). Two rows at one position — a
+ * "Kids" and a "Kids (Keep Up)" both tagged track 10 — are one track, so a
+ * duplicate never stands in for a missing one. A misspelled title still counts:
+ * the position is filled. An album with no song rows keeps its `song_count`.
+ */
+function distinctTrackCount(db: Database, album: { id: string; song_count: number }): number {
+  const row = db
+    .query<{ n: number; rows: number }, [string]>(
+      `SELECT COUNT(DISTINCT CASE WHEN track IS NULL OR track <= 0 THEN 'u:' || id
+                                  ELSE COALESCE(disc, 1) || ':' || track END) AS n,
+              COUNT(*) AS rows
+         FROM library_songs WHERE album_id = ?`,
+    )
+    .get(album.id);
+  return row && row.rows > 0 ? row.n : album.song_count;
+}
+
+/**
  * True when the library already holds this album (same artist, same
- * edition-stripped title) with at least as many songs as its canonical
- * tracklist. Uses `normalizeForGrouping` so deluxe/remaster editions of an album
+ * edition-stripped title) with at least as many distinct tracks as its
+ * canonical tracklist ({@link distinctTrackCount}). Uses `normalizeForGrouping` so deluxe/remaster editions of an album
  * we already have are treated as "complete" and don't get re-acquired.
  *
  * Shared by the hunt-download route (duplicate-acquisition guard) and the
@@ -53,7 +72,9 @@ export function albumAlreadyComplete(
   title: string,
   trackCount: number,
 ): boolean {
-  return matchingLocalAlbums(db, artist, title).some((r) => r.song_count >= trackCount);
+  return matchingLocalAlbums(db, artist, title).some(
+    (r) => distinctTrackCount(db, r) >= trackCount,
+  );
 }
 
 /**
@@ -67,7 +88,9 @@ export function artistAlbumAlreadyComplete(
   title: string,
   trackCount: number,
 ): boolean {
-  return localAlbumsOfArtist(db, artistId, title).some((r) => r.song_count >= trackCount);
+  return localAlbumsOfArtist(db, artistId, title).some(
+    (r) => distinctTrackCount(db, r) >= trackCount,
+  );
 }
 
 /** Normalize a peer filename to its bare track title (drops dir, ext, track #). */

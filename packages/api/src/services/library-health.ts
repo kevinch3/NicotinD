@@ -587,8 +587,8 @@ function confirmedIncomplete(
     const local = matchingLocalAlbums(db, j.artistName, j.albumTitle);
     // This list's contract is "a hunt would enqueue these" — so it must apply
     // the SAME guard the hunt applies (#758). `albumAlreadyComplete` counts
-    // ROWS while the loop above matches TITLES, and the two disagree whenever a
-    // song is on disk under a different spelling: the title matcher reports it
+    // filled track POSITIONS (#1842) while the loop above matches TITLES, and
+    // the two disagree whenever a song is on disk under a different spelling: the title matcher reports it
     // missing, the hunt refuses it as `already-complete`, and a curator spends
     // bounded hunt budget on a no-op. Measured at 4 of 10 on prod.
     if (albumAlreadyComplete(db, j.artistName, j.albumTitle, titles.length)) {
