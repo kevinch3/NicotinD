@@ -5,7 +5,8 @@
          ArrowUp/Down still move between rows. -->
     <div data-testid="track-row" appTvNavGroup [axis]="'horizontal'" [appEntityActions]="menuActions" [attr.data-playback-state]="playbackState()"
       [attr.aria-disabled]="disabled() ? 'true' : null"
-      [class]="'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-theme-hover transition group' + (disabled() ? ' opacity-40 pointer-events-none' : '')">
+      [class]="'flex items-center gap-2 md:gap-3 px-3 py-2 rounded-lg hover:bg-theme-hover transition group' + (disabled() ? ' opacity-40 pointer-events-none' : '')">
+      <span class="relative flex items-center flex-shrink-0">
       @if (selectable()) {
         <button type="button" (click)="selectedChange.emit($event)"
           [class]="'w-5 h-5 flex-shrink-0 rounded border flex items-center justify-center transition ' + (selected()
@@ -29,18 +30,34 @@
       } @else {
         <span class="text-xs text-theme-muted w-6 text-right">{{ indexLabel() ?? '' }}</span>
       }
-      @if (offline()) {
-        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" title="Saved offline"></span>
-      }
+        @if (offline() && !showCover()) {
+          <ng-container [ngTemplateOutlet]="offlineBadge" />
+        }
+      </span>
       @if (showCover()) {
-        <app-cover-art
-          [src]="coverSrc()"
-          [artist]="track().artist"
-          [album]="track().album ?? ''"
-          [size]="36"
-          rounded="rounded"
-        />
+        <span class="relative flex-shrink-0">
+          <app-cover-art
+            [src]="coverSrc()"
+            [artist]="track().artist"
+            [album]="track().album ?? ''"
+            [size]="36"
+            rounded="rounded"
+          />
+          @if (offline()) {
+            <ng-container [ngTemplateOutlet]="offlineBadge" />
+          }
+        </span>
       }
+      <!-- Overlaid on the cover corner (or the index cell), so it costs the
+           title no width; the name and the glyph carry it, not the colour (#1654). -->
+      <ng-template #offlineBadge>
+        <span data-testid="track-row-offline" role="img" [attr.aria-label]="'song.savedOffline' | t" [title]="'song.savedOffline' | t"
+          class="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 text-white flex items-center justify-center ring-2 ring-[var(--theme-bg)]">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 4v14" /><path d="m6 13 6 6 6-6" />
+          </svg>
+        </span>
+      </ng-template>
       <div class="flex-1 min-w-0">
         <button type="button" appTvNavItem data-testid="track-row-title" (click)="play.emit()" class="w-full text-left">
           <p appOverflowReveal class="text-sm truncate" [class.text-theme-accent-text]="isCurrent()" [class.text-theme-primary]="!isCurrent()">{{ track().title }}</p>
@@ -70,7 +87,8 @@
         </button>
       }
       <span class="text-xs text-theme-muted">{{ formatDuration(duration() ?? track().duration) }}</span>
-      <button type="button" (click)="play.emit()" class="p-1 text-theme-muted group-hover:text-theme-secondary transition flex-shrink-0" title="Play">
+      <!-- Tapping the row plays, so a phone drops this duplicate (#1654). -->
+      <button type="button" data-testid="track-row-play" (click)="play.emit()" class="hidden md:block p-1 text-theme-muted group-hover:text-theme-secondary transition flex-shrink-0" title="Play">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <polygon points="5,3 19,12 5,21" />
         </svg>

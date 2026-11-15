@@ -1256,6 +1256,7 @@
   "song.removeFromLibrary": "Quitar de la biblioteca",
   "song.removeFromPlaylist": "Quitar de la lista",
   "song.saveOffline": "Guardar sin conexión",
+  "song.savedOffline": "Guardada sin conexión",
   "song.savingOffline": "Guardando…",
   "song.startRadio": "Iniciar radio",
   "song.unlike": "Quitar me gusta",

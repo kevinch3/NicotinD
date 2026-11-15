@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, inject, input, output } from '@angular/core';
 import { AuthService } from '../../services/auth.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
@@ -44,6 +45,7 @@ function formatDuration(seconds?: number): string {
 @Component({
   selector: 'app-track-row',
   imports: [
+    NgTemplateOutlet,
     OverflowRevealDirective,
     CoverArtComponent,
     ArtistLinksComponent,

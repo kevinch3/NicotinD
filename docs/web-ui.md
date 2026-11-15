@@ -1173,6 +1173,19 @@ Surfaces:
 - **Play/pause buttons** (mini-player + Now Playing, incl. the lyrics-panel
   controls): spinner replaces the icon while `bufferingVisible`; the button
   stays clickable (pause = cancel).
+- **Track-list density (#1654)**: three owner decisions (2026-11-07) shape every
+  song list. **The offline marker is a badge, not a column**: `data-testid="track-row-offline"`
+  is absolutely positioned on the cover's corner (on the index cell when the row has no
+  cover), so it costs the title no width; it has `role="img"`, an accessible name
+  (`song.savedOffline`) and a down-arrow glyph, so it does not rely on colour. The dot it
+  replaced was its own flex child and cost about 30px of title per row. **A phone has no
+  per-row play button**: `track-row-play` is `hidden md:block`, because tapping the row
+  already plays; the row gap is `gap-2` below `md`. **The type floor is 14px title / 12px
+  subtitle**, and no track-list template uses an arbitrary size under 12px:
+  `list-type-floor.sweep.spec.ts` sweeps the listed templates (track row, get row, download
+  item, queue panel, song picker, search, playlist detail, library songs) and asserts its
+  own denominator. Covered by `track-row.component.spec.ts` ("density") and the
+  `OfflineWithoutCover` story.
 - **Track rows** (`TrackRowComponent`, injected `PlayerService`): the current
   row accents its title and swaps the index number for a spinner (buffering),
   animated `.eq-bars` (playing), or static bars (paused) — logic in the pure

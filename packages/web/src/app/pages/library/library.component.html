@@ -518,7 +518,7 @@
               <a [routerLink]="['/library/playlists', pl.id]" appTvNavItem class="flex-1 min-w-0 flex items-center gap-2 cursor-pointer">
                 @if (pl.kind === 'curated') {
                   <span data-testid="curated-badge-inline"
-                    class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-theme-surface-2 text-theme-muted flex-shrink-0">
+                    class="px-1.5 py-0.5 rounded text-xs font-semibold uppercase tracking-wide bg-theme-surface-2 text-theme-muted flex-shrink-0">
                     Curated
                   </span>
                 } @else if (pl.kind === 'liked') {
