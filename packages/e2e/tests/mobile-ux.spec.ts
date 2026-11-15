@@ -793,9 +793,11 @@ test.describe('mobile UX', () => {
     await expect(page.getByTestId('now-playing-title')).toHaveText(title ?? '');
   });
 
-  // The notch rides at the top of the panel on both tabs (#1679): it toggles
-  // the panel between rest and full height from the Lyrics tab too.
-  test('the notch takes the Lyrics panel to full height and back', async ({ page }) => {
+  // The notch rides at the top of the panel on both tabs (#1679). On Lyrics,
+  // full height is karaoke (#1680), which brings its own ✕.
+  test('the notch on the Lyrics tab opens karaoke, and its ✕ comes back to rest', async ({
+    page,
+  }) => {
     await openNowPlaying(page);
     await page.getByTestId('now-playing-tab-lyrics').click();
     await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
@@ -805,10 +807,40 @@ test.describe('mobile UX', () => {
     await expect(notch).toHaveAttribute('aria-expanded', 'false');
     await notch.click();
     await expect(panel).toHaveAttribute('data-snap', 'full');
-    await expect(notch).toHaveAttribute('aria-expanded', 'true');
-    await expect.poll(async () => (await panel.boundingBox())!.y).toBeLessThan(2);
-    await notch.click();
+    await expect(page.getByTestId('karaoke-overlay')).toBeVisible();
+    await page.getByRole('button', { name: 'Exit fullscreen' }).click();
+    await expect(page.getByTestId('karaoke-overlay')).toHaveCount(0);
     await expect(panel).toHaveAttribute('data-snap', 'rest');
+  });
+
+  // Karaoke is the Lyrics tab at full height (#1680): one panel system, so a
+  // pull, the tab and Back reach it and leave it like any other full panel.
+  test('karaoke is Lyrics at full: a pull down brings it back, the tab and Escape too', async ({
+    page,
+  }) => {
+    await openNowPlaying(page);
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    await page.getByTestId('now-playing-karaoke-toggle').click();
+    const overlay = page.getByTestId('karaoke-overlay');
+    const panel = page.getByTestId('now-playing-panel');
+    await expect(overlay).toBeVisible();
+    await expect(panel).toHaveAttribute('data-snap', 'full');
+    await expect(page.getByTestId('vocal-mute-toggle')).toBeVisible();
+
+    // A pull down on the lyrics body (not a control) returns to rest; the sheet stays open.
+    const box = (await overlay.boundingBox())!;
+    const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    await drag(page, from, { x: from.x, y: from.y + 300 });
+    await expect(overlay).toHaveCount(0);
+    await expect(panel).toHaveAttribute('data-snap', 'rest');
+    await expect(page.getByTestId('now-playing-heading')).toBeInViewport();
+
+    // The active Lyrics tab takes it back to full: karaoke again.
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    await expect(overlay).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(overlay).toHaveCount(0);
+    await expect(page.getByTestId('now-playing-heading')).toBeInViewport();
   });
 
   // A long lyric line (no natural break) must wrap inside the lyrics panel and
@@ -907,10 +939,11 @@ test.describe('mobile UX', () => {
     const panel = page.getByTestId('now-playing-panel');
     await page.getByTestId('now-playing-tab-queue').click();
     await expect(panel).toHaveAttribute('data-snap', 'full');
+    // Switching to Lyrics keeps full height, and Lyrics at full is karaoke (#1680).
     await page.getByTestId('now-playing-tab-lyrics').click();
     await expect(panel).toHaveAttribute('data-snap', 'full');
-    await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
-    await page.getByTestId('now-playing-tab-lyrics').click();
+    await expect(page.getByTestId('karaoke-overlay')).toBeVisible();
+    await page.keyboard.press('Escape');
     await expect(panel).toHaveAttribute('data-snap', 'rest');
   });
 
