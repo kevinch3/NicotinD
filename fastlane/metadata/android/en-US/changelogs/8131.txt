@@ -1,0 +1,7 @@
+• about: list third-party licences from a release-generated manifest (#1925)
+• admin: assign an email to an existing user (#1902)
+• catalog: mark each catalog album with what the library holds (#1903)
+• downloads: a partial album completes itself from another peer (#1886)
+• downloads: a track Get is a server job that finds its own copy (#1911)
+• downloads: a waiting Get says how many searches are ahead and roughly how long (#1948)
+…and 39 more
