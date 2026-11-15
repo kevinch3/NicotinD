@@ -229,7 +229,7 @@ if (attached) {
       `localStorage.setItem('nicotind_server_url', arguments[0]);
        localStorage.setItem('nicotind_token', arguments[1]);
        localStorage.setItem('nicotind_username', arguments[2]);
-       localStorage.setItem('nicotind_role', 'admin');
+       localStorage.setItem('nicotind_role', 'admin'); localStorage.setItem('nicotind-haptics', 'off'); // MUTATION, reverted next commit
        setTimeout(() => location.replace(arguments[3]), 0);
        return true;`,
       [`http://localhost:${PORT}`, token, USER.username, `${origin}/library/albums/${albumId}`],
