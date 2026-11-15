@@ -13,6 +13,7 @@ import type { AcquireJob } from '@nicotind/core';
 import {
   type DownloadItem,
   buildDownloadFeed,
+  isUnfinished,
   mergeAcquisitionJobs,
 } from '../../lib/download-groups';
 import { DownloadItemComponent } from '../../components/download-item/download-item.component';
@@ -148,9 +149,7 @@ export class DownloadsComponent {
       this.transferService.acquisitionJobs(),
     ),
   );
-  readonly activeFeedCount = computed(
-    () => this.downloadFeed().filter((i) => i.stage !== 'done' && i.stage !== 'error').length,
-  );
+  readonly activeFeedCount = computed(() => this.downloadFeed().filter(isUnfinished).length);
   /** The rows Cancel all would act on (#806) — also what its confirm counts. */
   private readonly cancellableFeed = computed(() =>
     this.downloadFeed().filter((i) => i.canCancel && !i.cancelRequested),

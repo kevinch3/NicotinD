@@ -1965,9 +1965,10 @@ nothing is active yet — so the next feed refresh is up to **30 seconds** away.
 `kickPoll()` exists for exactly this ("call after initiating a download") and is
 called by `AutoHuntService`, the album-hunt modal and the eight Downloads-page
 mutations; the **URL/link lane was the one omission**, so a pasted
-Spotify/YouTube/archive link bumped the nav badge — which reads
+Spotify/YouTube/archive link bumped the nav badge — which then read
 `acquire.activeJobs()`, refreshed by the submit itself — while the Downloads
-card stayed up to half a minute stale. `submitLinkIntent()` and `retryLinkJob()`
+card stayed up to half a minute stale. (Since #1938 the badge reads the same
+merged feed as the card, so the kick is what moves both.) `submitLinkIntent()` and `retryLinkJob()`
 now kick the poll too, and only on success: a rejected submit has no job to show.
 
 Separately, a playlist card that walks `0 of 1 → 2 of 14 → 7 of 32` is the
@@ -2516,6 +2517,8 @@ explains the missing tracks.
 The web groups transfers via the pure `lib/download-groups.ts` (`groupByAlbum`/`albumGroupTitle`/`albumGroupTotal`), which prefers the hunt metadata and falls back to the peer folder name + file count for **direct (non-hunt)** downloads that have no job.
 
 `jobId` is the card's identity in the feed (issue #261): the server has always known which acquisition job enqueued a folder, but the client used to discard it and re-derive grouping from `albumId`, which is why one hunt kept splitting into several cards. See [docs/acquisition-jobs.md](acquisition-jobs.md) "One job = one card".
+
+**Feed order** (`byFeedOrder`): active stages first (downloading, organizing, scanning, then resolving and queued), with terminal stages last. Inside a stage the newest card comes first, except for waiting rows: `resolving` and `queued` sort **oldest first**, because the hunt queue is FIFO. The next card to start heads its block, and a row only ever moves up. Newest-first used to put it at the bottom, so on a 25-album Get the list reshuffled about every 20 s, each time a hunt finished (#1938). `isUnfinished` is the one predicate behind the header's "N in progress" and every nav badge.
 
 **Method badge mapping covers the slskd addon (issue #532)**: `methodForBackend` (`lib/download-groups.ts`) normalizes addon ids to their base method (`ytdlp-addon`→`ytdlp`, `bundled-archive`→`archive`, and — the cutover regression — `slskd`/`slskd-addon`→`slskd`); anything unmapped renders the `unknown` "?Unknown source" badge, which is exactly how every album-hunt card looked post-cutover while `BADGES.slskd` existed unused. Unmapped no longer means unnamed: `DownloadItem.backend` keeps the raw id, and `methodBadge(method, name)` names a third-party addon by its manifest (docs/source-agnostic-acquisition.md "Sources are named by their manifest").
 

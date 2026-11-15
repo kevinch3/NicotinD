@@ -343,7 +343,7 @@ export function acquireJobToDownloadItem(job: AcquireJob): DownloadItem {
   };
 }
 
-// Active stages first, terminal last; within a stage, most-recently-started first.
+// Active stages first, terminal last. Within a stage, newest first, except for waiting rows.
 const STAGE_ORDER: Record<PipelineStage, number> = {
   downloading: 0,
   organizing: 1,
@@ -354,6 +354,25 @@ const STAGE_ORDER: Record<PipelineStage, number> = {
   error: 5,
   done: 6,
 };
+
+/**
+ * Waiting rows run oldest first (the hunt queue is FIFO), so they sort that way: the next one to
+ * start heads its block, and a row only ever moves up. Newest first used to put it at the bottom,
+ * and the list reshuffled every time a hunt finished (#1938).
+ */
+const OLDEST_FIRST: ReadonlySet<PipelineStage> = new Set(['resolving', 'queued']);
+
+function byFeedOrder(a: DownloadItem, b: DownloadItem): number {
+  const byStage = STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage];
+  if (byStage !== 0) return byStage;
+  const age = (a.startedAt ?? 0) - (b.startedAt ?? 0);
+  return OLDEST_FIRST.has(a.stage) ? age : -age;
+}
+
+/** A card still in flight — the one count the Downloads header and every nav badge print (#1938). */
+export function isUnfinished(item: Pick<DownloadItem, 'stage'>): boolean {
+  return item.stage !== 'done' && item.stage !== 'error';
+}
 
 /**
  * Fold the unified acquisition jobs (`GET /api/downloads/jobs`) into the feed.
@@ -480,19 +499,11 @@ export function mergeAcquisitionJobs(
     });
   }
 
-  return merged.sort((a, b) => {
-    const byStage = STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage];
-    if (byStage !== 0) return byStage;
-    return (b.startedAt ?? 0) - (a.startedAt ?? 0);
-  });
+  return merged.sort(byFeedOrder);
 }
 
 /** Sort URL acquire jobs into the unified feed shape for the Active tab. */
 export function buildDownloadFeed(jobs: AcquireJob[]): DownloadItem[] {
   const items = jobs.map(acquireJobToDownloadItem);
-  return items.sort((a, b) => {
-    const byStage = STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage];
-    if (byStage !== 0) return byStage;
-    return (b.startedAt ?? 0) - (a.startedAt ?? 0);
-  });
+  return items.sort(byFeedOrder);
 }
