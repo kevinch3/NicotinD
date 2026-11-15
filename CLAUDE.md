@@ -72,6 +72,7 @@ bun run test             # Vitest across packages/ + src/
 bun run test:web         # Angular component tests (vitest, never `ng test`)
 bun run e2e              # Playwright suite — always run before declaring a feature done
 bun run e2e:tv           # Android TV emulator lane (real APK on an AVD)
+bun run e2e:phone        # Android phone emulator lane (touch + haptics)
 bun run format           # Prettier — .ts only, never Markdown/YAML
 bun run format:check     # CI gate
 bun run release          # Bump version, generate CHANGELOG, tag (:minor / :major to force)
@@ -206,6 +207,8 @@ bundle silently tests the previous code. → [e2e.md](docs/e2e.md),
   Playwright's `_android` API. It exists for the one thing Chromium structurally cannot model — a
   WebView has spatial navigation and desktop Chrome does not — plus hardware Back and a WebView-only
   smoke pass. → [e2e-tv-emulator.md](docs/e2e-tv-emulator.md)
+- **Android phone emulator lane** (`bun run e2e:phone`): the same lifecycle on a phone AVD, for real
+  touches and native haptics read from the vibrator's log. → [e2e-tv-emulator.md](docs/e2e-tv-emulator.md)
 - **TV bundle in Chromium** (`tv` project): the real TV route tree is a *build-time* fork, so it is
   served from its own `--configuration tv` build on a third server and screenshot-asserted on every
   PR; stamping `tv-build` on the phone bundle never renders it. → [e2e.md](docs/e2e.md)
