@@ -1872,6 +1872,13 @@ sums to the release.
 `unavailable` and `notOffered` are deliberately distinct: the first is a track the source *had* and
 could not deliver, the second one it never listed. Collapsing them would re-hide the thing this fixed.
 
+**A job the source has not itemised yet has no shortfall** (#1937). While a Get waits in the hunt
+queue, `expected` is 0, so `canonical - expected` printed the whole tracklist as missing. Prod
+2026-11-15: 22 resolving cards read `· 64 not offered` (R.E.M. *Monster*) before their hunt had run.
+`canonicalShortfall` returns null at `expected === 0`, which is the gate the server's
+`notOfferedTitles` already applies (`live.length === 0`). Without it, the card listed tracks as not
+offered while `canResource` said there was nothing to re-source.
+
 #### One denominator, and `expected` is not it (#1067)
 
 Whether a job may *grow its own scope* mid-flight — attach the not-offered titles to a second peer —

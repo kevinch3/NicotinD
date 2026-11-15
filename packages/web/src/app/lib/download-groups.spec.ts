@@ -263,6 +263,28 @@ describe('mergeAcquisitionJobs', () => {
       expect(card.canonicalTotal).toBeUndefined();
       expect(card.notOffered).toBeUndefined();
     });
+
+    /**
+     * #1937. Before the source has itemised the job, it has not declined
+     * anything. The server's `notOfferedTitles` already applies this gate.
+     * Without it, a resolving *Monster* read "64 not offered" before its hunt ran.
+     */
+    it.each(['resolving', 'error'] as const)(
+      'reports no shortfall on a %s job the source never itemised',
+      (stage) => {
+        const card = mergeAcquisitionJobs(
+          [],
+          [
+            acqJob({
+              stage,
+              progress: { expected: 0, delivered: 0, unavailable: 0, failed: 0, canonical: 64 },
+            }),
+          ],
+        )[0]!;
+        expect(card.notOffered).toBeUndefined();
+        expect(card.canonicalTotal).toBeUndefined();
+      },
+    );
   });
 
   /**
