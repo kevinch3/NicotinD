@@ -1,6 +1,6 @@
 # Player panel: one snap-point state machine (design proposal)
 
-**Status: decided (owner, 2026-11-09); #1678 and #1679 built (see "Built so far").** This is Step 0 of #1651 (sub-issue #1677). It
+**Status: decided (owner, 2026-11-09); #1678, #1679 and #1680 built (see "Built so far").** This is Step 0 of #1651 (sub-issue #1677). It
 unblocks #1678 (pure state machine), #1679 (full height, and the pull-down past rest), #1680 (karaoke fold) and #1681 (tab registration
 and coverage), and it coordinates with #1668 (the shared tab component). Nothing here describes
 shipped behaviour except the "Today" sections, and each claim there cites `file:line` on `master`
@@ -480,3 +480,12 @@ below as the record of what was weighed. D3 A's "three fixed snaps" became two b
   the panel 1:1 with the finger: the first ~70 px of a pull would have moved nothing, and `full`
   would have landed short of the top. Not built: reading the rendered `lift` to catch a settle
   mid-flight (`gestureBaseLift`); a pull during the 300 ms settle starts from the target snap.
+- **#1680, karaoke folds in:** `karaokeFullscreen` is `computed(tab === 'lyrics' && snap === 'full')`
+  (kept under its old name for the template and TV-shared readers; §3's `karaokeActive`). The
+  lyrics corner button and karaoke's ✕ go through `setPanelState`; Back is the generic `full → rest`.
+  The guard that switched the gesture off under karaoke is gone below `lg`. The overlay stays a
+  `fixed inset-0` sibling of the panel rather than moving into the frame, inside a
+  `data-np-zone="panel"` wrapper that follows the pull, so the component and TV are untouched.
+  Browse enters on `wheel`, the keyboard toggle and the body swipe's `onRelease`, never on an owned
+  `touchmove`. `resolveLyricsScrollContainer` stays for now; moving the auto-scroll into the tab is
+  rule 4 of the tab contract (#1681).

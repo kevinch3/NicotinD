@@ -127,7 +127,6 @@
   <div
     class="relative z-10 flex-1 min-h-0 flex flex-col items-center justify-center px-4 overflow-hidden"
     (wheel)="interaction.emit()"
-    (touchmove)="interaction.emit()"
   >
     @if (loading()) {
       <p class="text-lg text-white/40">{{ 'nowPlaying.loadingLyrics' | t }}</p>

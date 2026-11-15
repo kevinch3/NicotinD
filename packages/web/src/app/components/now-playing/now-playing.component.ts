@@ -199,9 +199,11 @@ export class NowPlayingComponent {
     'karaoke-line-anim-a',
   );
 
-  // Fullscreen karaoke overlay (the in-place lyrics panel is always open when
-  // lyricsOpen is true; this flag expands it to a gradient-covered immersive view).
-  readonly karaokeFullscreen = signal(false);
+  // Karaoke is the Lyrics tab at `full` (#1680, D5): no flag of its own, so it
+  // cannot disagree with the panel state that is persisted and restored.
+  readonly karaokeFullscreen = computed(
+    () => this.panelState().tab === 'lyrics' && this.panelSnap() === 'full',
+  );
   /** Dominant colors extracted from the current track's cover art. */
   readonly coverColors = signal<CoverPalette>(DEFAULT_PALETTE);
   /** The in-place lyrics panel child — its own `lyricsScrollRef` (an internal
@@ -327,6 +329,9 @@ export class NowPlayingComponent {
       this.bodyMode.set('idle');
       this.pull = null;
       this.panelDragLift.set(null);
+      // In karaoke, a swipe the panel did not own (up, or sideways) is a
+      // reach for the lyrics: browse them (§3).
+      if (this.karaokeFullscreen()) this.browse.interact();
     },
   });
   readonly dragging = this.bodySwipe.dragging;
@@ -387,7 +392,9 @@ export class NowPlayingComponent {
   onBodyPointerDown(event: PointerEvent): void {
     // A fresh press is a fresh tap: a drag's click window never outlives it.
     this.gestureEndedAt = Number.NEGATIVE_INFINITY;
-    if (this.karaokeFullscreen()) return;
+    // Beside the side column a down-pull would close the whole sheet from
+    // karaoke; there it keeps its ✕ and Back, as before #1680.
+    if (this.karaokeFullscreen() && this.lg()) return;
     const target = event.target;
     const origin = gestureOrigin(target);
     if (origin instanceof Element && origin.closest(NowPlayingComponent.BODY_NO_SWIPE)) return;
@@ -415,7 +422,12 @@ export class NowPlayingComponent {
   readonly lg = signal(isDesktopSheet());
   /** The snap this width shows: the side column has no `full` yet (§5). */
   readonly panelSnap = computed(() =>
-    effectiveSnap(this.panelState(), { lg: this.lg(), fullAtLg: false }),
+    effectiveSnap(this.panelState(), {
+      lg: this.lg(),
+      // Karaoke covers the sheet at every width; a full queue beside the side
+      // column buys nothing (§5).
+      fullAtLg: this.panelState().tab === 'lyrics',
+    }),
   );
   /** `lift` at `full`, measured from the live layout when the panel moves. */
   readonly panelFullLiftPx = signal(0);
@@ -435,6 +447,11 @@ export class NowPlayingComponent {
     return up === 0 ? 0 : -up;
   });
   readonly panelFull = computed(() => this.panelSnap() === 'full');
+  /** Karaoke rides the pull down from `full` like the panel frame does. */
+  readonly karaokeOffsetPx = computed(() => {
+    const drag = this.panelDragLift();
+    return drag === null ? 0 : Math.max(0, this.panelFullLiftPx() - drag);
+  });
   /** The covered stage leaves the tab order at a settled `full` (§7). */
   readonly stageInert = computed(() => this.panelFull() && this.panelDragLift() === null);
   /** Cover art max-width (px). The panel covers the cover rather than shrinking it. */
@@ -475,18 +492,28 @@ export class NowPlayingComponent {
     if (next.snap === 'full' && prev.snap !== 'full') {
       this.panelFullLiftPx.set(this.measurePanelGeometry().fullLiftPx);
     }
+    const wasKaraoke = this.karaokeFullscreen();
     this.panelState.set(next);
-    // Leaving lyrics must also leave karaoke fullscreen, or the overlay
-    // outlives the panel behind it and there is no way back to the queue.
-    if (next.tab !== 'lyrics') this.karaokeFullscreen.set(false);
     persistPanelState(NowPlayingComponent.storage(), next);
+    // Here, not in an effect: an effect never sees an enter and exit in one tick.
+    if (this.karaokeFullscreen() !== wasKaraoke) this.onKaraokeChanged(!wasKaraoke);
+  }
+
+  /** Karaoke starts in auto-follow; entering focuses it so the arrows work at once. */
+  private onKaraokeChanged(entered: boolean): void {
+    this.browse.leave();
+    if (!entered) return;
+    const track = this.player.currentTrack();
+    if (track) this.extractColorsOnce(track);
+    setTimeout(() => this.karaokeFullscreenPanel()?.overlayRef()?.nativeElement.focus(), 0);
   }
 
   /** A discrete panel event (tab tap, notch, keys, Back), through the machine. */
   panelEvent(event: PanelEvent): boolean {
-    // The side column has no `full` for these tabs: the active tab is a no-op.
-    if (this.lg() && event.type !== 'tap-tab' && event.type !== 'back') return false;
-    if (this.lg() && event.type === 'tap-tab' && event.tab === this.panelState().tab) return false;
+    // The side column has no `full` for the queue: its active tab is a no-op.
+    const queueAtLg = this.lg() && this.panelState().tab !== 'lyrics';
+    if (queueAtLg && event.type !== 'tap-tab' && event.type !== 'back') return false;
+    if (queueAtLg && event.type === 'tap-tab' && event.tab === this.panelState().tab) return false;
     const { state, consumed } = transition(this.panelState(), event);
     if (consumed) this.setPanelState(state);
     return consumed;
@@ -630,11 +657,7 @@ export class NowPlayingComponent {
     // Persistent + state-checked so transient overlays (menus, track info)
     // pushed while open always sit above it on the stack.
     const unregisterBack = this.backButton.stack.push(() => {
-      if (this.karaokeFullscreen()) {
-        this.karaokeFullscreen.set(false);
-        return true;
-      }
-      // A `full` panel comes down to `rest` before the sheet closes.
+      // A `full` panel (karaoke included) comes down to `rest` before the sheet closes.
       if (this.player.nowPlayingOpen() && this.panelEvent({ type: 'back' })) return true;
       if (this.player.nowPlayingOpen()) {
         this.player.setNowPlayingOpen(false);
@@ -740,19 +763,13 @@ export class NowPlayingComponent {
     });
   }
 
+  /** The lyrics panel's expand button and karaoke's ✕: Lyrics at `full` ↔ `rest`. */
   toggleKaraokeFullscreen(): void {
-    const entering = !this.karaokeFullscreen();
-    this.karaokeFullscreen.set(entering);
-    this.browse.leave();
-    if (entering) {
-      // Ensure lyrics stay loaded — through setActivePanel so the persisted
-      // choice matches what is actually on screen (issue #446).
-      if (!this.lyricsOpen()) this.setActivePanel('lyrics');
-      // Re-extract colors if needed
-      const track = this.player.currentTrack();
-      if (track) this.extractColorsOnce(track);
-      setTimeout(() => this.karaokeFullscreenPanel()?.overlayRef()?.nativeElement.focus(), 0);
+    if (this.karaokeFullscreen()) {
+      this.setPanelState({ ...this.panelState(), snap: 'rest' });
+      return;
     }
+    this.setPanelState({ tab: 'lyrics', snap: 'full' });
   }
 
   /** A track's cover, resolved, at its album's live cover rev (#1666). */

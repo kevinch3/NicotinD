@@ -84,7 +84,7 @@
 
       </div>
 
-      @if (!isTv && !karaokeFullscreen()) {
+      @if (!isTv) {
         <!-- Splitter (lg only): the border between the columns, draggable and
              keyboard-operable; double-click resets. touch-none so a mouse-less
              tablet at lg can drag it too. -->
@@ -214,6 +214,15 @@
     </div>
 
     @if (karaokeFullscreen()) {
+      <!-- Karaoke is the Lyrics tab at full (#1680). The wrapper is a panel zone,
+           so a pull down on the follow view brings it back to rest (and rides the
+           finger), while the browse list scrolls natively until its top. -->
+      <div
+        data-np-zone="panel"
+        data-testid="karaoke-zone"
+        [class]="'fixed inset-0 z-[70] ' + (panelDragLift() === null ? 'transition-transform duration-300 ease-out motion-reduce:transition-none' : 'transition-none')"
+        [style.transform]="karaokeOffsetPx() ? 'translateY(' + karaokeOffsetPx() + 'px)' : null"
+      >
       <app-now-playing-karaoke-fullscreen
         [colors]="coverColors()"
         [title]="track.title"
@@ -249,6 +258,7 @@
         (nextClicked)="handleNext()"
         (prevClicked)="handlePrev()"
       />
+      </div>
     }
   </div>
 }

@@ -734,6 +734,57 @@ describe('NowPlayingComponent', () => {
         expect(setOpen).toHaveBeenCalledWith(false);
       });
 
+      it('karaoke is Lyrics at full: in by the tab or the notch, out by Back (#1680)', () => {
+        const { fixture, playerStub } = setup();
+        const c = fixture.componentInstance;
+        geometry(c);
+        playerStub.nowPlayingOpen.set(true);
+        c.onTabSelected('lyrics'); // switch, at rest
+        expect(c.karaokeFullscreen()).toBe(false);
+        c.onTabSelected('lyrics'); // the active tab: full
+        expect(c.karaokeFullscreen()).toBe(true);
+        c.onNotchClick(); // back to rest
+        expect(c.karaokeFullscreen()).toBe(false);
+        c.toggleKaraokeFullscreen(); // the lyrics panel's expand button
+        expect(c.panelState()).toEqual({ tab: 'lyrics', snap: 'full' });
+        const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
+        const back = TestBed.inject(BackButtonService);
+        expect(back.stack.handleBack()).toBe(true);
+        expect(c.karaokeFullscreen()).toBe(false);
+        expect(setOpen).not.toHaveBeenCalled();
+      });
+
+      it('the Queue tab from karaoke shows the queue at full, not karaoke', () => {
+        const c = setup().fixture.componentInstance;
+        geometry(c);
+        c.panelState.set({ tab: 'lyrics', snap: 'full' });
+        c.onTabSelected('queue');
+        expect(c.panelState()).toEqual({ tab: 'queue', snap: 'full' });
+        expect(c.karaokeFullscreen()).toBe(false);
+      });
+
+      it('restores karaoke from storage, so the next open lands in it', () => {
+        localStorage.setItem(
+          'nicotind:np-panel',
+          JSON.stringify({ v: 1, tab: 'lyrics', snap: 'full' }),
+        );
+        expect(setup().fixture.componentInstance.karaokeFullscreen()).toBe(true);
+      });
+
+      it('at lg Lyrics still reaches karaoke, which covers the sheet at every width', () => {
+        (window as { matchMedia?: unknown }).matchMedia = (q: string) => ({
+          matches: q.includes('1024px'),
+        });
+        try {
+          const c = setup().fixture.componentInstance;
+          c.onTabSelected('lyrics');
+          c.onTabSelected('lyrics');
+          expect(c.karaokeFullscreen()).toBe(true);
+        } finally {
+          delete (window as { matchMedia?: unknown }).matchMedia;
+        }
+      });
+
       it('at lg the active tab is a no-op: the side column has no `full` (§5)', () => {
         (window as { matchMedia?: unknown }).matchMedia = (q: string) => ({
           matches: q.includes('1024px'),
@@ -847,13 +898,15 @@ describe('NowPlayingComponent', () => {
       expect(el.querySelector('[data-testid="now-playing-compact-transport"]')).toBeNull();
     });
 
-    it('is absent while karaoke fullscreen is active', () => {
+    it('stays mounted under karaoke, which covers it (#1680)', () => {
       const { fixture } = setupWithTrack();
       fixture.componentInstance.toggleKaraokeFullscreen();
       fixture.detectChanges();
-      expect(
-        fixture.nativeElement.querySelector('[data-testid="now-playing-queue-resize"]'),
-      ).toBeNull();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="now-playing-queue-resize"]')).not.toBeNull();
+      expect(el.querySelector('[data-testid="karaoke-zone"]')!.getAttribute('data-np-zone')).toBe(
+        'panel',
+      );
     });
   });
 
@@ -981,17 +1034,17 @@ describe('NowPlayingComponent', () => {
       expect(fixture.nativeElement.querySelector('app-now-playing-queue-panel')).toBeNull();
     });
 
-    it('shows the karaoke fullscreen component instead of the lyrics panel when karaokeFullscreen is set', () => {
+    it('shows karaoke over the lyrics panel when Lyrics is at full (#1680)', () => {
       const { fixture, playerStub } = setup();
       playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
       fixture.detectChanges();
-      fixture.componentInstance.setActivePanel('lyrics');
-      fixture.componentInstance.karaokeFullscreen.set(true);
+      fixture.componentInstance.panelState.set({ tab: 'lyrics', snap: 'full' });
       fixture.detectChanges();
       expect(
         fixture.nativeElement.querySelector('app-now-playing-karaoke-fullscreen'),
       ).toBeTruthy();
-      expect(fixture.nativeElement.querySelector('app-now-playing-lyrics-panel')).toBeNull();
+      // The panel stays mounted underneath, so leaving karaoke is a move, not a remount.
+      expect(fixture.nativeElement.querySelector('app-now-playing-lyrics-panel')).toBeTruthy();
     });
 
     it('returns to the queue view when the Queue tab is selected after Lyrics', () => {
@@ -1262,10 +1315,45 @@ describe('NowPlayingComponent', () => {
       expect(component.dragging()).toBe(false);
     });
 
-    it('never starts while karaoke fullscreen owns the screen', () => {
+    it('in karaoke, a pull down on its zone brings Lyrics back to rest (#1680)', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      geometry(component);
+      component.panelState.set({ tab: 'lyrics', snap: 'full' });
+      component.panelFullLiftPx.set(400);
+      const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
+      const { row } = panelZone(0); // the karaoke wrapper is a panel zone
+
+      component.onBodyPointerDown(pointer('pointerdown', 100, { target: row }));
+      move(250);
+      expect(component.karaokeOffsetPx()).toBe(150); // it rides the finger
+      expect(component.karaokeBrowsing()).toBe(false); // an owned pull is not a browse
+      up(250);
+      expect(component.karaokeFullscreen()).toBe(false);
+      expect(component.panelState()).toEqual({ tab: 'lyrics', snap: 'rest' });
+      expect(setOpen).not.toHaveBeenCalled();
+    });
+
+    it('in karaoke, a swipe the panel does not own browses the lyrics', () => {
       const { fixture } = setup();
       const component = fixture.componentInstance;
-      component.karaokeFullscreen.set(true);
+      geometry(component);
+      component.panelState.set({ tab: 'lyrics', snap: 'full' });
+      const { row } = panelZone(0);
+      component.onBodyPointerDown(pointer('pointerdown', 300, { target: row }));
+      move(200); // up at full: released to native scroll
+      expect(component.dragging()).toBe(false);
+      expect(component.karaokeBrowsing()).toBe(true);
+    });
+
+    it('beside the side column, karaoke keeps no pull: ✕ and Back close it', () => {
+      (window as { matchMedia?: unknown }).matchMedia = (q: string) => ({
+        matches: q.includes('1024px'),
+      });
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.panelState.set({ tab: 'lyrics', snap: 'full' });
+      expect(component.karaokeFullscreen()).toBe(true);
       component.onBodyPointerDown(pointer('pointerdown', 100));
       expect(component.dragging()).toBe(false);
     });
