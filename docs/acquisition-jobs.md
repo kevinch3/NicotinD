@@ -280,7 +280,9 @@ rows it exists to catch.
   `jobMetaForTransfer`), with the legacy `(username, directory)` `album_jobs`
   match kept one release as fallback for pre-migration active downloads.
 - **`GET /api/downloads/jobs`**: unified job feed (`listJobFeed`), newest
-  first, with per-state progress
+  first: **every active job** plus the newest 50 finished ones. The limit used to bound the
+  whole feed, and on 2026-11-15 6 of prod's 13 running jobs sat behind 50 newer finished ones,
+  absent from Activity and uncancellable there (#1942). The feed comes with per-state progress
   (`{ expected, delivered, unavailable, failed }`), a deep-linkable
   `albumId`, and per-track `items: { title, status: TrackStatus }[]` — each
   `acquisition_job_items.state` (`downloading|completed|organized|scanned|
