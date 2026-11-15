@@ -142,6 +142,36 @@ function canonicalWords(title: string): string[] {
 }
 
 /**
+ * A tracklist title's words without its bracketed subtitle ("New Genious
+ * (Brother)" → "new genious"), or null when it has none (#1873). Only brackets
+ * go: `stripTitleQualifiers` also cuts at a bare "with", which is a title word
+ * in "Dancing with Myself".
+ */
+function coreWords(title: string): string[] | null {
+  const core = canonicalWords(title.replace(/\([^)]*\)|\[[^\]]*\]|\{[^}]*\}/g, ' '));
+  return core.length && core.join(' ') !== canonicalWords(title).join(' ') ? core : null;
+}
+
+/**
+ * A file that matches only a title's core counts for less than any full match,
+ * so "Song.flac" stays "Song" and never also stands for "Song (Reprise)".
+ */
+const CORE_WEIGHT = 0.9;
+
+/**
+ * How closely a file carries a title's core alone, 0 when the title has no
+ * bracketed subtitle — the symmetric {@link pairScore}, never the one-sided
+ * overlap, so "Latin Simone" is not found in "Latin Simone Remix Party".
+ */
+export function fileCoreScore(title: string, filename: string): number {
+  const core = coreWords(title);
+  if (!core) return 0;
+  let best = 0;
+  for (const cand of fileTitleCandidates(filename)) best = Math.max(best, pairScore(core, cand));
+  return best;
+}
+
+/**
  * The titles a peer filename may carry: its whole basename, and every suffix
  * after a ` - ` separator — so `07 Paulina Rubio - Sexy Dance` and
  * `Molotov - 02 - Molotov Coktail Party` offer the bare title too. Each
@@ -214,6 +244,8 @@ export interface FileTitleMatch<T> {
  *    one — a file that is really an owned neighbouring track ("Arpeggiator
  *    Stories Continued", track 4) is never taken for the wanted one (track 3).
  *    A tie between two different titles is ambiguous and taken for neither.
+ *    A title's core (its bracketed subtitle dropped) also matches, below any
+ *    full match: "04. New Genious" carries "New Genious (Brother)" (#1873).
  * 2. Each wanted title keeps only its closest file — never also the superset.
  *
  * Returned in folder order. With no `canonical`, the wanted titles are the
@@ -228,16 +260,20 @@ export function matchFilesToTitles<T extends { filename: string }>(
   wanted: string[],
   canonical: string[] = [],
 ): FileTitleMatch<T>[] {
-  const pool = new Map<string, { title: string; words: string[]; wanted: boolean }>();
+  const pool = new Map<
+    string,
+    { title: string; words: string[]; core: string[] | null; wanted: boolean }
+  >();
   for (const t of wanted) {
     const words = canonicalWords(t);
     const key = words.join(' ');
-    if (key && !pool.has(key)) pool.set(key, { title: t, words, wanted: true });
+    if (key && !pool.has(key)) pool.set(key, { title: t, words, core: coreWords(t), wanted: true });
   }
   for (const t of canonical) {
     const words = canonicalWords(t);
     const key = words.join(' ');
-    if (key && !pool.has(key)) pool.set(key, { title: t, words, wanted: false });
+    if (key && !pool.has(key))
+      pool.set(key, { title: t, words, core: coreWords(t), wanted: false });
   }
   const wholeAlbum = canonical.length > 0 && [...pool.values()].every((e) => e.wanted);
   const assigned: Array<FileTitleMatch<T> & { key: string; index: number }> = [];
@@ -248,7 +284,10 @@ export function matchFilesToTitles<T extends { filename: string }>(
     let tied = false;
     for (const [key, entry] of pool) {
       let score = 0;
-      for (const c of cands) score = Math.max(score, pairScore(entry.words, c));
+      for (const c of cands) {
+        score = Math.max(score, pairScore(entry.words, c));
+        if (entry.core) score = Math.max(score, pairScore(entry.core, c) * CORE_WEIGHT);
+      }
       if (score === 0) continue;
       if (score > bestScore) {
         bestKey = key;

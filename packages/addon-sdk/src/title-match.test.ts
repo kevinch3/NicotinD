@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   fileCarriesTitle,
+  fileCoreScore,
   filesMatchingTitles,
   fileTitleScore,
   foldTitleText,
@@ -339,5 +340,46 @@ describe('a tracklist title that starts with a number (#1872)', () => {
     ]);
     expect(matchFilesToTitles(files, ['19-2000'], ['19-2000', '5/4', 'Re-Hash'])).toHaveLength(1);
     expect(fileTitleScore('99 Luftballons', '99 Luftballons.mp3')).toBe(1);
+  });
+});
+
+describe('a tracklist title with a bracketed subtitle the file omits (#1873)', () => {
+  it("scores a file against the title's core", () => {
+    expect(fileCoreScore('New Genious (Brother)', '04. New Genious.mp3')).toBe(1);
+    expect(
+      fileCoreScore('Latin Simone (¿Qué pasa contigo?)', '12 Gorillaz - Latin Simone.mp3'),
+    ).toBe(1);
+    expect(fileCoreScore('Clint Eastwood', 'Clint Eastwood.mp3')).toBe(0);
+    expect(fileCoreScore('Latin Simone (¿Qué pasa contigo?)', 'Latin Simone Remix Party.mp3')).toBe(
+      0,
+    );
+    expect(fileCoreScore('Dancing with Myself', 'Dancing.mp3')).toBe(0);
+  });
+
+  it('assigns the subtitle-less file to its track at enqueue time', () => {
+    const titles = ['New Genious (Brother)', 'Sound Check (Gravity)', 'Punk'];
+    const files = [
+      { filename: 'G\\04. New Genious.mp3' },
+      { filename: 'G\\08. Sound Check.mp3' },
+      { filename: 'G\\07. Punk.mp3' },
+    ];
+    expect(matchFilesToTitles(files, titles, titles).map((m) => m.title)).toEqual([
+      'New Genious (Brother)',
+      'Sound Check (Gravity)',
+      'Punk',
+    ]);
+    expect(
+      matchFilesToTitles(files, ['Sound Check (Gravity)'], titles).map((m) => m.title),
+    ).toEqual(['Sound Check (Gravity)']);
+  });
+
+  it('never takes "Song" for a wanted "Song (Reprise)"', () => {
+    const files = [{ filename: 'A\\01 Song.flac' }];
+    expect(matchFilesToTitles(files, ['Song (Reprise)'], ['Song', 'Song (Reprise)'])).toEqual([]);
+    expect(
+      matchFilesToTitles(files, ['Song', 'Song (Reprise)'], ['Song', 'Song (Reprise)']).map(
+        (m) => m.title,
+      ),
+    ).toEqual(['Song']);
   });
 });
