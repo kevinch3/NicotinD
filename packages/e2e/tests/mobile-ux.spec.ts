@@ -969,6 +969,21 @@ test.describe('mobile UX', () => {
     await expect(page.getByTestId('now-playing-heading')).not.toBeInViewport();
   });
 
+  // Karaoke is panel state like any other (#1680), so it is restored too:
+  // the sheet boots closed, and the next open lands back in karaoke.
+  test('karaoke survives a reload through the same panel state', async ({ page }) => {
+    await openNowPlaying(page);
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    await page.getByTestId('now-playing-tab-lyrics').click(); // the active tab: full
+    await expect(page.getByTestId('karaoke-overlay')).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId('player-title')).toBeVisible();
+    // The sheet boots closed: parked below the viewport, karaoke with it.
+    await expect(page.getByTestId('karaoke-overlay')).not.toBeInViewport();
+    await page.getByTestId('player-title').click();
+    await expect(page.getByTestId('karaoke-overlay')).toBeInViewport();
+  });
+
   test('full height survives a reload, and the next open lands there', async ({ page }) => {
     await openNowPlaying(page);
     await page.getByTestId('now-playing-tab-queue').click();

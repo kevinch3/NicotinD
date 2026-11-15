@@ -73,6 +73,8 @@ import { KaraokeBrowseMode } from '../../lib/karaoke-browse';
 import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 import { HapticDirective } from '../../directives/haptic.directive';
+import { NgComponentOutlet } from '@angular/common';
+import { PLAYER_PANEL_TABS } from './player-panel-tabs';
 
 /** The `lg:` side-panel layout, where a vertical panel resize has nothing to do. */
 function isDesktopSheet(): boolean {
@@ -84,6 +86,7 @@ function isDesktopSheet(): boolean {
   imports: [
     OverflowRevealDirective,
     HapticDirective,
+    NgComponentOutlet,
     NowPlayingHeaderComponent,
     NowPlayingCoverArtComponent,
     NowPlayingTransportComponent,
@@ -408,11 +411,22 @@ export class NowPlayingComponent {
   // whether it rests under the transport or covers the sheet at `full`.
   // Persisted as one key; the two pre-#1679 keys migrate on first read.
   private static readonly COVER_MAX_PX = 320; // matches Tailwind max-w-80 (20rem)
-  private static readonly PANEL_TABS = ['queue', 'lyrics'] as const;
+  /** The registered tabs (#1681): the strip, the `lg` rule and the full chrome read them. */
+  readonly panelTabs = inject(PLAYER_PANEL_TABS);
   readonly panelState = signal<PanelState>(
-    restorePanelState(NowPlayingComponent.storage(), NowPlayingComponent.PANEL_TABS),
+    restorePanelState(
+      NowPlayingComponent.storage(),
+      this.panelTabs.map((t) => t.id),
+    ),
   );
-  readonly activePanel = computed(() => (this.panelState().tab === 'lyrics' ? 'lyrics' : 'queue'));
+  readonly activePanel = computed(() => this.panelState().tab);
+  readonly activeTab = computed(
+    () => this.panelTabs.find((t) => t.id === this.panelState().tab) ?? this.panelTabs[0],
+  );
+  /** D6: a full panel whose tab asks for it keeps play/pause and next above it. */
+  readonly showCompactTransport = computed(
+    () => this.panelFull() && this.activeTab()?.full.chrome === 'compact-transport',
+  );
   // DERIVED from the panel state, not a second writable signal (issue #446):
   // karaoke used to open lyrics by writing a flag of its own, and the panel
   // that got persisted disagreed with the one on screen.
@@ -426,7 +440,7 @@ export class NowPlayingComponent {
       lg: this.lg(),
       // Karaoke covers the sheet at every width; a full queue beside the side
       // column buys nothing (§5).
-      fullAtLg: this.panelState().tab === 'lyrics',
+      fullAtLg: !!this.activeTab()?.full.atLg,
     }),
   );
   /** `lift` at `full`, measured from the live layout when the panel moves. */
@@ -510,16 +524,16 @@ export class NowPlayingComponent {
 
   /** A discrete panel event (tab tap, notch, keys, Back), through the machine. */
   panelEvent(event: PanelEvent): boolean {
-    // The side column has no `full` for the queue: its active tab is a no-op.
-    const queueAtLg = this.lg() && this.panelState().tab !== 'lyrics';
-    if (queueAtLg && event.type !== 'tap-tab' && event.type !== 'back') return false;
-    if (queueAtLg && event.type === 'tap-tab' && event.tab === this.panelState().tab) return false;
+    // A tab with no `full` beside the side column: its active tab is a no-op.
+    const noFullHere = this.lg() && !this.activeTab()?.full.atLg;
+    if (noFullHere && event.type !== 'tap-tab' && event.type !== 'back') return false;
+    if (noFullHere && event.type === 'tap-tab' && event.tab === this.panelState().tab) return false;
     const { state, consumed } = transition(this.panelState(), event);
     if (consumed) this.setPanelState(state);
     return consumed;
   }
 
-  onTabSelected(tab: 'queue' | 'lyrics'): void {
+  onTabSelected(tab: string): void {
     this.panelEvent({ type: 'tap-tab', tab });
   }
 
@@ -646,7 +660,7 @@ export class NowPlayingComponent {
   }
 
   /** Switch the panel's tab, keeping its snap (karaoke, Q / Y). */
-  setActivePanel(panel: 'queue' | 'lyrics'): void {
+  setActivePanel(panel: string): void {
     this.setPanelState({ ...this.panelState(), tab: panel });
   }
 
