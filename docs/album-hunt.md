@@ -261,7 +261,10 @@ deluxe one for one-click Get.
 - **Deliberately unchanged**: `metadata-optimize` still assigns track numbers from the full listing,
   where a superset of titles only helps the match. A job's stored `canonical_tracks_json` is written
   once, at reservation, so jobs created before this change keep the box-set list they were made
-  with.
+  with. `scripts/recompute-job-canonical.ts` (a dry run unless given `--apply`, last 24 h by default)
+  rewrites the ones whose stored list is exactly the monitored listing, which is what the old code
+  wrote. A hand-picked deluxe job stores the standard tracks plus its extras, so the script leaves
+  it alone. Run it before turning auto-complete back on, or that job's box-set gap is hunted.
 
 ---
 
