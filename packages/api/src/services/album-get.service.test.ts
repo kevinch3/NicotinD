@@ -335,3 +335,83 @@ describe('AlbumGetService — the standard edition (#1936)', () => {
     expect(JSON.parse(row!.canonical_tracks_json)).toEqual(['Song One', 'Song Two']);
   });
 });
+
+/**
+ * #1938. A bulk Get waits its turn in this service's hunt queue, about 20 s a
+ * search on prod, and the card used to say only "Resolving link…". It now
+ * reads where the job is: how many searches are ahead, its own search, or the
+ * retry after the source could not search.
+ */
+describe('AlbumGetService.queueStatus (#1938)', () => {
+  function service(albumsSearch: () => Promise<unknown>, now = () => 1_000) {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const client = {
+      baseUrl: 'http://addon:9999',
+      albumsSearch,
+      createJob: async () => ({ id: 'aj-1', intent: 'album', items: [] }),
+    } as unknown as AddonClient;
+    // One title per id: the same name would be the same album to the duplicate guard (#1539).
+    const lidarr = {
+      album: {
+        get: async (id: number) => ({ title: `Album ${id}`, artist: { artistName: 'Artist' } }),
+      },
+      track: { listByAlbum: async () => [{ title: 'Song One' }] },
+    } as unknown as Lidarr;
+    const timers: Array<{ fn: () => void; ms: number }> = [];
+    const svc = new AlbumGetService({
+      db,
+      lidarr,
+      getAddon: () => new RemoteAddonPlugin(MANIFEST, client),
+      schedule: (fn, ms) => timers.push({ fn, ms }),
+      now,
+    });
+    return { svc, timers };
+  }
+  const get = async (svc: AlbumGetService, lidarrAlbumId: number) => {
+    const answer = await svc.request({ lidarrAlbumId, userId: 'u1' });
+    if (answer.status !== 'accepted') throw new Error(answer.status);
+    return answer.jobId;
+  };
+
+  it('reads a running search, and how many are ahead of a waiting one', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const { svc } = service(async () => {
+      await held;
+      return FOUND;
+    });
+    const first = await get(svc, 1);
+    const second = await get(svc, 2);
+    const third = await get(svc, 3);
+
+    expect(svc.queueStatus(first)?.state).toBe('searching');
+    expect(svc.queueStatus(second)).toMatchObject({ state: 'waiting', ahead: 1 });
+    expect(svc.queueStatus(third)).toMatchObject({ state: 'waiting', ahead: 2 });
+    release();
+    await svc.settled(first);
+  });
+
+  it('reads the retry after the source could not search, and forgets it once retried', async () => {
+    const { svc, timers } = service(
+      async () => OFFLINE,
+      () => 5_000,
+    );
+    const jobId = await get(svc, 1);
+    await svc.settled(jobId);
+
+    expect(svc.queueStatus(jobId)).toEqual({
+      state: 'retrying',
+      retryAt: 5_000 + timers[0]!.ms,
+    });
+    timers[0]!.fn();
+    expect(svc.queueStatus(jobId)?.state).not.toBe('retrying');
+  });
+
+  it('has nothing for a job the source already has', async () => {
+    const { svc } = service(async () => FOUND);
+    const jobId = await get(svc, 1);
+    await svc.settled(jobId);
+    expect(svc.queueStatus(jobId)).toBeNull();
+  });
+});

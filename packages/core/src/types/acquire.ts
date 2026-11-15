@@ -52,6 +52,16 @@ export type AcquisitionJobKind =
  * searches, URL acquires — is wrapped in one of these; the transfer↔job
  * linkage is stored at enqueue time (see docs/acquisition-jobs.md).
  */
+/**
+ * Where a reserved Get waits before its source is asked (#1938): its turn in core's hunt queue
+ * (`ahead` hunts in front of it), its own search running, or a retry scheduled after the source
+ * could not search.
+ */
+export type JobQueueStatus =
+  | { state: 'waiting'; ahead: number; etaMs: number }
+  | { state: 'searching'; etaMs: number }
+  | { state: 'retrying'; retryAt: number };
+
 export interface AcquisitionJobView {
   id: string;
   kind: AcquisitionJobKind;
@@ -176,6 +186,8 @@ export interface AcquisitionJobView {
    * scan lands: it names a finished card and backs the "View N albums" menu.
    */
   destinationAlbums: AcquireAlbumDestination[];
+  /** A reserved Get's place before its source is asked; only on a `resolving` row (#1938). */
+  queue?: JobQueueStatus;
 }
 
 export interface AcquireJob {

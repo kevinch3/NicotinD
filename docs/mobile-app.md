@@ -339,9 +339,13 @@ had its first tap (sticky activation) — and a touch `pointerdown` grants none,
 hits is a hold that is the very first touch after load. Native shells are unaffected. Auto-preserve is
 background work and never ticks. Out of scope: scrolling, hover, anything per frame.
 
+**What the emulator checks.** `bun run e2e:phone` drives the real APK on a phone AVD whose virtual
+vibrator logs every request. It asserts one `TOUCH` vibration per committed swipe-to-skip and none for a
+cancelled swipe ([e2e-tv-emulator.md](e2e-tv-emulator.md) "The phone lane").
+
 **What still needs a device.** The feel of every row of the table on Android and iOS (tune
-`HAPTIC_MAP` and record the values here), one tick per committed skip, and no tick on a short tap of a
-tile under Reduced.
+`HAPTIC_MAP` and record the values here), anything at all on iOS (the Simulator plays no haptics), and
+no tick on a short tap of a tile under Reduced.
 
 ## Capacitor version
 

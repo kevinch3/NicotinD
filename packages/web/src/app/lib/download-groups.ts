@@ -2,6 +2,7 @@ import type {
   AcquireJob,
   AcquisitionJobView,
   AcquisitionMethod,
+  JobQueueStatus,
   PipelineStage,
   TrackStatus,
 } from '@nicotind/core';
@@ -104,6 +105,8 @@ export interface DownloadItem {
   canonicalTotal?: number;
   /** Tracks the release has that this source never offered — renders "· K not offered". */
   notOffered?: number;
+  /** A reserved Get's place in core's hunt queue, while it waits for its source (#1938). */
+  queue?: JobQueueStatus;
   /**
    * Whether the denominator is a fact about the release or just a tally of what
    * has arrived. With no commitment `progress.total` falls back to `COUNT(*)`
@@ -468,6 +471,7 @@ export function mergeAcquisitionJobs(
       // the ordinary card is untouched.
       canonicalTotal: notOffered === null ? undefined : (job.progress.canonical ?? undefined),
       notOffered: notOffered ?? undefined,
+      queue: job.queue,
       unavailable: job.progress.unavailable > 0 ? job.progress.unavailable : undefined,
       error: job.error ?? undefined,
       failures: failureGroupsFor(job.error),

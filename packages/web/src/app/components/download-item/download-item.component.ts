@@ -1,4 +1,4 @@
-import { Component, effect, input, output, signal, computed } from '@angular/core';
+import { Component, effect, inject, input, output, signal, computed } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { DownloadItem } from '../../lib/download-groups';
 import type { FailureClass } from '@nicotind/core';
@@ -12,6 +12,8 @@ import { isPartialDone } from '../../lib/pipeline-stage';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 import { timeAgo } from '../../lib/relative-time';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { TranslateService } from '../../services/translate.service';
+import { queueBadgeKey, queueDetail } from '../../lib/queue-status';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 /**
@@ -252,6 +254,20 @@ export class DownloadItemComponent {
 
   /** Done with tracks of its edition missing: the badge reads Partial, not a green Done (#1939). */
   readonly partial = computed(() => isPartialDone(this.item()));
+
+  private readonly i18n = inject(TranslateService);
+
+  /** The stage badge's words while a Get waits for its source (#1938); null keeps the stage's own. */
+  readonly queueBadge = computed(() => {
+    const queue = this.item().queue;
+    return queue ? this.i18n.t(queueBadgeKey(queue)) : null;
+  });
+
+  /** "3 ahead · ~1 min", "retrying in ~2 min" — recomputed on every poll, as `item` changes. */
+  readonly queueLine = computed(() => {
+    const queue = this.item().queue;
+    return queue ? queueDetail(queue, (key, params) => this.i18n.t(key, params), Date.now()) : null;
+  });
   /** Gates the "N tracks landed — Discard" line on a cancelled partial (#810). */
   readonly showPartialDiscard = computed(() => canShowPartialDiscard(this.item()));
   /** Compact "· FLAC · 1411 kbps" / "· 320 kbps" chip text, '' when unknown. */

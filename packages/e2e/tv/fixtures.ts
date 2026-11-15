@@ -10,14 +10,15 @@
  */
 import { _android, test as base, expect } from '@playwright/test';
 import type { AndroidDevice, Page } from '@playwright/test';
-import { APP_ID, TV_PORT } from './env.js';
+import { targetFor } from '../android/targets.js';
+import { APP_ORIGIN, apiOrigin, goto, seedAuth } from '../android/session.js';
 
-export { expect };
+export { expect, APP_ORIGIN, goto };
 
-/** The origin the WebView serves the app from — NOT the API origin. */
-export const APP_ORIGIN = 'https://localhost';
+const TV = targetFor('tv');
+const APP_ID = TV.appId;
 /** The API, reached from the device through `adb reverse`. */
-export const API_ORIGIN = `http://localhost:${TV_PORT}`;
+export const API_ORIGIN = apiOrigin(TV.port);
 
 export const TV_ADMIN = { username: 'tv-admin', password: 'tv-password-123' } as const;
 
@@ -33,7 +34,7 @@ interface TvFixtures {
 export const test = base.extend<TvFixtures>({
   device: async ({}, use) => {
     const devices = await _android.devices();
-    const serial = process.env.E2E_TV_SERIAL;
+    const serial = process.env.E2E_ANDROID_SERIAL;
     const device = serial ? devices.find((d) => d.serial() === serial) : devices[0];
     if (!device) {
       throw new Error(
@@ -49,7 +50,7 @@ export const test = base.extend<TvFixtures>({
     const wv = device.webViews().find((w) => w.pkg() === APP_ID);
     if (!wv) throw new Error(`[e2e:tv] ${APP_ID} exposes no WebView — did it crash on launch?`);
     const page = await wv.page();
-    await seedAuth(page);
+    await seedAuth(page, API_ORIGIN, TV_ADMIN);
     await use(page);
   },
 
@@ -92,50 +93,6 @@ export const test = base.extend<TvFixtures>({
     );
   },
 });
-
-/**
- * Sign in by seeding localStorage.
- *
- * `storageState` cannot work here — it's a different browser on a different
- * device. The token is minted over HTTP against the fixture server (which the
- * host can reach directly) and written into the WebView's storage, then the app
- * is reloaded so Angular boots already authenticated.
- */
-async function seedAuth(page: Page): Promise<void> {
-  const token = await mintToken();
-  await page.goto(`${APP_ORIGIN}/`);
-  await page.evaluate(
-    ([apiOrigin, jwt, username]) => {
-      localStorage.setItem('nicotind_server_url', apiOrigin);
-      localStorage.setItem('nicotind_token', jwt);
-      localStorage.setItem('nicotind_username', username);
-      localStorage.setItem('nicotind_role', 'admin');
-    },
-    [API_ORIGIN, token, TV_ADMIN.username] as const,
-  );
-}
-
-/** Register-or-login against the throwaway server; first user becomes admin. */
-async function mintToken(): Promise<string> {
-  for (const path of ['/api/auth/register', '/api/auth/login']) {
-    const res = await fetch(`${API_ORIGIN}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(TV_ADMIN),
-    });
-    if (res.ok) {
-      const body = (await res.json()) as { token?: string };
-      if (body.token) return body.token;
-    }
-  }
-  throw new Error(`[e2e:tv] could not obtain a token from ${API_ORIGIN}`);
-}
-
-/** Navigate within the app (app origin, not the API origin). */
-export async function goto(page: Page, route: string): Promise<void> {
-  await page.goto(`${APP_ORIGIN}${route}`);
-  await page.waitForLoadState('domcontentloaded');
-}
 
 /**
  * Start playback and land on the TV player route.

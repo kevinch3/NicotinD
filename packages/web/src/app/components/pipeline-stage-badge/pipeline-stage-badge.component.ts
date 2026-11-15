@@ -16,18 +16,21 @@ import { TranslateService } from '../../services/translate.service';
 })
 export class PipelineStageBadgeComponent {
   readonly stage = input.required<PipelineStage>();
+  /** Words that say more than the stage can, e.g. a Get's place in the hunt queue (#1938). */
+  readonly labelOverride = input<string | null>(null, { alias: 'label' });
   /** A done card with tracks missing reads Partial, in the warning tone (#1939). */
   readonly partial = input(false);
 
   private readonly i18n = inject(TranslateService);
 
-  readonly badge = computed(() =>
-    this.partial() && this.stage() === 'done' ? partialBadge() : stageBadge(this.stage()),
-  );
-  readonly label = computed(() =>
-    this.partial() && this.stage() === 'done'
-      ? this.i18n.t(partialBadge().key)
-      : stageLabel(this.stage(), (key) => this.i18n.t(key)),
+  private readonly isPartial = computed(() => this.partial() && this.stage() === 'done');
+  readonly badge = computed(() => (this.isPartial() ? partialBadge() : stageBadge(this.stage())));
+  readonly label = computed(
+    () =>
+      this.labelOverride() ??
+      (this.isPartial()
+        ? this.i18n.t(partialBadge().key)
+        : stageLabel(this.stage(), (key) => this.i18n.t(key))),
   );
 
   readonly toneClass = computed(() => {

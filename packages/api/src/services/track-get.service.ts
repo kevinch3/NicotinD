@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { createLogger } from '@nicotind/core';
+import { createLogger, type JobQueueStatus } from '@nicotind/core';
 import type { RemoteAddonPlugin } from './addons/remote-addon-plugin.js';
 import { AddonRequestError } from './addons/client.js';
 import { mapAddonJob, sanitizeAddonError } from './addons/job-poller.js';
@@ -96,6 +96,14 @@ export class TrackGetService {
     }
     if (resumed) log.info({ count: resumed }, 'Resumed reserved track Gets');
     return resumed;
+  }
+
+  /** Where a reserved track Get waits in this service's hunt queue (#1938); null once asked. */
+  queueStatus(jobId: string): JobQueueStatus | null {
+    const s = this.queue.statusOfKey(jobId);
+    if (s?.state === 'queued') return { state: 'waiting', ahead: s.position, etaMs: s.etaMs };
+    if (s?.state === 'searching') return { state: 'searching', etaMs: s.etaMs };
+    return null;
   }
 
   /** Resolves once the job's attempt has run — for tests and shutdown. */

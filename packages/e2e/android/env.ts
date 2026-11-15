@@ -3,42 +3,27 @@ import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
+import type { AndroidTarget } from './targets.js';
 
 export const e2eRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const repoRoot = resolve(e2eRoot, '../..');
 
-/** Capacitor applicationId — the WebView we attach to. The `tv` product flavour
- *  adds `.tv` (docs/fdroid.md), so this lane installs a differently-named
- *  package than the phone build. */
-export const APP_ID = 'ar.kevinroberts.nicotind.tv';
-
-/** The pre-flavour package id. Machines that ran this lane before the `tv`
- *  flavour existed still have it installed, and it is ALSO a leanback launcher
- *  app — so it can hold the foreground while Playwright reads the new app's
- *  WebView through devtools. Key events then go to the wrong window and every
- *  focus assertion fails with "reached 0 of N". Force-stopped before launch. */
-export const LEGACY_APP_ID = 'ar.kevinroberts.nicotind';
-
-/** Fully-qualified launcher activity. It lives in the gradle NAMESPACE, which
- *  the flavour's applicationIdSuffix does NOT move — so `am start -n
- *  <APP_ID>/.MainActivity` would resolve to a class that does not exist. */
-export const MAIN_ACTIVITY = 'ar.kevinroberts.nicotind.MainActivity';
-
-/** The AVD this lane drives. Created once, by hand; see docs/e2e-tv-emulator.md. */
-export const AVD = process.env.E2E_TV_AVD ?? 'nicotind-tv';
-
 /**
- * Own port + data dir: 8585 is the Chromium lane, 8586 is onboarding. Separate
- * means both suites can run at once and a TV run can never poison the other's DB.
+ * Own data dir per lane: a TV run can never poison the phone's DB or the
+ * Chromium suite's.
  */
-export const TV_PORT = process.env.E2E_TV_PORT ?? '8587';
-export const tvDataDir = join(e2eRoot, '.tmp-data-tv');
+export function dataDir(target: AndroidTarget): string {
+  return join(e2eRoot, `.tmp-data-${target.name}`);
+}
+
 /**
  * The server scans (and *writes tags into*) whatever music dir it's given, so
- * this lane never points at the checked-in fixtures — it runs against a copy.
+ * a lane never points at the checked-in fixtures — it runs against a copy.
  * A harness that requires `git checkout` afterwards is a broken harness.
  */
-export const tvMusicDir = join(e2eRoot, '.tmp-music-tv');
+export function musicDir(target: AndroidTarget): string {
+  return join(e2eRoot, `.tmp-music-${target.name}`);
+}
 
 /**
  * Android SDK tools, resolved explicitly.
@@ -55,7 +40,7 @@ export function adbPath(): string {
   const p = join(sdkRoot(), 'platform-tools/adb');
   if (!existsSync(p)) {
     throw new Error(
-      `[e2e:tv] no adb at ${p}. Set ANDROID_HOME to your SDK root ` +
+      `[e2e:android] no adb at ${p}. Set ANDROID_HOME to your SDK root ` +
         '(the distro /usr/bin/adb is deliberately not used — it breaks the adb server).',
     );
   }
@@ -65,23 +50,24 @@ export function adbPath(): string {
 export function emulatorPath(): string {
   const p = join(sdkRoot(), 'emulator/emulator');
   if (!existsSync(p)) {
-    throw new Error(`[e2e:tv] no emulator binary at ${p}. Install the SDK 'emulator' package.`);
+    throw new Error(
+      `[e2e:android] no emulator binary at ${p}. Install the SDK 'emulator' package.`,
+    );
   }
   return p;
 }
 
 export function adb(args: string[], opts: { serial?: string; quiet?: boolean } = {}): string {
-  const serial = opts.serial ?? process.env.E2E_TV_SERIAL;
-  const full = serial ? ['-s', serial, ...args] : args;
+  const full = opts.serial ? ['-s', opts.serial, ...args] : args;
   const res = spawnSync(adbPath(), full, { encoding: 'utf8' });
   if (res.status !== 0 && !opts.quiet) {
-    throw new Error(`[e2e:tv] adb ${full.join(' ')} failed: ${res.stderr || res.stdout}`);
+    throw new Error(`[e2e:android] adb ${full.join(' ')} failed: ${res.stderr || res.stdout}`);
   }
   return (res.stdout ?? '').trim();
 }
 
-/** Serial of a booted device running our AVD, or null. */
-export function bootedTvSerial(): string | null {
+/** Serial of a booted device running `avd`, or null. */
+export function bootedSerial(avd: string): string | null {
   let out: string;
   try {
     out = spawnSync(adbPath(), ['devices'], { encoding: 'utf8' }).stdout ?? '';
@@ -96,7 +82,8 @@ export function bootedTvSerial(): string | null {
     const name = spawnSync(adbPath(), ['-s', serial, 'emu', 'avd', 'name'], {
       encoding: 'utf8',
     }).stdout;
-    if ((name ?? '').includes(AVD)) return serial;
+    // First line only: `emu avd name` prints the name, then `OK`.
+    if ((name ?? '').split('\n')[0]?.trim() === avd) return serial;
   }
   return null;
 }
@@ -105,7 +92,9 @@ export function run(cmd: string, args: string[], cwd: string, label: string): vo
   const started = Date.now();
   const res = spawnSync(cmd, args, { cwd, stdio: 'inherit' });
   if (res.status !== 0) {
-    throw new Error(`[e2e:tv] ${label} failed (exit ${res.status ?? 'signal ' + res.signal}).`);
+    throw new Error(
+      `[e2e:android] ${label} failed (exit ${res.status ?? 'signal ' + res.signal}).`,
+    );
   }
-  console.log(`[e2e:tv] ${label} — ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  console.log(`[e2e:android] ${label} — ${((Date.now() - started) / 1000).toFixed(1)}s`);
 }
