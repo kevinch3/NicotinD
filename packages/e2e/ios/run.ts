@@ -370,6 +370,16 @@ if (attached) {
       5_000,
     );
     await clickVisible('a[href="/settings"]');
+    // Haptics lives in the collapsed "Playback & Offline" group.
+    const toggle = '[data-group-id="settings-playback"] [data-testid="settings-group-toggle"]';
+    await poll(
+      'the Playback group',
+      () =>
+        clickVisible(`${toggle}[aria-expanded="false"]`).catch(() =>
+          js<boolean>(`return !!document.querySelector('${toggle}[aria-expanded="true"]');`),
+        ),
+      15_000,
+    );
     await poll(
       'the Off button',
       () => clickVisible('[data-testid="settings-haptics-off"]').catch(() => null),

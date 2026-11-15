@@ -76,7 +76,8 @@ nobody can log into, that artifact is the debugging session.
 9. A committed swipe on the cover (260 points against `SKIP_THRESHOLD_PX` 80) skips and calls
    `Haptics.impact` once. Measured: "Opening Static" → "Second Wind", one call.
 10. A 15-point swipe neither skips nor calls Haptics.
-11. Turn haptics Off as a user would: close the sheet, open Settings from the tab bar, press Off.
+11. Turn haptics Off as a user would: close the sheet, open Settings from the tab bar, expand Playback &
+    Offline, press Off.
 12. The same committed swipe still skips and now calls nothing. This runs every time, so check 9's
     "once" cannot come from a spy that counts everything: the count has to follow the setting.
 
