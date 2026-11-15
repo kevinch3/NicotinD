@@ -34,6 +34,8 @@ const APP_PATH = required('IOS_APP_PATH');
 const UDID = required('IOS_UDID');
 const PORT = process.env.IOS_API_PORT ?? '8591';
 const OUT = process.env.IOS_OUT_DIR ?? 'ios-results';
+/** Where the workflow prebuilt WebDriverAgent; unset means Appium builds it inside the session. */
+const WDA_DERIVED_DATA = process.env.IOS_WDA_DERIVED_DATA;
 const API = `http://127.0.0.1:${PORT}`;
 const USER = { username: 'ios-admin', password: 'ios-password-123' };
 /** lib/swipe-to-skip.ts SKIP_THRESHOLD_PX is 80 (CSS px = points on iOS). */
@@ -181,6 +183,10 @@ await step('appium: start a session on the simulator', async () => {
     'appium:wdaLaunchTimeout': 300_000,
     'appium:wdaConnectionTimeout': 300_000,
     'appium:newCommandTimeout': 600,
+    'appium:showXcodeLog': true,
+    ...(WDA_DERIVED_DATA
+      ? { 'appium:usePrebuiltWDA': true, 'appium:derivedDataPath': WDA_DERIVED_DATA }
+      : {}),
   });
   sessionUp = true;
 });

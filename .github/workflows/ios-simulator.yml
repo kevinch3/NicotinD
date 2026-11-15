@@ -107,6 +107,18 @@ jobs:
           npm install -g "appium@${APPIUM_VERSION}"
           appium driver install "xcuitest@${XCUITEST_DRIVER_VERSION}"
 
+      # Prebuilt in its own step: built inside the first session it took over 4
+      # minutes and the session request gave up first (measured 2026-11-15).
+      # The session then launches this build with `usePrebuiltWDA`.
+      - name: Build WebDriverAgent
+        run: |
+          set -euo pipefail
+          wda="$HOME/.appium/node_modules/appium-xcuitest-driver/node_modules/appium-webdriveragent"
+          xcodebuild build-for-testing -project "$wda/WebDriverAgent.xcodeproj" \
+            -scheme WebDriverAgentRunner -destination "id=$IOS_UDID" \
+            -derivedDataPath "$RUNNER_TEMP/wda" CODE_SIGNING_ALLOWED=NO -quiet
+          echo "IOS_WDA_DERIVED_DATA=$RUNNER_TEMP/wda" >> "$GITHUB_ENV"
+
       - name: Start Appium
         run: |
           set -euo pipefail
