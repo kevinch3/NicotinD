@@ -30,12 +30,13 @@ import { demoTrack, demoTracks } from '../../../stories/support/fixtures';
 })
 class NowPlayingProbeComponent {
   readonly panel = input<'queue' | 'lyrics'>('queue');
+  readonly snap = input<'rest' | 'full'>('rest');
   private readonly sheet = viewChild(NowPlayingComponent);
 
   constructor() {
     effect(() => {
       const sheet = this.sheet();
-      if (sheet) sheet.activePanel.set(this.panel());
+      if (sheet) sheet.panelState.set({ tab: this.panel(), snap: this.snap() });
     });
   }
 }
@@ -79,8 +80,12 @@ export default meta;
 
 type Story = StoryObj<NowPlayingProbeComponent>;
 
-const withState = (state: StoryState, panel: 'queue' | 'lyrics' = 'queue') => ({
-  args: { panel },
+const withState = (
+  state: StoryState,
+  panel: 'queue' | 'lyrics' = 'queue',
+  snap: 'rest' | 'full' = 'rest',
+) => ({
+  args: { panel, snap },
   decorators: [
     applicationConfig({ providers: storyProviders({ nowPlayingOpen: true, ...state }) }),
     moduleMetadata({ imports: [NowPlayingProbeComponent] }),
@@ -92,6 +97,15 @@ const loaded = { currentTrack: demoTrack, queue, restoredTime: 47 };
 
 /** Paused on a loaded track, queue panel — the sheet's resting state. */
 export const Idle: Story = { ...withState({ ...loaded, isPlaying: false }) };
+
+/**
+ * The queue at `full` (#1679): the panel covers the cover, transport and
+ * header, its notch at the top, and a compact transport strip keeps play/pause
+ * and next above the list (D6). Reached by pulling the panel up, tapping the
+ * active Queue tab, or the notch. Below `lg` only: the side column has no
+ * `full` for the queue, so the Viewport global at desktop shows `rest`.
+ */
+export const QueueFull: Story = { ...withState({ ...loaded, isPlaying: true }, 'queue', 'full') };
 
 /**
  * Playing. The elapsed time comes from the real audio element, so this story

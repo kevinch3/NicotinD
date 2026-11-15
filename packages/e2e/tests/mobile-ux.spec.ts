@@ -793,31 +793,22 @@ test.describe('mobile UX', () => {
     await expect(page.getByTestId('now-playing-title')).toHaveText(title ?? '');
   });
 
-  // The drag-resize handle is shell-owned (above the Queue/Lyrics tabs) so it
-  // must stay usable on the Lyrics tab — inside the queue panel it vanished with
-  // the tab switch and read as a lost feature. Drag it up and assert the cover
-  // actually shrinks.
-  test('Now Playing resize handle works from the Lyrics tab', async ({ page }) => {
+  // The notch rides at the top of the panel on both tabs (#1679): it toggles
+  // the panel between rest and full height from the Lyrics tab too.
+  test('the notch takes the Lyrics panel to full height and back', async ({ page }) => {
     await openNowPlaying(page);
     await page.getByTestId('now-playing-tab-lyrics').click();
     await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
 
-    const handle = page.getByTestId('now-playing-queue-resize');
-    await expect(handle).toBeVisible();
-
-    const coverBefore = (await page.getByTestId('now-playing-cover').boundingBox())!;
-    const handleBox = (await handle.boundingBox())!;
-    const startX = handleBox.x + handleBox.width / 2;
-    const startY = handleBox.y + handleBox.height / 2;
-    await page.mouse.move(startX, startY);
-    await page.mouse.down();
-    await page.mouse.move(startX, startY - 80, { steps: 8 });
-    await page.mouse.up();
-
-    const coverAfter = (await page.getByTestId('now-playing-cover').boundingBox())!;
-    expect(coverAfter.width, 'cover shrinks when the panel is pulled taller').toBeLessThan(
-      coverBefore.width,
-    );
+    const panel = page.getByTestId('now-playing-panel');
+    const notch = page.getByTestId('now-playing-queue-resize');
+    await expect(notch).toHaveAttribute('aria-expanded', 'false');
+    await notch.click();
+    await expect(panel).toHaveAttribute('data-snap', 'full');
+    await expect(notch).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(async () => (await panel.boundingBox())!.y).toBeLessThan(2);
+    await notch.click();
+    await expect(panel).toHaveAttribute('data-snap', 'rest');
   });
 
   // A long lyric line (no natural break) must wrap inside the lyrics panel and
@@ -858,6 +849,12 @@ test.describe('mobile UX', () => {
     await page.mouse.move(to.x, to.y, { steps: 8 });
     await page.mouse.up();
   }
+  /** Whether the topmost element at a point belongs to `testId`: covered means untappable. */
+  const hits = (page: Page, testId: string, p: { x: number; y: number }) =>
+    page.evaluate(
+      ([id, x, y]) => !!document.elementFromPoint(x, y)?.closest(`[data-testid="${id}"]`),
+      [testId, p.x, p.y] as const,
+    );
   /** Centre of an element AFTER it has stopped moving: the sheet slides up on
    *  open, and a box measured mid-transition puts the drag off the element. */
   async function settledCentre(locator: ReturnType<Page['getByTestId']>) {
@@ -888,39 +885,67 @@ test.describe('mobile UX', () => {
     await expect(page.getByTestId('now-playing-heading')).not.toBeInViewport();
   });
 
-  test('swiping up on the panel tabs grows the panel (cover shrinks)', async ({ page }) => {
+  test('pulling up on the panel tabs takes the panel to full height (#1679)', async ({ page }) => {
     await openNowPlaying(page);
-    const cover = page.getByTestId('now-playing-cover');
+    const panel = page.getByTestId('now-playing-panel');
     const { box: lyricsTab } = await settledCentre(page.getByTestId('now-playing-tab-lyrics'));
-    const before = (await cover.boundingBox())!;
     // Start on the tab row's empty right side (a button never starts the gesture).
     const x = lyricsTab.x + lyricsTab.width + 24;
     const y = lyricsTab.y + lyricsTab.height / 2;
-    await drag(page, { x, y }, { x, y: y - 120 });
-    const after = (await cover.boundingBox())!;
-    expect(after.width, 'cover shrinks when the panel is pulled up').toBeLessThan(before.width);
+    await drag(page, { x, y }, { x, y: y - 160 });
+    await expect(panel).toHaveAttribute('data-snap', 'full');
+    await expect.poll(async () => (await panel.boundingBox())!.y).toBeLessThan(2);
+    // The covered stage is out of reach, and a full Queue keeps play/pause above the list.
+    await expect(page.getByTestId('now-playing-compact-playpause')).toBeVisible();
+    const cover = (await page.getByTestId('now-playing-cover').boundingBox())!;
+    const centre = { x: cover.x + cover.width / 2, y: cover.y + cover.height / 2 };
+    expect(await hits(page, 'now-playing-cover', centre), 'the panel covers the cover').toBe(false);
   });
 
-  test('one pull collapses a grown panel and continues into closing the sheet', async ({
+  test('tapping the active tab toggles full height; another tab keeps it', async ({ page }) => {
+    await openNowPlaying(page);
+    const panel = page.getByTestId('now-playing-panel');
+    await page.getByTestId('now-playing-tab-queue').click();
+    await expect(panel).toHaveAttribute('data-snap', 'full');
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    await expect(panel).toHaveAttribute('data-snap', 'full');
+    await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    await expect(panel).toHaveAttribute('data-snap', 'rest');
+  });
+
+  test('a pull down from full stops at rest; one from rest continues into closing the sheet', async ({
     page,
   }) => {
     await openNowPlaying(page);
-    const h = await settledCentre(page.getByTestId('now-playing-queue-resize'));
-    await drag(page, h, { x: h.x, y: h.y - 100 });
-    const cover = page.getByTestId('now-playing-cover');
-    const grown = (await cover.boundingBox())!;
-    expect(grown.width).toBeLessThan(320);
+    const panel = page.getByTestId('now-playing-panel');
+    await page.getByTestId('now-playing-queue-resize').click();
+    await expect(panel).toHaveAttribute('data-snap', 'full');
 
-    const c = await settledCentre(cover);
-    await drag(page, c, { x: c.x, y: c.y + 400 });
+    // A hard pull down from full lands on rest and never closes the player (D2).
+    const n = await settledCentre(page.getByTestId('now-playing-queue-resize'));
+    await drag(page, n, { x: n.x, y: n.y + 600 });
+    await expect(panel).toHaveAttribute('data-snap', 'rest');
+    await expect(page.getByTestId('now-playing-heading')).toBeInViewport();
+
+    // From rest the same pull runs on into the sheet's dismiss.
+    const n2 = await settledCentre(page.getByTestId('now-playing-queue-resize'));
+    await drag(page, n2, { x: n2.x, y: n2.y + 400 });
     // The closed sheet is parked below the viewport by a transform, so it is
     // still 'visible' to Playwright — off-viewport is the closed check.
     await expect(page.getByTestId('now-playing-heading')).not.toBeInViewport();
-    // Reopen: the collapse persisted (cover back at full width).
+  });
+
+  test('full height survives a reload, and the next open lands there', async ({ page }) => {
+    await openNowPlaying(page);
+    await page.getByTestId('now-playing-tab-queue').click();
+    await expect(page.getByTestId('now-playing-panel')).toHaveAttribute('data-snap', 'full');
+    await page.reload();
+    await expect(page.getByTestId('player-title')).toBeVisible();
     await page.getByTestId('player-title').click();
-    await expect(page.getByTestId('now-playing-heading')).toBeVisible();
-    const restored = (await cover.boundingBox())!;
-    expect(restored.width).toBeGreaterThan(grown.width);
+    const panel = page.getByTestId('now-playing-panel');
+    await expect(panel).toHaveAttribute('data-snap', 'full');
+    await expect.poll(async () => (await panel.boundingBox())!.y).toBeLessThan(2);
   });
 
   // Swipe to skip (#1297): ← next, → previous. The mouse path and the wiring;
@@ -980,12 +1005,6 @@ test.describe('mobile UX', () => {
         beyond: { x: edge + dir * (band + 8), y },
       };
     }
-    const hits = (page: Page, testId: string, p: { x: number; y: number }) =>
-      page.evaluate(
-        ([id, x, y]) => !!document.elementFromPoint(x, y)?.closest(`[data-testid="${id}"]`),
-        [testId, p.x, p.y] as const,
-      );
-
     test('the next cover peeks in at rest; the first track has no previous', async ({ page }) => {
       await openNowPlaying(page);
       const { inside, beyond } = await sliver(page, 'next');
@@ -1001,30 +1020,23 @@ test.describe('mobile UX', () => {
       await expect(page.getByTestId('now-playing-cover-prev')).toHaveCount(0);
     });
 
-    // #1763: pulling the queue panel up shrinks the cover; the neighbours fade
-    // out of the scene with it instead of shrinking along beside it.
-    test('the neighbours fade out as the queue resize shrinks the cover', async ({ page }) => {
+    // #1763's question, under #1679: the panel no longer shrinks the cover, it
+    // covers it, so the peeking neighbours go out of reach with it.
+    test('a full panel covers the peeking neighbours too', async ({ page }) => {
       await openNowPlaying(page);
       const next = page.getByTestId('now-playing-cover-next');
-      const opacity = () => next.evaluate((el) => Number(getComputedStyle(el).opacity));
-      await expect.poll(opacity).toBeCloseTo(0.5);
-
-      const h = await settledCentre(page.getByTestId('now-playing-queue-resize'));
-      // The cap starts at 320px and the cover rests at 60vw (247px here), so
-      // the first ~73px of pull shrink nothing; 130px is part-way out.
-      await drag(page, h, { x: h.x, y: h.y - 130 });
-      await expect.poll(opacity).toBeLessThan(0.5);
-      expect(await opacity(), 'still on its way out').toBeGreaterThan(0);
-
-      const h2 = await settledCentre(page.getByTestId('now-playing-queue-resize'));
-      await drag(page, h2, { x: h2.x, y: h2.y - 150 });
-      await expect.poll(opacity).toBe(0);
-      // Read the box directly: hovering the shrunken cover lands on its ⋯.
+      await expect
+        .poll(() => next.evaluate((el) => Number(getComputedStyle(el).opacity)))
+        .toBeCloseTo(0.5);
+      await page.getByTestId('now-playing-queue-resize').click();
+      await expect(page.getByTestId('now-playing-panel')).toHaveAttribute('data-snap', 'full');
       const box = (await next.boundingBox())!;
       const inside = { x: box.x + 4, y: box.y + box.height / 2 };
-      expect(await hits(page, 'now-playing-cover-next', inside), 'gone means untappable').toBe(
-        false,
-      );
+      await expect
+        .poll(() => hits(page, 'now-playing-cover-next', inside), {
+          message: 'covered means untappable',
+        })
+        .toBe(false);
     });
 
     test('tapping a peeking cover jumps to it, and back', async ({ page }) => {
@@ -1135,6 +1147,35 @@ test.describe('mobile UX', () => {
       const c = await settledCentre(page.getByTestId('now-playing-album'));
       await touchSwipe(page, { x: 380, y: c.y }, -170);
       await expect(title).not.toHaveText(first);
+    });
+
+    async function touchPull(page: Page, from: { x: number; y: number }, dy: number) {
+      const cdp = await page.context().newCDPSession(page);
+      const send = (type: 'touchStart' | 'touchMove' | 'touchEnd', x: number, y: number) =>
+        cdp.send('Input.dispatchTouchEvent', {
+          type,
+          touchPoints: type === 'touchEnd' ? [] : [{ x, y }],
+        });
+      await send('touchStart', from.x, from.y);
+      for (let i = 1; i <= 12; i++) {
+        await send('touchMove', from.x, from.y + (dy * i) / 12);
+        await page.waitForTimeout(16);
+      }
+      await send('touchEnd', from.x, from.y + dy);
+    }
+
+    test('a touch pull takes the panel to full, and a pull down brings it back (#1679)', async ({
+      page,
+    }) => {
+      await openNowPlaying(page);
+      const panel = page.getByTestId('now-playing-panel');
+      const n = await settledCentre(page.getByTestId('now-playing-queue-resize'));
+      await touchPull(page, n, -200);
+      await expect(panel).toHaveAttribute('data-snap', 'full');
+      const n2 = await settledCentre(page.getByTestId('now-playing-queue-resize'));
+      await touchPull(page, n2, 300);
+      await expect(panel).toHaveAttribute('data-snap', 'rest');
+      await expect(page.getByTestId('now-playing-heading')).toBeInViewport();
     });
 
     test('touch-swiping the mini bar does not skip', async ({ page }) => {

@@ -6,6 +6,7 @@ import {
   effect,
   viewChild,
   DestroyRef,
+  ElementRef,
   untracked,
 } from '@angular/core';
 import { Router } from '@angular/router';
@@ -37,6 +38,21 @@ import {
   scrollableAncestorTop,
   shouldCommit,
 } from '../../lib/vertical-swipe';
+import {
+  clampLift,
+  effectiveSnap,
+  panelLayout,
+  persistPanelState,
+  resolvePullMode,
+  restorePanelState,
+  settle,
+  snapLift,
+  transition,
+  type PanelEvent,
+  type PanelGeometry,
+  type PanelSnap,
+  type PanelState,
+} from '../../lib/player-panel';
 import { canStartSheetSkip, gestureOrigin, skipDirection } from '../../lib/swipe-to-skip';
 import { haptic } from '../../lib/haptics';
 import { ScrollLockService } from '../../services/scroll-lock.service';
@@ -56,6 +72,7 @@ import { LyricsService } from '../../services/lyrics.service';
 import { KaraokeBrowseMode } from '../../lib/karaoke-browse';
 import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
+import { HapticDirective } from '../../directives/haptic.directive';
 
 /** The `lg:` side-panel layout, where a vertical panel resize has nothing to do. */
 function isDesktopSheet(): boolean {
@@ -66,6 +83,7 @@ function isDesktopSheet(): boolean {
   selector: 'app-now-playing',
   imports: [
     OverflowRevealDirective,
+    HapticDirective,
     NowPlayingHeaderComponent,
     NowPlayingCoverArtComponent,
     NowPlayingTransportComponent,
@@ -93,6 +111,7 @@ export class NowPlayingComponent {
   private server = inject(ServerConfigService);
   private readonly coverRevisions = inject(CoverRevisionsService);
   private destroyRef = inject(DestroyRef);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   readonly trackInfo = inject(TrackInfoService);
   /** Karaoke ML separation (issue #603): overlay-open trigger + the mute's serve state. */
 
@@ -233,64 +252,85 @@ export class NowPlayingComponent {
   readonly showBuffering = computed(() => this.isActiveDevice() && this.player.bufferingVisible());
 
   // One body gesture for the whole sheet (header, cover, transport, notch,
-  // tabs, panel). Which of the two things a vertical pull can do — resize the
-  // panel or dismiss the sheet — is decided once, at the first move past slop,
-  // from the origin zone and the current state (the mode table in
-  // docs/web-ui.md "Player expand/collapse gesture"). Collapsing the panel all
-  // the way flips into a dismiss mid-gesture, so one pull reads as "shrink,
-  // then close" instead of stopping dead at the panel's rest height.
+  // tabs, panel). Who owns a pull — the panel, the sheet's dismiss, or the
+  // browser — is decided once at slop by `resolvePullMode` (#1679, the mode
+  // table in docs/player-panel.md §2.4). A panel pull from `rest` that keeps
+  // going down continues into the dismiss; one from `full` stops at `rest`.
   readonly dragOffsetPx = signal(0);
   private static readonly DISMISS_THRESHOLD_PX = 120;
-  private readonly bodyMode = signal<'idle' | 'resize' | 'dismiss'>('idle');
-  private resizeStartExtra = 0;
-  /** dy at which a collapse ran out of panel and the pull became a dismiss. */
-  private dismissBaseDy = 0;
+  private readonly bodyMode = signal<'idle' | 'panel' | 'dismiss'>('idle');
+  /** The snap and geometry a panel pull started from, and its live `lift`. */
+  private pull: { start: PanelSnap; baseLift: number; geometry: PanelGeometry } | null = null;
+  readonly panelDragLift = signal<number | null>(null);
   private readonly bodySwipe = createVerticalSwipe({
     resolve: ({ target, dy }) => {
-      const mode = this.resolveBodyMode(target, dy);
+      const zone = target instanceof Element ? target.closest('[data-np-zone="panel"]') : null;
+      const mode = resolvePullMode({
+        origin: zone ? 'panel' : 'stage',
+        direction: dy < 0 ? 'up' : 'down',
+        snap: this.panelSnap(),
+        nestedScrollTop: zone ? scrollableAncestorTop(target, zone) : 0,
+        lg: this.lg(),
+      });
       if (mode === 'release') return 'release';
+      if (mode === 'panel') {
+        const geometry = this.measurePanelGeometry();
+        // No layout (a hidden sheet): nothing to move the panel through.
+        if (geometry.fullLiftPx <= 0) return 'release';
+        const start = this.panelSnap();
+        this.pull = { start, baseLift: snapLift(start, geometry), geometry };
+        this.panelFullLiftPx.set(geometry.fullLiftPx);
+      }
       this.bodyMode.set(mode);
-      this.resizeStartExtra = this.queueExtraHeightPx();
-      this.dismissBaseDy = 0;
       return 'own';
     },
     onMove: (dy) => {
-      if (this.bodyMode() === 'resize') {
-        const extra = this.resizeStartExtra - dy;
-        if (extra >= 0 || dy < 0) {
-          this.queueExtraHeightPx.set(this.clampQueueExtra(extra));
-          return;
-        }
-        // Continuation: the panel is at rest and the finger keeps going down.
-        this.queueExtraHeightPx.set(0);
-        this.persistQueueExtra(0);
-        this.dismissBaseDy = this.resizeStartExtra;
-        this.bodyMode.set('dismiss');
+      if (this.bodyMode() === 'panel' && this.pull) {
+        const lift = clampLift(this.pull.start, this.pull.baseLift - dy, this.pull.geometry);
+        this.panelDragLift.set(Math.max(0, lift));
+        this.dragOffsetPx.set(lift < 0 ? -lift : 0);
+        return;
       }
-      this.dragOffsetPx.set(Math.max(0, dy - this.dismissBaseDy));
+      this.dragOffsetPx.set(Math.max(0, dy));
     },
-    onEnd: ({ velocity, owned }) => {
+    onEnd: ({ velocity, owned, cancelled }) => {
       if (owned) this.markGestureEnded();
       const mode = this.bodyMode();
       this.bodyMode.set('idle');
-      if (mode === 'resize') {
-        this.persistQueueExtra(this.queueExtraHeightPx());
+      // An OS interruption settles by distance only: it never flings (§2.4).
+      const v = cancelled ? 0 : velocity;
+      if (mode === 'panel' && this.pull) {
+        const pull = this.pull;
+        const lift = (this.panelDragLift() ?? 0) - this.dragOffsetPx();
+        this.pull = null;
+        this.panelDragLift.set(null);
+        this.dragOffsetPx.set(0);
+        // `settle` measures velocity upward; the swipe's is downward.
+        const result = settle(pull.start, lift, -v, pull.geometry);
+        if (result.kind === 'dismiss') {
+          haptic('commit');
+          this.player.setNowPlayingOpen(false);
+        } else {
+          this.setPanelState({ ...this.panelState(), snap: result.snap });
+        }
         return;
       }
       if (mode !== 'dismiss') return;
       const offset = this.dragOffsetPx();
       this.dragOffsetPx.set(0);
-      if (
-        shouldCommit(offset, velocity, { thresholdPx: NowPlayingComponent.DISMISS_THRESHOLD_PX })
-      ) {
+      if (shouldCommit(offset, v, { thresholdPx: NowPlayingComponent.DISMISS_THRESHOLD_PX })) {
         haptic('commit');
         this.player.setNowPlayingOpen(false);
       }
     },
-    onRelease: () => this.bodyMode.set('idle'),
+    onRelease: () => {
+      this.bodyMode.set('idle');
+      this.pull = null;
+      this.panelDragLift.set(null);
+    },
   });
   readonly dragging = this.bodySwipe.dragging;
-  readonly resizingQueue = computed(() => this.bodyMode() === 'resize');
+  readonly resizingQueue = computed(() => this.bodyMode() === 'panel');
 
   /** The sheet's transform: a closed sheet rides the mini bar's lift up, an
    *  open one follows the dismiss drag down. */
@@ -357,59 +397,123 @@ export class NowPlayingComponent {
     this.bodySwipe.start(event);
   }
 
-  private resolveBodyMode(
-    target: EventTarget | null,
-    dy: number,
-  ): 'resize' | 'dismiss' | 'release' {
-    const extra = this.queueExtraHeightPx();
-    const zone = target instanceof Element ? target.closest('[data-np-zone="panel"]') : null;
-    if (dy < 0) {
-      // Up grows the panel; at lg the panel is a side column with nothing to grow.
-      return !isDesktopSheet() && extra < NowPlayingComponent.QUEUE_EXTRA_MAX_PX
-        ? 'resize'
-        : 'release';
-    }
-    if (zone && scrollableAncestorTop(target, zone) > 0) return 'release';
-    return extra > 0 && !isDesktopSheet() ? 'resize' : 'dismiss';
-  }
-
-  // Manual queue resize: dragging the handle up shrinks the cover art and gives
-  // the Now-Playing queue more room (the queue is flex-1, so shrinking the cover
-  // grows it). `queueExtraHeightPx` is how many px the cover has shrunk from its
-  // max; persisted per-device so the chosen size survives reload.
+  // The panel machine's state (#1679, docs/player-panel.md): which tab, and
+  // whether it rests under the transport or covers the sheet at `full`.
+  // Persisted as one key; the two pre-#1679 keys migrate on first read.
   private static readonly COVER_MAX_PX = 320; // matches Tailwind max-w-80 (20rem)
-  // Zero, not 120 (#993). A floor of 120px handed most of the reclaimed space
-  // straight back on a short phone, which is the device the drag exists for —
-  // and it made the gesture feel broken rather than bounded, because the handle
-  // kept moving after the cover had stopped shrinking. The wrapper's padding
-  // collapses with it (`now-playing-cover-art`), or 32px of empty box would
-  // survive the cover it was padding.
-  private static readonly COVER_MIN_PX = 0;
-  private static readonly QUEUE_EXTRA_MAX_PX =
-    NowPlayingComponent.COVER_MAX_PX - NowPlayingComponent.COVER_MIN_PX;
-  private static readonly QUEUE_EXTRA_STORAGE_KEY = 'nicotind:np-queue-extra';
-  readonly queueExtraHeightPx = signal(this.readStoredQueueExtra());
-
-  // Active panel (queue vs lyrics) persisted per-device.
-  private static readonly ACTIVE_PANEL_STORAGE_KEY = 'nicotind:np-active-panel';
-  readonly activePanel = signal<'queue' | 'lyrics'>(this.readStoredActivePanel());
-  // DERIVED from `activePanel`, not a second writable signal (issue #446).
-  // The queue and lyrics areas are one panel showing one thing, and two
-  // independently-writable booleans drifted: `toggleKaraokeFullscreen` opened
-  // lyrics by writing this flag directly, so the panel choice that got
-  // persisted disagreed with what was on screen and the next launch restored
-  // the wrong one. As a computed there is exactly one writer (`setActivePanel`)
-  // and the two can no longer disagree.
-  //
-  // Still correct for the restore path it was seeded for: a page load onto the
-  // Lyrics tab has `lyricsOpen` true immediately, which the lyrics-loading /
-  // colour-extraction / auto-scroll effects below all gate on.
+  private static readonly PANEL_TABS = ['queue', 'lyrics'] as const;
+  readonly panelState = signal<PanelState>(
+    restorePanelState(NowPlayingComponent.storage(), NowPlayingComponent.PANEL_TABS),
+  );
+  readonly activePanel = computed(() => (this.panelState().tab === 'lyrics' ? 'lyrics' : 'queue'));
+  // DERIVED from the panel state, not a second writable signal (issue #446):
+  // karaoke used to open lyrics by writing a flag of its own, and the panel
+  // that got persisted disagreed with the one on screen.
   readonly lyricsOpen = computed(() => this.activePanel() === 'lyrics');
 
-  /** Cover art max-width (px), shrinking as the queue is dragged taller. */
-  readonly coverMaxPx = computed(
-    () => NowPlayingComponent.COVER_MAX_PX - this.queueExtraHeightPx(),
+  /** The side-column layout (`lg`), read live so a resize re-renders. */
+  readonly lg = signal(isDesktopSheet());
+  /** The snap this width shows: the side column has no `full` yet (§5). */
+  readonly panelSnap = computed(() =>
+    effectiveSnap(this.panelState(), { lg: this.lg(), fullAtLg: false }),
   );
+  /** `lift` at `full`, measured from the live layout when the panel moves. */
+  readonly panelFullLiftPx = signal(0);
+  /** The `lift` on screen: the finger's while a pull is owned, else the snap's. */
+  readonly panelLiftPx = computed(() => {
+    const drag = this.panelDragLift();
+    if (drag !== null) return drag;
+    return this.panelSnap() === 'full' ? this.panelFullLiftPx() : 0;
+  });
+  /** The frame slides over a stage that never reflows, so no cover-shrink
+   *  phase: the whole `lift` is translation (`coverMaxPx: 0`). */
+  readonly panelTopPx = computed(() => {
+    const up = panelLayout(this.panelLiftPx(), {
+      fullLiftPx: this.panelFullLiftPx(),
+      coverMaxPx: 0,
+    }).panelTranslatePx;
+    return up === 0 ? 0 : -up;
+  });
+  readonly panelFull = computed(() => this.panelSnap() === 'full');
+  /** The covered stage leaves the tab order at a settled `full` (§7). */
+  readonly stageInert = computed(() => this.panelFull() && this.panelDragLift() === null);
+  /** Cover art max-width (px). The panel covers the cover rather than shrinking it. */
+  readonly coverMaxPx = computed(() => NowPlayingComponent.COVER_MAX_PX);
+
+  /**
+   * The live geometry a panel move needs. The frame's flow box never moves
+   * (the frame is a layer above it), so its top is the panel's rest top at any
+   * snap. Public so a spec can stand in for a layout jsdom does not have.
+   */
+  measurePanelGeometry(): PanelGeometry {
+    const zone = this.host.nativeElement.querySelector<HTMLElement>('[data-np-zone="panel"]');
+    const restTop = zone?.getBoundingClientRect().top ?? 0;
+    return { fullLiftPx: Math.max(0, restTop - this.safeAreaTopPx()), coverMaxPx: 0 };
+  }
+
+  private safeAreaTopPx(): number {
+    const probe = document.createElement('div');
+    probe.style.cssText =
+      'position:fixed;top:0;visibility:hidden;height:env(safe-area-inset-top, 0px)';
+    document.body.appendChild(probe);
+    const px = probe.getBoundingClientRect().height;
+    probe.remove();
+    return px;
+  }
+
+  private static storage():
+    Storage | { getItem: () => null; setItem: () => void; removeItem: () => void } {
+    try {
+      return localStorage;
+    } catch {
+      return { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+    }
+  }
+
+  private setPanelState(next: PanelState): void {
+    const prev = this.panelState();
+    if (next.snap === 'full' && prev.snap !== 'full') {
+      this.panelFullLiftPx.set(this.measurePanelGeometry().fullLiftPx);
+    }
+    this.panelState.set(next);
+    // Leaving lyrics must also leave karaoke fullscreen, or the overlay
+    // outlives the panel behind it and there is no way back to the queue.
+    if (next.tab !== 'lyrics') this.karaokeFullscreen.set(false);
+    persistPanelState(NowPlayingComponent.storage(), next);
+  }
+
+  /** A discrete panel event (tab tap, notch, keys, Back), through the machine. */
+  panelEvent(event: PanelEvent): boolean {
+    // The side column has no `full` for these tabs: the active tab is a no-op.
+    if (this.lg() && event.type !== 'tap-tab' && event.type !== 'back') return false;
+    if (this.lg() && event.type === 'tap-tab' && event.tab === this.panelState().tab) return false;
+    const { state, consumed } = transition(this.panelState(), event);
+    if (consumed) this.setPanelState(state);
+    return consumed;
+  }
+
+  onTabSelected(tab: 'queue' | 'lyrics'): void {
+    this.panelEvent({ type: 'tap-tab', tab });
+  }
+
+  /** The notch toggles `rest` ↔ `full`; the click a drag leaves behind does not. */
+  onNotchClick(): void {
+    if (Date.now() - this.gestureEndedAt < NowPlayingComponent.SLIVER_CLICK_AFTER_DRAG_MS) return;
+    this.panelEvent({ type: 'notch-activate' });
+  }
+
+  onNotchKeydown(event: KeyboardEvent): void {
+    const map: Record<string, PanelEvent | undefined> = {
+      Enter: { type: 'notch-activate' },
+      ' ': { type: 'notch-activate' },
+      ArrowUp: { type: 'key-up' },
+      ArrowDown: { type: 'key-down' },
+    };
+    const panelEvent = map[event.key];
+    if (!panelEvent) return;
+    event.preventDefault();
+    this.panelEvent(panelEvent);
+  }
 
   /** TV player treatment (10-foot layout): blurred-cover backdrop, bottom
    *  transport bar, Next-up chip instead of the stacked queue/lyrics panels.
@@ -438,9 +542,6 @@ export class NowPlayingComponent {
 
   /** Head of the queue, shown in the TV Next-up chip. */
   readonly nextUp = computed(() => this.player.queue()[0] ?? null);
-  onQueueResizeStart(event: PointerEvent): void {
-    this.onBodyPointerDown(event);
-  }
 
   // Desktop (lg) side panel width — the border between the columns is a
   // splitter. Rides a CSS var (`--np-side-w`) for the same reason the cover cap
@@ -517,46 +618,9 @@ export class NowPlayingComponent {
     }
   }
 
-  private clampQueueExtra(px: number): number {
-    return Math.min(NowPlayingComponent.QUEUE_EXTRA_MAX_PX, Math.max(0, Math.round(px)));
-  }
-
-  private readStoredQueueExtra(): number {
-    try {
-      const raw = localStorage.getItem(NowPlayingComponent.QUEUE_EXTRA_STORAGE_KEY);
-      return raw ? this.clampQueueExtra(Number(raw)) : 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  private persistQueueExtra(px: number): void {
-    try {
-      localStorage.setItem(NowPlayingComponent.QUEUE_EXTRA_STORAGE_KEY, String(px));
-    } catch {
-      /* storage unavailable — the size just won't persist */
-    }
-  }
-
-  private readStoredActivePanel(): 'queue' | 'lyrics' {
-    try {
-      const raw = localStorage.getItem(NowPlayingComponent.ACTIVE_PANEL_STORAGE_KEY);
-      return raw === 'lyrics' ? 'lyrics' : 'queue';
-    } catch {
-      return 'queue';
-    }
-  }
-
+  /** Switch the panel's tab, keeping its snap (karaoke, Q / Y). */
   setActivePanel(panel: 'queue' | 'lyrics'): void {
-    this.activePanel.set(panel);
-    // Leaving lyrics must also leave karaoke fullscreen, or the overlay
-    // outlives the panel behind it and there is no way back to the queue.
-    if (panel !== 'lyrics') this.karaokeFullscreen.set(false);
-    try {
-      localStorage.setItem(NowPlayingComponent.ACTIVE_PANEL_STORAGE_KEY, panel);
-    } catch {
-      /* storage unavailable — the choice just won't persist */
-    }
+    this.setPanelState({ ...this.panelState(), tab: panel });
   }
 
   private readonly backButton = inject(BackButtonService);
@@ -570,6 +634,8 @@ export class NowPlayingComponent {
         this.karaokeFullscreen.set(false);
         return true;
       }
+      // A `full` panel comes down to `rest` before the sheet closes.
+      if (this.player.nowPlayingOpen() && this.panelEvent({ type: 'back' })) return true;
       if (this.player.nowPlayingOpen()) {
         this.player.setNowPlayingOpen(false);
         return true;
@@ -655,6 +721,23 @@ export class NowPlayingComponent {
 
     // Ensure the browse-idle timeout can never fire/leak past destruction.
     this.destroyRef.onDestroy(() => this.browse.destroy());
+
+    // `lg` and the `full` geometry follow the window.
+    const onResize = (): void => {
+      this.lg.set(isDesktopSheet());
+      if (this.panelFull()) this.panelFullLiftPx.set(this.measurePanelGeometry().fullLiftPx);
+    };
+    window.addEventListener('resize', onResize);
+    this.destroyRef.onDestroy(() => window.removeEventListener('resize', onResize));
+    // A sheet that opens onto a restored `full` measures once it is laid out.
+    effect(() => {
+      if (!this.player.nowPlayingOpen() || !this.panelFull()) return;
+      untracked(() =>
+        requestAnimationFrame(() =>
+          this.panelFullLiftPx.set(this.measurePanelGeometry().fullLiftPx),
+        ),
+      );
+    });
   }
 
   toggleKaraokeFullscreen(): void {

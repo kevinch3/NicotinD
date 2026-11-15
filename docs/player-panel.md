@@ -1,6 +1,6 @@
 # Player panel: one snap-point state machine (design proposal)
 
-**Status: decided (owner, 2026-11-09), not built.** This is Step 0 of #1651 (sub-issue #1677). It
+**Status: decided (owner, 2026-11-09); #1678 and #1679 built (see "Built so far").** This is Step 0 of #1651 (sub-issue #1677). It
 unblocks #1678 (pure state machine), #1679 (full height, and the pull-down past rest), #1680 (karaoke fold) and #1681 (tab registration
 and coverage), and it coordinates with #1668 (the shared tab component). Nothing here describes
 shipped behaviour except the "Today" sections, and each claim there cites `file:line` on `master`
@@ -468,4 +468,15 @@ below as the record of what was weighed. D3 A's "three fixed snaps" became two b
   start (`gestureBaseLift`), the render mapping (`panelLayout`), the mode table (`resolvePullMode`),
   the discrete events (`transition`), the `lg` reduction (`effectiveSnap`) and the §8 migration
   (`restorePanelState`, `persistPanelState`). `lib/player-panel.spec.ts` is table-driven over every
-  row. Nothing renders through it yet; #1679 binds it to the sheet.
+  row.
+- **#1679, the sheet binds it:** `now-playing.component` holds `panelState`, resolves pulls with
+  `resolvePullMode`, settles with `settle`, routes tab taps, the notch and Back through
+  `transition`, and persists with `persistPanelState`. Queue and Lyrics both reach `full` (karaoke
+  stays its own overlay until #1680). A full Queue shows the compact transport strip (D6), and the
+  stage is `inert`. A pointercancel settles by distance only. **One deliberate change to §2.2:** the
+  frame is a layer that slides over a stage that never reflows, and the cover does not shrink first
+  (`panelLayout` is called with `coverMaxPx: 0`). Below `lg` the panel zone had no box
+  (`display: contents`), and the cover is capped at `60vw`, so a shrinking `coverMaxPx` did not move
+  the panel 1:1 with the finger: the first ~70 px of a pull would have moved nothing, and `full`
+  would have landed short of the top. Not built: reading the rendered `lift` to catch a settle
+  mid-flight (`gestureBaseLift`); a pull during the 300 ms settle starts from the target snap.

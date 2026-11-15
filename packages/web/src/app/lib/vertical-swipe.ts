@@ -47,6 +47,8 @@ export interface SwipeEnd {
   velocity: number;
   /** False for a pointerup inside the slop zone (a tap). */
   owned: boolean;
+  /** Ended by pointercancel (an OS interruption), not a release. */
+  cancelled?: boolean;
 }
 
 export interface VerticalSwipeOptions {
@@ -151,7 +153,7 @@ interface AxisSwipeOptions {
   axis: SwipeAxis;
   resolve: (ctx: SwipeResolveContext) => SwipeIntent;
   onMove?: (delta: number, e: PointerEvent) => void;
-  onEnd?: (end: { delta: number; velocity: number; owned: boolean }) => void;
+  onEnd?: (end: { delta: number; velocity: number; owned: boolean; cancelled: boolean }) => void;
   onRelease?: () => void;
 }
 
@@ -222,8 +224,8 @@ function createAxisSwipe(options: AxisSwipeOptions): VerticalSwipe {
       samples.push({ t: e.timeStamp, pos: coord(e) });
       options.onMove?.(along(dx, dy), e);
     },
-    onEnd: (e, start) => finish(e, start),
-    onCancel: (e, start) => finish(e, start),
+    onEnd: (e, start) => finish(e, start, false),
+    onCancel: (e, start) => finish(e, start, true),
   });
 
   // Hand the finger back: detach everything now rather than on pointerup,
@@ -236,7 +238,7 @@ function createAxisSwipe(options: AxisSwipeOptions): VerticalSwipe {
     options.onRelease?.();
   };
 
-  const finish = (e: PointerEvent, start: PointerEvent): void => {
+  const finish = (e: PointerEvent, start: PointerEvent, cancelled: boolean): void => {
     removeBlocker();
     unclaim();
     if (intent === 'release') return;
@@ -246,6 +248,7 @@ function createAxisSwipe(options: AxisSwipeOptions): VerticalSwipe {
       delta: coord(e) - coord(start),
       velocity: owned ? flickVelocity(samples) : 0,
       owned,
+      cancelled,
     };
     intent = 'undecided';
     origin = null;
@@ -268,7 +271,8 @@ export function createVerticalSwipe(options: VerticalSwipeOptions): VerticalSwip
     onMove: options.onMove,
     onEnd:
       options.onEnd &&
-      (({ delta, velocity, owned }) => options.onEnd?.({ dy: delta, velocity, owned })),
+      (({ delta, velocity, owned, cancelled }) =>
+        options.onEnd?.({ dy: delta, velocity, owned, cancelled })),
     onRelease: options.onRelease,
   });
 }

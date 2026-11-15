@@ -16,8 +16,8 @@
     (pointerdown)="onBodyPointerDown($event)"
     [style.--np-tv-backdrop]="tvBackdropUrl() ? 'url(' + tvBackdropUrl() + ')' : null"
   >
-    <app-now-playing-header />
-    <app-playing-elsewhere />
+    <app-now-playing-header [attr.inert]="stageInert() ? '' : null" />
+    <app-playing-elsewhere [attr.inert]="stageInert() ? '' : null" />
 
     @if (isTv && nextUp(); as next) {
       <!-- TV replaces the stacked queue panel with a glanceable Next-up chip;
@@ -52,7 +52,10 @@
          real column boxes only exist at lg, leaving the mobile stacked layout
          untouched by construction. -->
     <div class="flex-1 min-h-0 flex flex-col lg:flex-row" data-testid="now-playing-body">
-      <div class="contents lg:flex lg:flex-1 lg:min-h-0 lg:flex-col lg:justify-center">
+      <div
+        class="contents lg:flex lg:flex-1 lg:min-h-0 lg:flex-col lg:justify-center"
+        [attr.inert]="stageInert() ? '' : null"
+      >
         <app-now-playing-cover-art
           [coverMaxPx]="coverMaxPx()"
           [resizing]="resizingQueue()"
@@ -79,27 +82,6 @@
           (prevClicked)="handlePrev()"
         />
 
-        @if (!isTv && !karaokeFullscreen()) {
-          <!-- Resize notch: the visible affordance for the panel resize, which the
-               sheet-root pointerdown now serves from anywhere (mode table in
-               docs/web-ui.md). Shell-owned and rendered above the tabs so it works
-               on the Queue AND Lyrics tabs — inside the queue panel it vanished
-               with the tab switch and read as a lost feature. lg:hidden — a
-               vertical resize is meaningless beside the side panel; on TV it's a
-               pointer-drag affordance a D-pad can't use. -->
-          <div
-            data-testid="now-playing-queue-resize"
-            role="separator"
-            aria-orientation="horizontal"
-            [attr.aria-label]="'nowPlaying.resizeQueue' | t"
-            class="lg:hidden group flex-shrink-0 flex justify-center items-center py-5 cursor-ns-resize touch-none select-none"
-          >
-            <span
-              class="w-10 h-1 rounded-full transition-colors"
-              [class]="resizingQueue() ? 'bg-theme-secondary' : 'bg-theme-surface-2 group-hover:bg-theme-muted'"
-            ></span>
-          </div>
-        }
       </div>
 
       @if (!isTv && !karaokeFullscreen()) {
@@ -126,16 +108,84 @@
             [class]="resizingSide() ? 'bg-theme-accent' : 'bg-theme group-hover/split:bg-theme-muted group-focus-visible/split:bg-theme-accent'"
           ></span>
         </div>
+        <!-- The panel (#1679, docs/player-panel.md). The zone is a flow box that
+             never moves; the frame inside it is a layer pinned to its bottom whose
+             top rises with the pull, over a stage that does not reflow. At `full`
+             it reaches the safe-area top with its notch, and the stage behind it
+             is inert. At lg the frame is static in the side column. -->
         <div
           data-np-zone="panel"
-          class="contents lg:flex lg:flex-col lg:flex-none lg:w-[var(--np-side-w,380px)] lg:min-h-0"
+          class="relative flex-1 min-h-0 lg:flex lg:flex-col lg:flex-none lg:w-[var(--np-side-w,380px)]"
           [style.--np-side-w]="sidePanelWidthPx() + 'px'"
         >
+          <div
+            id="np-panel-frame"
+            data-testid="now-playing-panel"
+            [attr.data-snap]="panelSnap()"
+            [class]="'absolute inset-x-0 bottom-0 z-10 flex flex-col bg-theme-base lg:static lg:flex-1 lg:min-h-0 ' +
+              (panelDragLift() === null ? 'transition-[top] duration-300 ease-out motion-reduce:transition-none' : 'transition-none')"
+            [style.top.px]="panelTopPx()"
+          >
+          <!-- Notch: the panel's handle, riding at its top. A div, not a button:
+               BODY_NO_SWIPE excludes buttons, which would kill the drag. Tap,
+               Enter/Space toggle rest ↔ full; ArrowUp/ArrowDown set them. -->
+          <div
+            data-testid="now-playing-queue-resize"
+            role="button"
+            tabindex="0"
+            aria-controls="np-panel-frame"
+            [attr.aria-expanded]="panelFull()"
+            [attr.aria-label]="(panelFull() ? 'nowPlaying.collapsePanel' : 'nowPlaying.expandPanel') | t"
+            (click)="onNotchClick()"
+            (keydown)="onNotchKeydown($event)"
+            class="lg:hidden group flex-shrink-0 flex justify-center items-center py-5 cursor-ns-resize touch-none select-none focus-visible:outline-none"
+          >
+            <span
+              class="w-10 h-1 rounded-full transition-colors group-focus-visible:bg-theme-accent"
+              [class]="resizingQueue() ? 'bg-theme-secondary' : 'bg-theme-surface-2 group-hover:bg-theme-muted'"
+            ></span>
+          </div>
+
+          @if (panelFull() && activePanel() === 'queue') {
+            <!-- D6: a full Queue covers the transport, so play/pause and next stay
+                 reachable above it. -->
+            <div class="flex items-center gap-3 px-4 pb-2 flex-shrink-0" data-testid="now-playing-compact-transport">
+              <div class="min-w-0 flex-1">
+                <p appOverflowReveal class="text-sm text-theme-primary truncate">{{ track.title }}</p>
+                <p appOverflowReveal class="text-xs text-theme-secondary truncate">{{ track.artist }}</p>
+              </div>
+              <button
+                type="button"
+                appHaptic
+                data-testid="now-playing-compact-playpause"
+                [attr.aria-label]="(showPlaying() ? 'nowPlaying.pause' : 'nowPlaying.play') | t"
+                (click)="handlePlayPause()"
+                class="w-11 h-11 rounded-full bg-theme-inverse text-theme-inverse flex items-center justify-center"
+              >
+                @if (showPlaying()) {
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+                } @else {
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="6,3 20,12 6,21" /></svg>
+                }
+              </button>
+              <button
+                type="button"
+                appHaptic
+                data-testid="now-playing-compact-next"
+                [attr.aria-label]="'nowPlaying.next' | t"
+                (click)="handleNext()"
+                class="w-11 h-11 flex items-center justify-center text-theme-secondary hover:text-theme-primary"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="3,5 15,12 3,19" /><rect x="18" y="5" width="3" height="14" /></svg>
+              </button>
+            </div>
+          }
+
           <app-now-playing-panel-tabs
             [activePanel]="activePanel()"
             [queueCount]="player.queue().length"
             [hasLyrics]="hasLyrics()"
-            (panelSelected)="setActivePanel($event)"
+            (panelSelected)="onTabSelected($event)"
           />
 
           @if (activePanel() === 'lyrics') {
@@ -158,6 +208,7 @@
           } @else {
             <app-now-playing-queue-panel (linkFollowed)="closeForNavigation()" />
           }
+          </div>
         </div>
       }
     </div>

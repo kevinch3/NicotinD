@@ -97,11 +97,11 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   (`headerDisplayClass`, `statusScrimVisible`). → [web-ui.md](../web-ui.md)
 - **Vertical swipe (own-or-release)**: `createVerticalSwipe` arms the touchmove blocker at
   pointerdown and asks `resolve` once; `shouldCommit` (distance or `flickVelocity`) commits. The
-  mini-bar live-follow open, the Now Playing mode table (resize/dismiss, continuation) and the
+  mini-bar live-follow open, the Now Playing mode table (panel/dismiss, continuation) and the
   `lg:` side-panel splitter (`sidePanelWidthPx`). → [web-ui.md](../web-ui.md)
-- **Player panel snap points (decided, #1651)**: one rest/full state machine for the Now
-  Playing panel, folding `karaokeFullscreen` and `resolveLyricsScrollContainer` in, with a
-  declarative tab contract and a migration off `queueExtraHeightPx`. → [player-panel.md](../player-panel.md)
+- **Player panel snap points (#1651)**: one rest/full state machine for the Now Playing
+  panel (`panelState`, `resolvePullMode`, `settle`); next it folds `karaokeFullscreen` and
+  `resolveLyricsScrollContainer` in. → [player-panel.md](../player-panel.md)
 - **Queue row gestures**: `createRowGesture` — swipe left removes with Undo (`insertInQueue`),
   long-press then drag reorders (`reorderTargetIndex`); blocker armed only at the long-press.
   → [web-ui.md](../web-ui.md)
