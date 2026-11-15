@@ -231,6 +231,8 @@ const attached =
   sessionUp &&
   (await step('webview: the app page is attachable', async () => {
     await inPage();
+    const href = await js<string>('return location.href;');
+    if (!href.startsWith('capacitor://')) throw new Error(`attached to ${href}, not the app`);
     return js<Record<string, unknown>>(`return {
     href: location.href,
     platform: window.Capacitor?.getPlatform?.() ?? null,

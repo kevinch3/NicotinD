@@ -70,6 +70,10 @@ describe('appWebview', () => {
   test('none yet', () => {
     expect(appWebview(['NATIVE_APP'])).toBeNull();
   });
+
+  test('the app WebView before Capacitor loads it is not the app yet', () => {
+    expect(appWebview(['NATIVE_APP', { id: 'WEBVIEW_3', url: 'about:blank' }])).toBeNull();
+  });
 });
 
 describe('coordinates and gestures', () => {

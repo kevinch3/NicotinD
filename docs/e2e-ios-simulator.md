@@ -39,6 +39,10 @@ nobody can log into, that artifact is the debugging session.
   web apps (measured 2026-11-15). So the workflow sets `ios.webContentsDebuggingEnabled` in the generated
   `capacitor.config.json` of its throwaway project, then checks that the built `.app` carries it. The
   committed config and the release build are untouched.
+- **Wait for the app's own page.** The app's WKWebView exists at `about:blank` before Capacitor loads
+  `capacitor://localhost`. The first run on master started its session fast (25 s), attached to the
+  blank page and failed every check after it. `appWebview` accepts only a `capacitor://` context while
+  Appium reports URLs, and the attach step asserts the origin.
 - **`additionalWebviewBundleIds: ['process-App']`.** The Simulator's web inspector reports the app as
   `process-App`, after its executable, not as `ar.kevinroberts.nicotind`. Appium matches web apps by
   bundle id, so it listed the page and then skipped it (measured 2026-11-15). The entry names the app
