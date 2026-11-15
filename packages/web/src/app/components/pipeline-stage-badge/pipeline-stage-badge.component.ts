@@ -1,6 +1,6 @@
 import { Component, input, computed, inject } from '@angular/core';
 import type { PipelineStage } from '@nicotind/core';
-import { stageBadge, stageLabel } from '../../lib/pipeline-stage';
+import { partialBadge, stageBadge, stageLabel } from '../../lib/pipeline-stage';
 import { TranslateService } from '../../services/translate.service';
 
 /**
@@ -18,12 +18,19 @@ export class PipelineStageBadgeComponent {
   readonly stage = input.required<PipelineStage>();
   /** Words that say more than the stage can, e.g. a Get's place in the hunt queue (#1938). */
   readonly labelOverride = input<string | null>(null, { alias: 'label' });
+  /** A done card with tracks missing reads Partial, in the warning tone (#1939). */
+  readonly partial = input(false);
 
   private readonly i18n = inject(TranslateService);
 
-  readonly badge = computed(() => stageBadge(this.stage()));
+  private readonly isPartial = computed(() => this.partial() && this.stage() === 'done');
+  readonly badge = computed(() => (this.isPartial() ? partialBadge() : stageBadge(this.stage())));
   readonly label = computed(
-    () => this.labelOverride() ?? stageLabel(this.stage(), (key) => this.i18n.t(key)),
+    () =>
+      this.labelOverride() ??
+      (this.isPartial()
+        ? this.i18n.t(partialBadge().key)
+        : stageLabel(this.stage(), (key) => this.i18n.t(key))),
   );
 
   readonly toneClass = computed(() => {
@@ -34,6 +41,8 @@ export class PipelineStageBadgeComponent {
         return 'status-error';
       case 'done':
         return 'status-done';
+      case 'warn':
+        return 'status-warn';
       default:
         return 'bg-theme-surface-2 text-theme-muted';
     }

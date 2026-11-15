@@ -59,7 +59,7 @@
         <p appOverflowReveal class="text-xs text-theme-secondary truncate mt-0.5">{{ item().subtitle }}</p>
       }
       <div class="flex items-center gap-2 mt-1 flex-wrap min-w-0">
-        <app-pipeline-stage-badge [stage]="item().stage" [label]="queueBadge()" />
+        <app-pipeline-stage-badge [stage]="item().stage" [label]="queueBadge()" [partial]="partial()" />
         @if (queueLine(); as line) {
           <span class="text-xs text-theme-muted" data-testid="download-queue">· {{ line }}</span>
         }

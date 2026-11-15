@@ -51,6 +51,7 @@ import { setInputValue, changeInputValue } from '../../../testing/signal-input';
 class StubPipelineStageBadgeComponent {
   @Input() stage: unknown;
   @Input() label: unknown;
+  @Input() partial: unknown;
 }
 
 function item(over: Partial<DownloadItem> = {}): DownloadItem {
@@ -959,5 +960,41 @@ describe('download-item queue status (#1938)', () => {
       expect(BASE_CATALOG).toHaveProperty([key]);
       expect(ES_CATALOG).toHaveProperty([key]);
     }
+  });
+});
+
+/** #1939: a done card that is missing tracks of its edition reads Partial, not Done. */
+describe('download-item partial (#1939)', () => {
+  function setup(one: DownloadItem) {
+    TestBed.configureTestingModule({
+      imports: [DownloadItemComponent],
+      providers: [provideRouter([])],
+    });
+    TestBed.overrideComponent(DownloadItemComponent, {
+      set: {
+        imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent, TranslatePipe],
+      },
+    });
+    const fixture = TestBed.createComponent(DownloadItemComponent);
+    setInputValue(fixture.componentInstance.item, one);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('marks a done card with 1 of 14 tracks partial, and a complete one not', () => {
+    expect(
+      setup(item({ stage: 'done', progress: { done: 1, total: 14 } })).componentInstance.partial(),
+    ).toBe(true);
+    TestBed.resetTestingModule();
+    expect(
+      setup(item({ stage: 'done', progress: { done: 11, total: 11 } })).componentInstance.partial(),
+    ).toBe(false);
+  });
+
+  it('has the Partial label in both catalogs', async () => {
+    const en = (await import('../../../../public/i18n/en.json')).default as Record<string, string>;
+    const es = (await import('../../../../public/i18n/es.json')).default as Record<string, string>;
+    expect(en['downloads.stage.partial']).toBe('Partial');
+    expect(es['downloads.stage.partial']).toBe('Parcial');
   });
 });
