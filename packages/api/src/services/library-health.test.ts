@@ -557,7 +557,7 @@ describe('libraryHealth — completeness (confirmed, the album_jobs arm)', () =>
           return [{ title: 'Catwalk' }, { title: 'Haze of Fame' }];
         },
       },
-    } as unknown as Pick<Lidarr, 'track'>;
+    } as unknown as Pick<Lidarr, 'track' | 'album'>;
     const live = (await libraryHealthWithLidarr(db, {}, ok)).dimensions.completeness;
     expect(calls).toEqual([12182]);
     expect(live.metric).toMatchObject({ confirmedIncomplete: 0, liveTracklists: 1 });
@@ -568,7 +568,7 @@ describe('libraryHealth — completeness (confirmed, the album_jobs arm)', () =>
           throw new Error('lidarr down');
         },
       },
-    } as unknown as Pick<Lidarr, 'track'>;
+    } as unknown as Pick<Lidarr, 'track' | 'album'>;
     const stale = (await libraryHealthWithLidarr(db, {}, down)).dimensions.completeness;
     expect(stale.metric).toMatchObject({ confirmedIncomplete: 1, liveTracklists: 0 });
 
@@ -596,8 +596,36 @@ describe('libraryHealth — completeness (confirmed, the album_jobs arm)', () =>
 
     const agrees = {
       track: { listByAlbum: async () => [{ title: 'Catwalk' }, { title: 'Haze of Fame' }] },
-    } as unknown as Pick<Lidarr, 'track'>;
+    } as unknown as Pick<Lidarr, 'track' | 'album'>;
     expect(await incompleteAlbums(db, agrees)).toEqual([]);
+  });
+
+  /** #1936: owning the standard edition is complete, whatever box set Lidarr monitors. */
+  it('incompleteAlbums judges against the standard edition, not the monitored box set', async () => {
+    seedOwned('al-mon', 'Monster', ['Crush With Eyeliner', 'King of Comedy']);
+    addJob({
+      album: 'Monster',
+      canonical: ['Crush With Eyeliner', 'King of Comedy', 'Revolution'],
+      lidarrAlbumId: 1401,
+    });
+    const boxSet = {
+      album: {
+        get: async () => ({
+          releases: [
+            { id: 1, trackCount: 2, status: 'Official', monitored: false },
+            { id: 2, trackCount: 2, status: 'Official', monitored: false },
+            { id: 3, trackCount: 3, status: 'Official', monitored: true },
+          ],
+        }),
+      },
+      track: {
+        listByAlbum: async () =>
+          ['Crush With Eyeliner', 'King of Comedy', 'Revolution'].map((title) => ({ title })),
+        listByRelease: async () =>
+          ['Crush With Eyeliner', 'King of Comedy'].map((title) => ({ title })),
+      },
+    } as unknown as Pick<Lidarr, 'track' | 'album'>;
+    expect(await incompleteAlbums(db, boxSet)).toEqual([]);
   });
 
   /** A genuine gap must still reach `confirmed` — the guard is not a blanket. */
@@ -732,7 +760,7 @@ describe('libraryHealth — completeness spans acquisition_jobs too', () => {
           return [{ title: 'Gemini' }, { title: 'Reach for the Dead' }];
         },
       },
-    } as unknown as Pick<Lidarr, 'track'>;
+    } as unknown as Pick<Lidarr, 'track' | 'album'>;
     const d = (await libraryHealthWithLidarr(db, {}, lidarr)).dimensions.completeness;
     expect(calls).toEqual([21]);
     expect(d.metric).toMatchObject({ confirmedIncomplete: 0, liveTracklists: 1 });

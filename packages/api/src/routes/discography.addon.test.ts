@@ -45,7 +45,7 @@ const CANDIDATE = {
 
 const TRACKS = [{ title: 'One' }, { title: 'Two' }, { title: 'Three' }];
 
-function harness(clientOver: Partial<AddonClient> = {}) {
+function harness(clientOver: Partial<AddonClient> = {}, lidarrOver: Record<string, unknown> = {}) {
   const db = new Database(':memory:');
   applySchema(db);
   const jobRequests: unknown[] = [];
@@ -90,6 +90,7 @@ function harness(clientOver: Partial<AddonClient> = {}) {
   const lidarr = {
     album: { get: mock(async () => ({ title: 'Dynamo', artist: { artistName: 'Soda Stereo' } })) },
     track: { listByAlbum: mock(async () => TRACKS) },
+    ...lidarrOver,
   } as unknown as Lidarr;
 
   const app = new Hono<AuthEnv>();
@@ -717,5 +718,82 @@ describe('discography routes through a remote addon', () => {
       .get()!;
     expect(job.kind).toBe('track-search');
     expect(job.method).toBe('fixture-addon');
+  });
+});
+
+/**
+ * #1936. Lidarr monitors the box set for most catalogue classics. The picker
+ * scores against the standard edition, and a folder picked by hand brings its
+ * own edition: the standard tracks plus whatever else of the album it carries.
+ */
+describe('the standard edition (#1936)', () => {
+  const STANDARD = ['One', 'Two', 'Three'];
+  const BOX_SET = [...STANDARD, 'One (demo)', 'Four', 'Five (live)'];
+  const boxSetLidarr = {
+    album: {
+      get: mock(async () => ({
+        title: 'Dynamo',
+        artist: { artistName: 'Soda Stereo' },
+        releases: [
+          { id: 10, trackCount: 3, status: 'Official', monitored: false },
+          { id: 11, trackCount: 3, status: 'Official', monitored: false },
+          { id: 12, trackCount: 6, status: 'Official', monitored: true },
+        ],
+      })),
+    },
+    track: {
+      listByAlbum: mock(async () => BOX_SET.map((title) => ({ title }))),
+      listByRelease: mock(async () => STANDARD.map((title) => ({ title }))),
+    },
+  };
+  const pickOf = (...names: string[]) => ({
+    selected: {
+      username: 'peer',
+      directory: 'Soda Stereo - Dynamo',
+      files: names.map((filename) => ({ filename, size: 1 })),
+      candidateRef: 'ref-1',
+    },
+  });
+  const titlesOf = (tracks: unknown) => (tracks as Array<{ title: string }>).map((t) => t.title);
+
+  it('the picker scores folders against the standard edition', async () => {
+    const h = harness({}, boxSetLidarr);
+    const res = await h.app.request('/albums/42/hunt/base', jsonPost({}));
+    expect(res.status).toBe(200);
+    const query = h.albumsSearch.mock.calls.at(-1)?.[0] as { canonicalTracks: unknown };
+    expect(titlesOf(query.canonicalTracks)).toEqual(STANDARD);
+  });
+
+  it('a standard rip picked by hand is the standard edition', async () => {
+    const h = harness({}, boxSetLidarr);
+    const res = await h.app.request(
+      '/albums/42/hunt-download',
+      jsonPost(pickOf('01 One.flac', '02 Two.flac', '03 Three.flac')),
+    );
+    expect(res.status).toBe(201);
+    const req = h.jobRequests[0] as { canonicalTracks: unknown; wantedTracks: unknown };
+    expect(titlesOf(req.canonicalTracks)).toEqual(STANDARD);
+    expect(titlesOf(req.wantedTracks)).toEqual(STANDARD);
+  });
+
+  it('a deluxe rip picked by hand gets the extra tracks it carries, and records them', async () => {
+    const h = harness({}, boxSetLidarr);
+    const res = await h.app.request(
+      '/albums/42/hunt-download',
+      jsonPost(
+        pickOf('01 One.flac', '02 Two.flac', '03 Three.flac', '04 One (demo).flac', '05 Four.flac'),
+      ),
+    );
+    expect(res.status).toBe(201);
+    const expected = [...STANDARD, 'One (demo)', 'Four'];
+    const req = h.jobRequests[0] as { canonicalTracks: unknown; wantedTracks: unknown };
+    expect(titlesOf(req.canonicalTracks)).toEqual(expected);
+    expect(titlesOf(req.wantedTracks)).toEqual(expected);
+    const row = h.db
+      .query<{ canonical_tracks_json: string }, []>(
+        'SELECT canonical_tracks_json FROM acquisition_jobs',
+      )
+      .get()!;
+    expect(JSON.parse(row.canonical_tracks_json)).toEqual(expected);
   });
 });

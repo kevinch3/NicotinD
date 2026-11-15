@@ -640,7 +640,7 @@ X's own predicate, not a predicate that looks equivalent.**
 
 #758 aligned the predicate but not the data it runs on. The worklist read the tracklist stored in
 `album_jobs.canonical_tracks_json` at hunt time; `acquireAlbum` re-fetches it from Lidarr
-(`track.listByAlbum`), and Lidarr's monitored release can change afterwards. A prod sample of 6 hunts
+(`track.listByAlbum` then; the standard edition since #1936), and Lidarr's monitored release can change afterwards. A prod sample of 6 hunts
 returned 4 `already-complete`, and all four were this:
 
 | album | stored list | live list | local songs |

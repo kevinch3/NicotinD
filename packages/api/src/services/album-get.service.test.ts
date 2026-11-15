@@ -277,3 +277,61 @@ describe('AlbumGetService under a bulk Get (#1824)', () => {
     expect(maxInFlight).toBe(1);
   });
 });
+
+/**
+ * #1936. Lidarr monitors the box set for most catalogue classics (*Monster*: 64
+ * tracks monitored, 23 of 29 releases have 12). A Get searches for, and records,
+ * the standard edition, so a clean standard rip clears the bar and the card does
+ * not count the bonus discs as missing.
+ */
+describe('AlbumGetService — the standard edition (#1936)', () => {
+  it('searches for and records the standard edition when Lidarr monitors a box set', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const searched: string[][] = [];
+    const client = {
+      baseUrl: 'http://addon:9999',
+      albumsSearch: async (q: { canonicalTracks: Array<{ title: string }> }) => {
+        searched.push(q.canonicalTracks.map((t) => t.title));
+        return FOUND;
+      },
+      createJob: async () => ({ id: 'aj-1', intent: 'album', items: [] }),
+    } as unknown as AddonClient;
+    const lidarr = {
+      album: {
+        get: async () => ({
+          title: 'Album',
+          artist: { artistName: 'Artist' },
+          releases: [
+            { id: 10, trackCount: 2, status: 'Official', monitored: false },
+            { id: 11, trackCount: 2, status: 'Official', monitored: false },
+            { id: 12, trackCount: 4, status: 'Official', monitored: true },
+          ],
+        }),
+      },
+      track: {
+        listByAlbum: async () =>
+          ['Song One', 'Song Two', 'Song One (demo)', 'Outtake'].map((title) => ({ title })),
+        listByRelease: async () => [{ title: 'Song One' }, { title: 'Song Two' }],
+      },
+    } as unknown as Lidarr;
+    const svc = new AlbumGetService({
+      db,
+      lidarr,
+      getAddon: () => new RemoteAddonPlugin(MANIFEST, client),
+      schedule: () => {},
+    });
+
+    const answer = await svc.request(REQ);
+    if (answer.status !== 'accepted') throw new Error(`expected accepted, got ${answer.status}`);
+    await svc.settled(answer.jobId);
+
+    expect(searched).toEqual([['Song One', 'Song Two']]);
+    const row = db
+      .query<{ canonical_tracks_json: string }, []>(
+        'SELECT canonical_tracks_json FROM acquisition_jobs',
+      )
+      .get();
+    expect(JSON.parse(row!.canonical_tracks_json)).toEqual(['Song One', 'Song Two']);
+  });
+});

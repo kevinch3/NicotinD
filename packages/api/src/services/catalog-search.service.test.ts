@@ -123,7 +123,7 @@ describe('CatalogService.search', () => {
       artistName: 'Pink Floyd',
       artistMbid: 'pf-mbid',
       year: '1973',
-      trackCount: 10, // largest release wins
+      trackCount: 9, // the standard edition: a tie goes to fewer tracks (#1936)
       coverUrl: `/api/cover/remote?u=${encodeURIComponent('https://images.lidarr.audio/c.jpg')}`,
     });
   });

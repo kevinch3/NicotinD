@@ -218,6 +218,53 @@ never resolves.
 
 ---
 
+## The standard edition is the album (#1936)
+
+Lidarr's `track.listByAlbum` returns the tracks of the album's **monitored** release, and for
+catalogue classics Lidarr monitors the biggest box set. That list was every hunt's denominator, so a
+perfect standard rip of *Monster* scored 12/64 = 19% and could not clear the Get's 60% bar. Every
+card that landed a standard edition reported the bonus discs as "not offered", auto-complete spent
+its searches on DVD-Audio tracks no peer has, and `albumAlreadyComplete` never matched an owned
+standard edition.
+
+Measured on prod 2026-11-15 across a 27-album R.E.M. + The Cure Get: in 25 albums the monitored
+release was the largest one. The track counts across each album's Lidarr releases settle which
+rule works:
+
+| Album | Releases by track count | Monitored | Most common |
+|---|---|---|---|
+| Up | 14×12 · 26×4 · 42×1 | 42 | 14 |
+| Monster | 12×23 · 24×2 · 36×2 · 64×2 | 64 | 12 |
+| Seventeen Seconds | 9×1 · 10×22 · 25×6 | 25 | 10 |
+
+The rule (`pickStandardRelease`, `services/standard-edition.ts`): take the **most common track count
+among the album's official releases** (status matched case-insensitively), with fewer tracks on a
+tie, and Lidarr's monitored release when it has that count. It is not "the smallest release", because
+*Seventeen Seconds* has one odd 9-track pressing. The owner chose the standard edition over the
+deluxe one for one-click Get.
+
+- **Every unattended lane and the picker's scoring** use `standardTracklist` / `fetchStandardTracklist`:
+  `AlbumGetService`, `acquireAlbum` (watchlist, auto-acquire), `/hunt`, `/hunt/base` + `/hunt/queue`,
+  `/hunt-tracks`, `/hunt/skew`. A single-edition album, which is most of the Latin catalogue, still
+  costs the one `listByAlbum` call it always did. An unmonitored standard release is read with
+  `track.listByRelease` (`/api/v1/track?albumReleaseId=`). An empty answer, or no known releases,
+  falls back to the album listing.
+- **A folder picked by hand brings its own edition** (`folderEditionTitles`, `/hunt-download`): the
+  standard tracks plus every other track of the album that the folder actually carries. A deluxe rip
+  picked in the copy picker gets its deluxe tracks without guessing which of *Monster*'s
+  12/24/36/64-track editions it is. A partial rip still owes the whole standard edition. The extras
+  are matched against the full listing, so a bonus "Song (demo)" never claims a plain "Song" file.
+- **Completeness reads the same list**: the artist page's tiles (`totalTracks` is the tracklist's
+  length, with Lidarr's monitored-release statistics only as a fallback), the Admin Incomplete Albums
+  panel and the completeness dimension's live tracklists, and the catalog search's `trackCount` /
+  `totalTracks` (`standardTrackCount`, which replaced "the largest release wins").
+- **Deliberately unchanged**: `metadata-optimize` still assigns track numbers from the full listing,
+  where a superset of titles only helps the match. A job's stored `canonical_tracks_json` is written
+  once, at reservation, so jobs created before this change keep the box-set list they were made
+  with.
+
+---
+
 ## Hunt rate-limiting — slskd 429 (keep-trying vs no-results)
 
 slskd rate-limits `POST /searches`; firing every base+skew query at once (an unbounded `Promise.all`)

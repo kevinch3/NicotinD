@@ -6,6 +6,7 @@ import type { LidarrRootPolicy } from './lidarr-root.js';
 import { normalizeTitle } from '@nicotind/core';
 import { tokenize, matchesAllTokens, rankBy, fold } from './search-tokens.js';
 import { proxiedCoverUrl } from './remote-cover.js';
+import { standardTrackCount } from './standard-edition.js';
 
 const log = createLogger('catalog');
 
@@ -283,7 +284,7 @@ export class CatalogService {
 
     return {
       lidarrAlbumId: album.id,
-      totalTracks: album.statistics?.totalTrackCount ?? 0,
+      totalTracks: standardTrackCount(album),
       title: album.title,
       artistName: input.artistName,
     };
@@ -373,12 +374,9 @@ function mapArtist(a: LidarrArtist): CatalogArtist {
 
 function mapAlbum(a: LidarrAlbum): CatalogAlbum {
   const cover = a.images?.find((i) => i.coverType === 'cover') ?? a.images?.[0];
-  // Lidarr lookup payloads omit per-track titles but carry release track counts;
-  // take the largest so a deluxe/expanded release doesn't under-report.
-  const trackCount =
-    a.releases?.reduce((max, r) => Math.max(max, r.trackCount ?? 0), 0) ??
-    a.statistics?.totalTrackCount ??
-    0;
+  // Lidarr lookup payloads omit per-track titles but carry release track counts. The album is its
+  // standard edition (#1936), the count a Get scores and calls complete against.
+  const trackCount = standardTrackCount(a);
   return {
     foreignAlbumId: a.foreignAlbumId,
     title: a.title,

@@ -32,6 +32,11 @@ import { mapAddonJob } from '../services/addons/job-poller.js';
 import { onDiskTitles } from '../services/library-completeness.js';
 import { HuntQueue, HuntQueueFullError } from '../services/hunt-queue.js';
 import { AlbumGetService } from '../services/album-get.service.js';
+import {
+  albumEditions,
+  folderEditionTitles,
+  standardTracklist,
+} from '../services/standard-edition.js';
 
 const log = createLogger('discography');
 
@@ -190,10 +195,8 @@ export function discographyRoutes({
     const body = await c.req.json<HuntBody>().catch(() => ({}) as HuntBody);
 
     try {
-      const [album, tracks] = await Promise.all([
-        lidarr.album.get(albumId),
-        lidarr.track.listByAlbum(albumId),
-      ]);
+      const album = await lidarr.album.get(albumId);
+      const tracks = await standardTracklist(lidarr, albumId, album.releases);
 
       const artistName = body.artistName ?? album.artist?.artistName ?? '';
       const albumTitle = body.albumTitle ?? album.title;
@@ -278,10 +281,8 @@ export function discographyRoutes({
       .catch(() => ({}) as { artistName?: string });
 
     try {
-      const [album, tracks] = await Promise.all([
-        lidarr.album.get(albumId),
-        lidarr.track.listByAlbum(albumId),
-      ]);
+      const album = await lidarr.album.get(albumId);
+      const tracks = await standardTracklist(lidarr, albumId, album.releases);
       const artistName = body.artistName ?? album.artist?.artistName ?? '';
       const titles = tracks.map((t) => t.title).filter((t): t is string => !!t?.trim());
       if (titles.length === 0) return c.json({ error: 'No tracks to hunt' }, 404);
@@ -363,10 +364,8 @@ export function discographyRoutes({
     body: HuntBody,
     opts: { timeoutMs: number } & HuntTrace,
   ) {
-    const [album, tracks] = await Promise.all([
-      lidarr.album.get(albumId),
-      lidarr.track.listByAlbum(albumId),
-    ]);
+    const album = await lidarr.album.get(albumId);
+    const tracks = await standardTracklist(lidarr, albumId, album.releases);
     const artistName = body.artistName ?? album.artist?.artistName ?? '';
     const albumTitle = body.albumTitle ?? album.title;
     const addon = getAddon();
@@ -534,10 +533,8 @@ export function discographyRoutes({
     const body = await c.req.json<HuntBody>().catch(() => ({}) as HuntBody);
 
     try {
-      const [album, tracks] = await Promise.all([
-        lidarr.album.get(albumId),
-        lidarr.track.listByAlbum(albumId),
-      ]);
+      const album = await lidarr.album.get(albumId);
+      const tracks = await standardTracklist(lidarr, albumId, album.releases);
 
       const artistName = body.artistName ?? album.artist?.artistName ?? '';
       const albumTitle = body.albumTitle ?? album.title;
@@ -657,10 +654,17 @@ export function discographyRoutes({
     try {
       // Fetch canonical metadata up front — needed for the completeness guard and
       // the recorded job. Best-effort: a Lidarr hiccup must not block the download.
-      const [album, tracks] = await Promise.all([
-        lidarr.album.get(albumId).catch(() => null),
-        lidarr.track.listByAlbum(albumId).catch(() => []),
-      ]);
+      const album = await lidarr.album.get(albumId).catch(() => null);
+      const editions = await albumEditions(lidarr, albumId, album?.releases).catch(() => null);
+      // A folder picked by hand decides its own edition (#1936): the standard one plus whatever
+      // else of the album it carries, so picking the deluxe rip gets the deluxe tracks.
+      const titles = editions
+        ? folderEditionTitles(
+            editions.standard.map((t) => t.title),
+            editions.full.map((t) => t.title),
+            body.selected.files,
+          )
+        : [];
       const artistName = album?.artist?.artistName ?? null;
       const albumTitle = album?.title ?? null;
 
@@ -710,8 +714,8 @@ export function discographyRoutes({
 
       // Guard 2: the album is already complete in the library — don't acquire a
       // duplicate edition. Skipped on explicit replace.
-      if (!replace && artistName && albumTitle && tracks.length > 0) {
-        if (albumAlreadyComplete(db, artistName, albumTitle, tracks.length)) {
+      if (!replace && artistName && albumTitle && titles.length > 0) {
+        if (albumAlreadyComplete(db, artistName, albumTitle, titles.length)) {
           return c.json({ error: 'already-complete' }, 409);
         }
       }
@@ -730,7 +734,6 @@ export function discographyRoutes({
           log.warn({ albumId }, 'hunt-download rejected: selection has no candidateRef');
           return c.json({ error: 'Selection expired — run the search again' }, 400);
         }
-        const titles = tracks.map((t) => t.title);
         const onDisk =
           artistName && albumTitle
             ? onDiskTitles(db, artistName, albumTitle, body.localAlbumId)
