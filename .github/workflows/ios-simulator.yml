@@ -1,0 +1,193 @@
+# iOS Simulator lane, run by hand: Actions → "iOS simulator" → Run workflow.
+#
+# Builds a Debug Simulator app, boots the newest available iPhone simulator,
+# starts a throwaway server and drives the app's WebView over Appium
+# (packages/e2e/ios/run.ts). Not a PR gate: macOS runners queue longer and
+# the Simulator boot + WebDriverAgent build cost minutes per run. Free on this
+# public repo. The report, screenshots and logs are uploaded either way.
+# See docs/e2e-ios-simulator.md.
+name: iOS simulator
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-simulator-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Pinned to match ci.yml — see the note there.
+  BUN_VERSION: '1.3.14'
+  # Appium 3 + the newest XCUITest driver that peers on it (13.x needs Appium 4).
+  APPIUM_VERSION: '3.9.0'
+  XCUITEST_DRIVER_VERSION: '12.22.8'
+  IOS_API_PORT: '8591'
+
+permissions:
+  contents: read
+
+jobs:
+  ios-simulator:
+    # Capacitor 8 needs Xcode 26 (same image as deploy.yml's `ios` job).
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache bun dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
+
+      # ng build (web) requires Node >= 24.19.0; pin from .nvmrc.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build web
+        run: bun run --filter @nicotind/web build
+
+      # ios/ is not committed; generated per run exactly as deploy.yml does.
+      - name: Generate + sync iOS project
+        working-directory: packages/mobile
+        run: |
+          bunx cap add ios --packagemanager CocoaPods || true
+          bunx cap sync ios
+
+      # The plist patch carries ATS arbitrary loads (#397), without which the app
+      # cannot reach the plain-http throwaway server.
+      - name: Derive iOS version
+        run: bun run packages/mobile/scripts/ios-env.ts >> "$GITHUB_ENV"
+
+      - name: Patch Info.plist
+        run: bun run packages/mobile/scripts/ios-plist.ts
+
+      # Appium attaches through the same remote inspector Safari uses, which needs
+      # the WKWebView marked inspectable. A Debug build alone did not do it (the
+      # inspector listed no web apps, measured 2026-11-15), so this lane sets
+      # Capacitor's key in its throwaway project. The committed config and the
+      # release build are untouched.
+      - name: Make the WebView inspectable (this lane only)
+        run: |
+          set -euo pipefail
+          f=packages/mobile/ios/App/App/capacitor.config.json
+          jq '.ios.webContentsDebuggingEnabled = true' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+
+      - name: Build Debug simulator app
+        working-directory: packages/mobile/ios/App
+        run: |
+          set -euo pipefail
+          xcodebuild -workspace App.xcworkspace -scheme App \
+            -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+          app="$PWD/build/Build/Products/Debug-iphonesimulator/App.app"
+          # Fail here, not 30 s into an empty context list, if the key did not ship.
+          jq -e '.ios.webContentsDebuggingEnabled == true' "$app/capacitor.config.json"
+          echo "IOS_APP_PATH=$app" >> "$GITHUB_ENV"
+
+      - name: Boot the newest iPhone simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          picked=$(xcrun simctl list devices available -j | bun run packages/e2e/ios/pick-simulator.ts)
+          echo "$picked" >> "$GITHUB_OUTPUT"
+          udid=$(echo "$picked" | sed -n 's/^udid=//p')
+          echo "IOS_UDID=$udid" >> "$GITHUB_ENV"
+          echo "Booting: $picked"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+
+      - name: Install Appium and the XCUITest driver
+        run: |
+          set -euo pipefail
+          npm install -g "appium@${APPIUM_VERSION}"
+          appium driver install "xcuitest@${XCUITEST_DRIVER_VERSION}"
+
+      # WebDriverAgent is built and started here, not inside the Appium session:
+      # its start-up took anywhere from 90 s to over 300 s across runs, and a
+      # session request that long dies on the client's 300 s fetch limit
+      # (measured 2026-11-15). Appium attaches to it with `webDriverAgentUrl`.
+      - name: Build WebDriverAgent
+        run: |
+          set -euo pipefail
+          wda="$HOME/.appium/node_modules/appium-xcuitest-driver/node_modules/appium-webdriveragent"
+          echo "WDA_PROJECT=$wda/WebDriverAgent.xcodeproj" >> "$GITHUB_ENV"
+          xcodebuild build-for-testing -project "$wda/WebDriverAgent.xcodeproj" \
+            -scheme WebDriverAgentRunner -destination "id=$IOS_UDID" \
+            -derivedDataPath "$RUNNER_TEMP/wda" CODE_SIGNING_ALLOWED=NO -quiet
+
+      - name: Start WebDriverAgent
+        run: |
+          set -euo pipefail
+          nohup xcodebuild test-without-building -project "$WDA_PROJECT" \
+            -scheme WebDriverAgentRunner -destination "id=$IOS_UDID" \
+            -derivedDataPath "$RUNNER_TEMP/wda" > "$RUNNER_TEMP/wda.log" 2>&1 &
+          for _ in $(seq 600); do
+            if curl -sf http://127.0.0.1:8100/status > /dev/null; then
+              echo "IOS_WDA_URL=http://127.0.0.1:8100" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "WebDriverAgent did not answer on :8100"; tail -50 "$RUNNER_TEMP/wda.log"; exit 1
+
+      - name: Start Appium
+        run: |
+          set -euo pipefail
+          nohup appium --address 127.0.0.1 --port 4723 --log-no-colors \
+            --log "$RUNNER_TEMP/appium.log" > /dev/null 2>&1 &
+          for _ in $(seq 60); do
+            curl -sf http://127.0.0.1:4723/status > /dev/null && exit 0
+            sleep 1
+          done
+          echo "Appium did not come up"; tail -50 "$RUNNER_TEMP/appium.log"; exit 1
+
+      # The Simulator shares the Mac's network, so the app reaches this on
+      # localhost directly: no tunnel, unlike the Android lanes' `adb reverse`.
+      - name: Start a throwaway server
+        run: |
+          set -euo pipefail
+          cp -R packages/e2e/fixtures/music "$RUNNER_TEMP/music"
+          NICOTIND_PORT="$IOS_API_PORT" NICOTIND_MODE=external \
+            NICOTIND_SLSKD_URL=http://127.0.0.1:1 NICOTIND_LIDARR_URL=http://127.0.0.1:1 \
+            NICOTIND_DATA_DIR="$RUNNER_TEMP/data" NICOTIND_MUSIC_DIR="$RUNNER_TEMP/music" \
+            nohup bun run src/main.ts > "$RUNNER_TEMP/server.log" 2>&1 &
+          for _ in $(seq 90); do
+            curl -sf "http://127.0.0.1:${IOS_API_PORT}/api/health" > /dev/null && exit 0
+            sleep 1
+          done
+          echo "server did not come up"; tail -50 "$RUNNER_TEMP/server.log"; exit 1
+
+      - name: Run the iOS lane
+        env:
+          IOS_OUT_DIR: ${{ runner.temp }}/ios-results
+        run: bun run packages/e2e/ios/run.ts
+
+      - name: Collect logs
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/ios-results"
+          cp "$RUNNER_TEMP/appium.log" "$RUNNER_TEMP/server.log" "$RUNNER_TEMP/wda.log" "$RUNNER_TEMP/ios-results/" 2>/dev/null || true
+          if [ -n "${IOS_UDID:-}" ]; then
+            xcrun simctl spawn "$IOS_UDID" log show --last 20m --style compact \
+              --predicate 'process == "App"' > "$RUNNER_TEMP/ios-results/app.log" 2>&1 || true
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: ios-simulator-results
+          path: ${{ runner.temp }}/ios-results
+          retention-days: 14
