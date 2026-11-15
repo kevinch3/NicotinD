@@ -252,15 +252,16 @@ export function hasCommittedTotal(job: {
  * How many tracks the release has that this source never offered, or null when
  * there is no shortfall to report — no tracklist, or a source that covered it
  * whole. A source offering *more* than the tracklist (bonus tracks) is not a
- * shortfall either, so it returns null rather than a negative. Exported for the
- * card's own unit tests.
+ * shortfall either, so it returns null rather than a negative. Neither is a job
+ * the source has not itemised yet: it has declined nothing (#1937), the same
+ * gate as the server's `notOfferedTitles`. Exported for the card's own unit tests.
  */
 export function canonicalShortfall(progress: {
   expected: number;
   canonical: number | null;
 }): number | null {
   const { canonical, expected } = progress;
-  if (canonical === null || canonical <= expected) return null;
+  if (canonical === null || expected === 0 || canonical <= expected) return null;
   return canonical - expected;
 }
 
