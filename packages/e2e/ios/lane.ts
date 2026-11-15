@@ -43,15 +43,20 @@ export function pickSimulator(list: SimctlList): Simulator {
 export type AppiumContext = string | { id: string; url?: string; title?: string };
 
 /**
- * The app's WebView context. Capacitor serves the app from `capacitor://localhost`,
- * so prefer the context on that origin; a bare `WEBVIEW_…` name is the fallback when
- * Appium did not report URLs.
+ * The app's WebView context, once it is on Capacitor's origin (`capacitor://localhost`).
+ *
+ * While Appium reports URLs, only that page counts. The app's WKWebView exists at
+ * `about:blank` before Capacitor loads it, and a fast session attached to that and
+ * ran every check against an empty page (measured 2026-11-15). Bare `WEBVIEW_…`
+ * names are taken only when Appium reports no URLs at all.
  */
 export function appWebview(contexts: AppiumContext[]): string | null {
   const objects = contexts.map((c) => (typeof c === 'string' ? { id: c } : c));
   const webviews = objects.filter((c) => c.id.startsWith('WEBVIEW'));
-  const onApp = webviews.find((c) => c.url?.startsWith('capacitor://'));
-  return (onApp ?? webviews[0])?.id ?? null;
+  if (webviews.some((c) => c.url !== undefined)) {
+    return webviews.find((c) => c.url?.startsWith('capacitor://'))?.id ?? null;
+  }
+  return webviews[0]?.id ?? null;
 }
 
 /** One call that crossed the Capacitor bridge, as the page-side spy records it. */
