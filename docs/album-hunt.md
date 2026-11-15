@@ -422,7 +422,7 @@ an album a job is already fetching, which offers **View in Downloads** instead.
 
    A second request that meets a hold answers `already-downloading` with no `jobId`, since no row exists yet; for `acquireAlbum` it's `in-flight`. Holds live in memory because the API is one process. They match with the guard's own rule, `albumTargetsMatch`.
 
-2. Returns **409 `already-complete`** if the library already holds the album — `albumAlreadyComplete` matches by `normalizeForGrouping(artist)+title` with `song_count >= canonical track count`.
+2. Returns **409 `already-complete`** if the library already holds the album — `albumAlreadyComplete` matches by `normalizeForGrouping(artist)+title` with **distinct tracks** `>=` the canonical track count: one per `(disc, track)` position plus one per unnumbered song, so a duplicate row at a filled position (*Camp*'s "Kids" and "Kids (Keep Up)", both track 10) never stands in for a missing track, while a misspelled title still fills its position (#1842). Measured on prod 2026-11-15: of the 54 albums where the row count said complete and the title matcher said incomplete, a sample split into title mismatches (`Paulina Rubio - Sexy Dance`; Muse's bracket-only `[JFK]`) and duplicates at one position hiding a gap (*evermore*: 20 rows over 18 positions against 19). The artist tile (`artistAlbumAlreadyComplete`) shares the rule.
 3. On `?replace=true` (admin re-hunt) `supersedeActiveJobs` marks the album's prior active `acquisition_jobs` rows `'superseded'` first, so at most one stays active.
 
    **The guard that used to be step 1 was dead code (#748).** It queried `album_jobs` for an

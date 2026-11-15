@@ -4,6 +4,7 @@ import { applySchema } from '../db.js';
 import { albumIdFor, artistIdFor } from './library-scanner.js';
 import {
   albumAlreadyComplete,
+  artistAlbumAlreadyComplete,
   filesForCanonicalTracks,
   filesMissingOnDisk,
 } from './library-completeness.js';
@@ -104,6 +105,75 @@ describe('albumAlreadyComplete', () => {
     );
     expect(albumAlreadyComplete(db, 'Soda Stereo', 'Dynamo', 3)).toBe(false);
     expect(albumAlreadyComplete(db, 'Soda Stereo', 'Dynamo', 2)).toBe(true);
+  });
+
+  /** Songs at explicit (disc, track) positions; `null` track = unnumbered. */
+  function seedTracks(
+    artist: string,
+    album: string,
+    songs: Array<[title: string, track: number | null, disc?: number | null]>,
+  ): void {
+    const albumId = albumIdFor(artist, album);
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, synced_at)
+       VALUES (?, ?, ?, ?, ?, 1)`,
+      [albumId, album, artist, artistIdFor(artist), songs.length],
+    );
+    songs.forEach(([title, track, disc], i) => {
+      db.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, track, disc, synced_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+        [
+          `${albumId}-${i}`,
+          albumId,
+          title,
+          artist,
+          artistIdFor(artist),
+          `/m/${i}.opus`,
+          track,
+          disc ?? null,
+        ],
+      );
+    });
+  }
+
+  it('does not let a duplicate at one position stand in for a missing track (#1842)', () => {
+    // Camp's shape: 4 rows for a 4-track list, two of them track 2, track 4 absent.
+    seedTracks('Childish Gambino', 'Camp', [
+      ['Outside', 1],
+      ['Kids (Keep Up)', 2, 1],
+      ['Kids', 2, null],
+      ['Bonfire', 3],
+    ]);
+    expect(albumAlreadyComplete(db, 'Childish Gambino', 'Camp', 4)).toBe(false);
+    expect(albumAlreadyComplete(db, 'Childish Gambino', 'Camp', 3)).toBe(true);
+  });
+
+  it('still calls an album complete when a title is only misspelled (#758)', () => {
+    seedTracks('Muse', 'Drones', [
+      ['Dead Inside', 1],
+      ['[Drill Sergeant]', 2],
+      ['Psycho', 3],
+    ]);
+    expect(albumAlreadyComplete(db, 'Muse', 'Drones', 3)).toBe(true);
+  });
+
+  it('counts every unnumbered song as its own track', () => {
+    seedTracks('Paulina Rubio', 'Paulina', [
+      ['Yo No Soy Esa Mujer', null],
+      ['Lo Haré Por Ti', null],
+      ['El Último Adiós', 2],
+    ]);
+    expect(albumAlreadyComplete(db, 'Paulina Rubio', 'Paulina', 3)).toBe(true);
+  });
+
+  it('grades the artist tile by the same rule', () => {
+    seedTracks('Childish Gambino', 'Camp', [
+      ['Kids (Keep Up)', 2],
+      ['Kids', 2],
+    ]);
+    expect(artistAlbumAlreadyComplete(db, artistIdFor('Childish Gambino'), 'Camp', 2)).toBe(false);
+    expect(artistAlbumAlreadyComplete(db, artistIdFor('Childish Gambino'), 'Camp', 1)).toBe(true);
   });
 
   it('matches across artist-spelling divergence via artist identity + grouping', () => {
