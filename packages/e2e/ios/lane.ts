@@ -104,3 +104,22 @@ export function swipeActions(at: Point, dx: number, ms: number): unknown {
     ],
   };
 }
+
+/** W3C actions for a short one-finger tap at `at`. */
+export function tapActions(at: Point): unknown {
+  return {
+    actions: [
+      {
+        type: 'pointer',
+        id: 'finger',
+        parameters: { pointerType: 'touch' },
+        actions: [
+          { type: 'pointerMove', duration: 0, x: Math.round(at.x), y: Math.round(at.y) },
+          { type: 'pointerDown', button: 0 },
+          { type: 'pause', duration: 60 },
+          { type: 'pointerUp', button: 0 },
+        ],
+      },
+    ],
+  };
+}

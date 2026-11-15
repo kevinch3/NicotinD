@@ -15,6 +15,7 @@ import {
   appWebview,
   hapticCalls,
   swipeActions,
+  tapActions,
   toScreen,
   viewportOffset,
   type AppiumContext,
@@ -134,6 +135,20 @@ const title = () =>
     `return (document.querySelector('[data-testid="player-title"]')?.textContent || '').trim();`,
   );
 
+/** An element's centre in CSS px, refusing one that is not fully on screen. */
+async function visibleCentre(selector: string): Promise<Point> {
+  const c = await js<Point | string>(
+    `const el = document.querySelector(arguments[0]);
+     if (!el) return 'missing';
+     const b = el.getBoundingClientRect();
+     if (b.height === 0 || b.top < 0 || b.bottom > window.innerHeight) return 'off screen';
+     return { x: b.x + b.width / 2, y: b.y + b.height / 2 };`,
+    [selector],
+  );
+  if (typeof c === 'string') throw new Error(`${selector}: ${c}`);
+  return c;
+}
+
 let token = '';
 let albumId = '';
 let offset: Point | undefined;
@@ -236,30 +251,9 @@ if (attached) {
     return poll('a player title', title, 20_000);
   });
 
-  await step('page: open Now Playing and let the cover settle', async () => {
-    await driver.click(await driver.find('css selector', '[data-testid="player-title"]'));
-    let last = '';
-    const rect = await poll(
-      'a settled cover',
-      async () => {
-        const r = await js<{ x: number; y: number; w: number; h: number } | null>(`
-          const el = document.querySelector('[data-testid="now-playing-cover-art"]');
-          if (!el) return null;
-          const b = el.getBoundingClientRect();
-          return { x: b.x, y: b.y, w: b.width, h: b.height };`);
-        const now = r && r.h > 0 ? JSON.stringify(r) : '';
-        const settled = now !== '' && now === last;
-        last = now;
-        return settled ? r : null;
-      },
-      20_000,
-    );
-    coverCentre = { x: rect!.x + rect!.w / 2, y: rect!.y + rect!.h / 2 };
-    return { cover: rect, centre: coverCentre };
-  });
-
+  // Calibrate on the album heading: visible, and a tap on it does nothing.
   await step('geometry: calibrate page → screen with one tap', async () => {
-    if (!coverCentre) throw new Error('no cover');
+    const heading = await visibleCentre('h1.page-title');
     await js(`window.__touch = null;
       document.addEventListener('touchstart', (e) => {
         const t = e.touches[0];
@@ -269,22 +263,8 @@ if (attached) {
     await inNative();
     const wv = await driver.rect(await driver.find('class name', 'XCUIElementTypeWebView'));
     // First guess: CSS (0,0) at the WebView's corner. The tap tells us the truth.
-    const guess = { x: Math.round(wv.x + coverCentre.x), y: Math.round(wv.y + coverCentre.y) };
-    await driver.actions({
-      actions: [
-        {
-          type: 'pointer',
-          id: 'finger',
-          parameters: { pointerType: 'touch' },
-          actions: [
-            { type: 'pointerMove', duration: 0, x: guess.x, y: guess.y },
-            { type: 'pointerDown', button: 0 },
-            { type: 'pause', duration: 60 },
-            { type: 'pointerUp', button: 0 },
-          ],
-        },
-      ],
-    });
+    const guess = { x: Math.round(wv.x + heading.x), y: Math.round(wv.y + heading.y) };
+    await driver.actions(tapActions(guess));
     await inPage();
     const touch = await poll(
       'the calibration touch',
@@ -293,6 +273,36 @@ if (attached) {
     );
     offset = viewportOffset(guess, touch);
     return { webviewRect: wv, tappedAt: guess, pageSaw: touch, offset };
+  });
+
+  // A real tap, not WebDriver's element click: inside a page that click is a
+  // synthetic JS click, and the mini player opens on touch input (measured: the
+  // sheet stayed shut). The Play button above takes a plain click.
+  await step('page: open Now Playing with a real tap and let the cover settle', async () => {
+    if (!offset) throw new Error('not calibrated');
+    const target = toScreen(await visibleCentre('[data-testid="player-title"]'), offset);
+    await inNative();
+    await driver.actions(tapActions(target));
+    await inPage();
+    let last = '';
+    const rect = await poll(
+      'a cover settled fully on screen',
+      async () => {
+        const r = await js<{ x: number; y: number; w: number; h: number } | null>(`
+          const el = document.querySelector('[data-testid="now-playing-cover-art"]');
+          if (!el) return null;
+          const b = el.getBoundingClientRect();
+          if (b.height === 0 || b.top < 0 || b.bottom > window.innerHeight) return null;
+          return { x: b.x, y: b.y, w: b.width, h: b.height };`);
+        const now = r ? JSON.stringify(r) : '';
+        const settled = now !== '' && now === last;
+        last = now;
+        return settled ? r : null;
+      },
+      20_000,
+    );
+    coverCentre = { x: rect!.x + rect!.w / 2, y: rect!.y + rect!.h / 2 };
+    return { tappedAt: target, cover: rect, centre: coverCentre };
   });
 
   for (const [name, dx, expectSkip] of [

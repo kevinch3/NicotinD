@@ -4,6 +4,7 @@ import {
   hapticCalls,
   pickSimulator,
   swipeActions,
+  tapActions,
   toScreen,
   viewportOffset,
 } from './lane.js';
@@ -90,6 +91,15 @@ describe('coordinates and gestures', () => {
       'pointerUp',
     ]);
     expect([steps[0].x, steps[2].x, steps[2].duration]).toEqual([330, 70, 200]);
+  });
+
+  test('a tap is down and up in place, rounded to whole points', () => {
+    const body = tapActions({ x: 100.6, y: 200.2 }) as {
+      actions: { actions: { type: string; x?: number; y?: number }[] }[];
+    };
+    const steps = body.actions[0].actions;
+    expect(steps.map((s) => s.type)).toEqual(['pointerMove', 'pointerDown', 'pause', 'pointerUp']);
+    expect([steps[0].x, steps[0].y]).toEqual([101, 200]);
   });
 
   test('only Haptics calls count as ticks', () => {
