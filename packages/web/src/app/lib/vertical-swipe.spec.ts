@@ -233,7 +233,7 @@ describe('createVerticalSwipe', () => {
     const { host } = setup();
     host.swipe.start(pointer('pointerdown', 100));
     document.dispatchEvent(pointer('pointerup', 103));
-    expect(host.ends).toEqual([{ dy: 3, velocity: 0, owned: false }]);
+    expect(host.ends).toEqual([{ dy: 3, velocity: 0, owned: false, cancelled: false }]);
     expect(host.releases).toBe(0);
   });
 
@@ -246,6 +246,8 @@ describe('createVerticalSwipe', () => {
     document.dispatchEvent(pointer('pointercancel', 200));
     expect(host.ends).toHaveLength(1);
     expect(host.ends[0].owned).toBe(true);
+    // Flagged, so a caller can settle an OS interruption by distance only (#1679).
+    expect(host.ends[0].cancelled).toBe(true);
   });
 
   it('ignores non-primary buttons', () => {

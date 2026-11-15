@@ -18,6 +18,7 @@ import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
+import { BackButtonService } from '../../services/native/back-button.service';
 
 function makePlayerStub() {
   const stub = {
@@ -540,7 +541,7 @@ describe('NowPlayingComponent', () => {
 
       expect(c.lyricsOpen()).toBe(true);
       expect(c.activePanel()).toBe('lyrics');
-      expect(localStorage.getItem('nicotind:np-active-panel')).toBe('lyrics');
+      expect(JSON.parse(localStorage.getItem('nicotind:np-panel')!).tab).toBe('lyrics');
     });
 
     it('leaving the lyrics panel exits karaoke fullscreen', () => {
@@ -561,7 +562,11 @@ describe('NowPlayingComponent', () => {
       const fixture = TestBed.createComponent(NowPlayingComponent);
       fixture.componentInstance.setActivePanel('lyrics');
       expect(fixture.componentInstance.activePanel()).toBe('lyrics');
-      expect(localStorage.getItem('nicotind:np-active-panel')).toBe('lyrics');
+      expect(JSON.parse(localStorage.getItem('nicotind:np-panel')!)).toEqual({
+        v: 1,
+        tab: 'lyrics',
+        snap: 'rest',
+      });
     });
 
     it('applies and clears a panel request from the Q / Y shortcuts (#1296)', () => {
@@ -576,67 +581,187 @@ describe('NowPlayingComponent', () => {
     });
   });
 
-  describe('queue resize (drag handle)', () => {
-    const pointer = (type: string, clientY: number, button = 0) =>
-      new MouseEvent(type, { clientY, button }) as unknown as PointerEvent;
+  describe('panel snaps (#1679)', () => {
+    const pointer = (type: string, clientY: number, t = 0) => {
+      const e = new MouseEvent(type, { clientY, button: 0 }) as unknown as PointerEvent;
+      Object.defineProperty(e, 'timeStamp', { value: t });
+      return e;
+    };
+    /** jsdom has no layout: stand in for a 400px rise from rest to the top. */
+    const geometry = (c: NowPlayingComponent, fullLiftPx = 400) =>
+      vi.spyOn(c, 'measurePanelGeometry').mockReturnValue({ fullLiftPx, coverMaxPx: 0 });
 
     beforeEach(() => localStorage.clear());
 
-    it('grows the queue (shrinks the cover) when dragged up, and clamps', () => {
-      const { fixture } = setup();
-      const component = fixture.componentInstance;
-      expect(component.queueExtraHeightPx()).toBe(0);
-      expect(component.coverMaxPx()).toBe(320);
-
-      component.onQueueResizeStart(pointer('pointerdown', 300));
-      document.dispatchEvent(pointer('pointermove', 200)); // up 100px
-      expect(component.queueExtraHeightPx()).toBe(100);
-      expect(component.coverMaxPx()).toBe(220);
-
-      // 300px up is now within range: the floor is 0, not 120 (#993), so the
-      // cover keeps shrinking instead of stopping with most of the reclaimed
-      // space handed back.
-      document.dispatchEvent(pointer('pointermove', 0)); // up 300px from start
-      expect(component.queueExtraHeightPx()).toBe(300);
-      expect(component.coverMaxPx()).toBe(20);
-
-      document.dispatchEvent(pointer('pointerup', 0));
+    it('rests by default, with the frame where the flow put it', () => {
+      const c = setup().fixture.componentInstance;
+      expect(c.panelSnap()).toBe('rest');
+      expect(c.panelTopPx()).toBe(0);
+      expect(c.stageInert()).toBe(false);
     });
 
-    it('collapses the cover all the way to zero, and no further', () => {
-      const { fixture } = setup();
-      const component = fixture.componentInstance;
-
-      component.onQueueResizeStart(pointer('pointerdown', 500));
-      // Far past the full 320px range.
-      document.dispatchEvent(pointer('pointermove', -400));
-      expect(component.coverMaxPx()).toBe(0);
-      expect(component.queueExtraHeightPx()).toBe(320);
-
-      document.dispatchEvent(pointer('pointerup', -400));
+    it('a pull up follows the finger, then reaches `full` past the commit distance', () => {
+      const c = setup().fixture.componentInstance;
+      geometry(c);
+      c.onBodyPointerDown(pointer('pointerdown', 500));
+      document.dispatchEvent(pointer('pointermove', 400, 500)); // up 100
+      expect(c.panelTopPx()).toBe(-100);
+      expect(c.stageInert()).toBe(false); // not while the finger is down
+      document.dispatchEvent(pointer('pointerup', 400, 1000));
+      expect(c.panelSnap()).toBe('full');
+      expect(c.panelTopPx()).toBe(-400);
+      expect(c.stageInert()).toBe(true);
+      expect(JSON.parse(localStorage.getItem('nicotind:np-panel')!).snap).toBe('full');
     });
 
-    it('clamps a downward drag back to zero', () => {
-      const { fixture } = setup();
-      const component = fixture.componentInstance;
-      component.onQueueResizeStart(pointer('pointerdown', 100));
-      document.dispatchEvent(pointer('pointermove', 260)); // down 160
-      expect(component.queueExtraHeightPx()).toBe(0);
-      document.dispatchEvent(pointer('pointerup', 260));
+    it('a short slow pull up springs back to `rest`', () => {
+      const c = setup().fixture.componentInstance;
+      geometry(c);
+      c.onBodyPointerDown(pointer('pointerdown', 500));
+      document.dispatchEvent(pointer('pointermove', 450, 500)); // up 50 < 96
+      document.dispatchEvent(pointer('pointerup', 450, 1000));
+      expect(c.panelSnap()).toBe('rest');
+      expect(c.panelTopPx()).toBe(0);
     });
 
-    it('persists the chosen size across a fresh mount (per-device)', () => {
-      const first = setup();
-      first.fixture.componentInstance.onQueueResizeStart(pointer('pointerdown', 300));
-      document.dispatchEvent(pointer('pointermove', 220)); // up 80
-      document.dispatchEvent(pointer('pointerup', 220));
-      expect(first.fixture.componentInstance.queueExtraHeightPx()).toBe(80);
+    it('never rises past `full`', () => {
+      const c = setup().fixture.componentInstance;
+      geometry(c);
+      c.onBodyPointerDown(pointer('pointerdown', 900));
+      document.dispatchEvent(pointer('pointermove', 0, 500));
+      expect(c.panelTopPx()).toBe(-400);
+      document.dispatchEvent(pointer('pointerup', 0, 1000));
+    });
 
-      // A new component instance reads the persisted value on construction.
+    it('a pull down from `full` stops at `rest` and never closes the sheet (D2)', () => {
+      const { fixture, playerStub } = setup();
+      const c = fixture.componentInstance;
+      geometry(c);
+      c.panelState.set({ tab: 'queue', snap: 'full' });
+      c.panelFullLiftPx.set(400);
+      const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
+      const { row } = zoneRow();
+      c.onBodyPointerDown(pointerOn('pointerdown', 100, row));
+      document.dispatchEvent(pointer('pointermove', 900, 500)); // far past rest
+      expect(c.dragOffsetPx()).toBe(0);
+      expect(c.panelTopPx()).toBe(0);
+      document.dispatchEvent(pointer('pointerup', 900, 1000));
+      expect(c.panelSnap()).toBe('rest');
+      expect(setOpen).not.toHaveBeenCalled();
+    });
+
+    it('a pointercancel settles by distance only, so it never flings to `full`', () => {
+      const c = setup().fixture.componentInstance;
+      geometry(c);
+      c.onBodyPointerDown(pointer('pointerdown', 500));
+      document.dispatchEvent(pointer('pointermove', 460, 10)); // 40px in 10ms: a flick
+      document.dispatchEvent(pointer('pointercancel', 460, 20));
+      expect(c.panelSnap()).toBe('rest');
+    });
+
+    it('restores `full` from storage, and migrates the pre-#1679 keys to `rest`', () => {
+      localStorage.setItem(
+        'nicotind:np-panel',
+        JSON.stringify({ v: 1, tab: 'lyrics', snap: 'full' }),
+      );
+      expect(setup().fixture.componentInstance.panelState()).toEqual({
+        tab: 'lyrics',
+        snap: 'full',
+      });
       TestBed.resetTestingModule();
-      const second = setup();
-      expect(second.fixture.componentInstance.queueExtraHeightPx()).toBe(80);
+      localStorage.clear();
+      localStorage.setItem('nicotind:np-queue-extra', '320');
+      expect(setup().fixture.componentInstance.panelState()).toEqual({
+        tab: 'queue',
+        snap: 'rest',
+      });
+      expect(localStorage.getItem('nicotind:np-queue-extra')).toBeNull();
     });
+
+    describe('discrete events (D4)', () => {
+      it('tapping the active tab toggles `rest` ↔ `full`; another tab switches and keeps the snap', () => {
+        const c = setup().fixture.componentInstance;
+        geometry(c);
+        c.onTabSelected('queue');
+        expect(c.panelState()).toEqual({ tab: 'queue', snap: 'full' });
+        c.onTabSelected('lyrics');
+        expect(c.panelState()).toEqual({ tab: 'lyrics', snap: 'full' });
+        c.onTabSelected('lyrics');
+        expect(c.panelState()).toEqual({ tab: 'lyrics', snap: 'rest' });
+      });
+
+      it('the notch toggles, but not with the click a drag leaves behind', () => {
+        const c = setup().fixture.componentInstance;
+        geometry(c);
+        c.onNotchClick();
+        expect(c.panelSnap()).toBe('full');
+        const { row } = zoneRow();
+        c.onBodyPointerDown(pointerOn('pointerdown', 100, row));
+        document.dispatchEvent(pointer('pointermove', 300, 500));
+        document.dispatchEvent(pointer('pointerup', 300, 1000)); // back to rest
+        expect(c.panelSnap()).toBe('rest');
+        c.onNotchClick(); // the trailing click of that drag
+        expect(c.panelSnap()).toBe('rest');
+      });
+
+      it.each([
+        ['Enter', 'rest', 'full'],
+        [' ', 'full', 'rest'],
+        ['ArrowUp', 'rest', 'full'],
+        ['ArrowDown', 'full', 'rest'],
+        ['ArrowDown', 'rest', 'rest'],
+      ] as const)('notch key %j from %s lands on %s', (key, from, to) => {
+        const c = setup().fixture.componentInstance;
+        geometry(c);
+        c.panelState.set({ tab: 'queue', snap: from });
+        const e = new KeyboardEvent('keydown', { key, cancelable: true });
+        c.onNotchKeydown(e);
+        expect(c.panelSnap()).toBe(to);
+        expect(e.defaultPrevented).toBe(true);
+      });
+
+      it('Back brings a `full` panel to `rest` before it closes the sheet', () => {
+        const { fixture, playerStub } = setup();
+        const c = fixture.componentInstance;
+        playerStub.nowPlayingOpen.set(true);
+        c.panelState.set({ tab: 'queue', snap: 'full' });
+        const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
+        const back = TestBed.inject(BackButtonService);
+        expect(back.stack.handleBack()).toBe(true);
+        expect(c.panelSnap()).toBe('rest');
+        expect(setOpen).not.toHaveBeenCalled();
+        expect(back.stack.handleBack()).toBe(true);
+        expect(setOpen).toHaveBeenCalledWith(false);
+      });
+
+      it('at lg the active tab is a no-op: the side column has no `full` (§5)', () => {
+        (window as { matchMedia?: unknown }).matchMedia = (q: string) => ({
+          matches: q.includes('1024px'),
+        });
+        try {
+          const c = setup().fixture.componentInstance;
+          c.onTabSelected('queue');
+          expect(c.panelState().snap).toBe('rest');
+        } finally {
+          delete (window as { matchMedia?: unknown }).matchMedia;
+        }
+      });
+    });
+
+    function zoneRow() {
+      const zone = document.createElement('div');
+      zone.setAttribute('data-np-zone', 'panel');
+      const row = document.createElement('div');
+      zone.appendChild(row);
+      document.body.appendChild(zone);
+      return { zone, row };
+    }
+    function pointerOn(type: string, clientY: number, target: Element) {
+      const e = pointer(type, clientY);
+      Object.defineProperty(e, 'target', { value: target });
+      return e;
+    }
+    afterEach(() => document.querySelectorAll('[data-np-zone]').forEach((n) => n.remove()));
   });
 
   describe('hoisted resize handle (shell-owned)', () => {
@@ -676,15 +801,50 @@ describe('NowPlayingComponent', () => {
       ).not.toBeNull();
     });
 
-    it('drives the queue resize drag from the template wiring', () => {
+    it('drives the panel pull from the template wiring', () => {
       const { fixture } = setupWithTrack();
+      vi.spyOn(fixture.componentInstance, 'measurePanelGeometry').mockReturnValue({
+        fullLiftPx: 400,
+        coverMaxPx: 0,
+      });
       const handle: HTMLElement = fixture.nativeElement.querySelector(
         '[data-testid="now-playing-queue-resize"]',
       )!;
       handle.dispatchEvent(pointer('pointerdown', 300));
       document.dispatchEvent(pointer('pointermove', 200)); // up 100px
-      expect(fixture.componentInstance.queueExtraHeightPx()).toBe(100);
+      expect(fixture.componentInstance.panelTopPx()).toBe(-100);
       document.dispatchEvent(pointer('pointerup', 200));
+    });
+
+    it('is an accessible toggle for the panel it rides on', () => {
+      const { fixture } = setupWithTrack();
+      const handle: HTMLElement = fixture.nativeElement.querySelector(
+        '[data-testid="now-playing-queue-resize"]',
+      )!;
+      expect(handle.getAttribute('role')).toBe('button');
+      expect(handle.getAttribute('tabindex')).toBe('0');
+      expect(handle.getAttribute('aria-controls')).toBe('np-panel-frame');
+      expect(handle.getAttribute('aria-expanded')).toBe('false');
+      expect(handle.closest('#np-panel-frame')).not.toBeNull();
+      fixture.componentInstance.panelState.set({ tab: 'queue', snap: 'full' });
+      fixture.detectChanges();
+      expect(handle.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('a full Queue keeps play/pause and next above the list, and the stage leaves the tab order', () => {
+      const { fixture } = setupWithTrack();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('[data-testid="now-playing-compact-transport"]')).toBeNull();
+      fixture.componentInstance.panelState.set({ tab: 'queue', snap: 'full' });
+      fixture.detectChanges();
+      expect(el.querySelector('[data-testid="now-playing-compact-transport"]')).not.toBeNull();
+      expect(el.querySelector('app-now-playing-header')!.hasAttribute('inert')).toBe(true);
+      expect(el.querySelector('[data-testid="now-playing-panel"]')!.hasAttribute('inert')).toBe(
+        false,
+      );
+      fixture.componentInstance.panelState.set({ tab: 'lyrics', snap: 'full' });
+      fixture.detectChanges();
+      expect(el.querySelector('[data-testid="now-playing-compact-transport"]')).toBeNull();
     });
 
     it('is absent while karaoke fullscreen is active', () => {
@@ -958,99 +1118,83 @@ describe('NowPlayingComponent', () => {
       expect(component.dragOffsetPx()).toBe(0);
     });
 
-    it('stage + up: grows the panel (shrinks the cover) from anywhere, not just the notch', () => {
+    /** jsdom has no layout: a 400px rise from rest to the top. */
+    const geometry = (c: NowPlayingComponent) =>
+      vi.spyOn(c, 'measurePanelGeometry').mockReturnValue({ fullLiftPx: 400, coverMaxPx: 0 });
+
+    it('stage + up: pulls the panel from anywhere, not just the notch', () => {
       const { fixture } = setup();
       const component = fixture.componentInstance;
+      geometry(component);
 
       component.onBodyPointerDown(pointer('pointerdown', 400));
       move(300); // up 100
-      expect(component.queueExtraHeightPx()).toBe(100);
+      expect(component.panelTopPx()).toBe(-100);
       expect(component.resizingQueue()).toBe(true);
       expect(component.dragOffsetPx()).toBe(0);
       up(300);
-      expect(localStorage.getItem('nicotind:np-queue-extra')).toBe('100');
+      expect(component.panelSnap()).toBe('full');
       expect(component.resizingQueue()).toBe(false);
-    });
-
-    it('stage + down with the panel grown: collapses it, then continues into a dismiss', () => {
-      const { fixture, playerStub } = setup();
-      const component = fixture.componentInstance;
-      const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
-      component.queueExtraHeightPx.set(100);
-
-      component.onBodyPointerDown(pointer('pointerdown', 100));
-      move(160); // down 60: still collapsing
-      expect(component.queueExtraHeightPx()).toBe(40);
-      expect(component.dragOffsetPx()).toBe(0);
-
-      move(250); // down 150: 100 spent on the collapse, 50 into the dismiss
-      expect(component.queueExtraHeightPx()).toBe(0);
-      expect(component.dragOffsetPx()).toBe(50);
-      expect(component.resizingQueue()).toBe(false);
-
-      up(250); // 50 < threshold, slow: springs back, collapse persisted
-      expect(setOpen).not.toHaveBeenCalled();
-      expect(component.dragOffsetPx()).toBe(0);
-      expect(localStorage.getItem('nicotind:np-queue-extra')).toBe('0');
     });
 
     it('panel + down with the list scrolled: released to native scrolling', () => {
       const { fixture } = setup();
       const component = fixture.componentInstance;
+      geometry(component);
       const { row } = panelZone(40);
 
       component.onBodyPointerDown(pointer('pointerdown', 100, { target: row }));
       move(200);
       expect(component.dragging()).toBe(false);
       expect(component.dragOffsetPx()).toBe(0);
-      expect(component.queueExtraHeightPx()).toBe(0);
+      expect(component.panelTopPx()).toBe(0);
     });
 
-    it('panel + down at the top with the panel grown: collapses it', () => {
-      const { fixture } = setup();
+    it('panel + down at the top from `rest`: one pull continues into the dismiss (D2)', () => {
+      const { fixture, playerStub } = setup();
       const component = fixture.componentInstance;
-      component.queueExtraHeightPx.set(120);
-      const { row } = panelZone(0);
-
-      component.onBodyPointerDown(pointer('pointerdown', 100, { target: row }));
-      move(150);
-      expect(component.queueExtraHeightPx()).toBe(70);
-      expect(component.dragOffsetPx()).toBe(0);
-      up(150);
-    });
-
-    it('panel + down at the top with the panel at rest: dismisses the sheet', () => {
-      const { fixture } = setup();
-      const component = fixture.componentInstance;
+      geometry(component);
+      const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
       const { row } = panelZone(0);
 
       component.onBodyPointerDown(pointer('pointerdown', 100, { target: row }));
       move(150);
       expect(component.dragOffsetPx()).toBe(50);
-      up(150);
+      expect(component.resizingQueue()).toBe(true);
+      up(150); // 50 < 120, slow: springs back to rest
+      expect(setOpen).not.toHaveBeenCalled();
+      expect(component.dragOffsetPx()).toBe(0);
+      expect(component.panelSnap()).toBe('rest');
+
+      component.onBodyPointerDown(pointer('pointerdown', 100, { target: row }));
+      move(300);
+      up(300); // 200 past rest: closes
+      expect(setOpen).toHaveBeenCalledWith(false);
     });
 
-    it('panel + up: grows the panel even from inside the scroller', () => {
+    it('panel + up at `rest`: pulls the panel even from inside the scroller', () => {
       const { fixture } = setup();
       const component = fixture.componentInstance;
+      geometry(component);
       const { row } = panelZone(40);
 
       component.onBodyPointerDown(pointer('pointerdown', 300, { target: row }));
       move(250);
-      expect(component.queueExtraHeightPx()).toBe(50);
+      expect(component.panelTopPx()).toBe(-50);
       up(250);
     });
 
-    it('panel + up when fully grown: released so the list scrolls', () => {
+    it('panel + up at `full`: released so the list scrolls', () => {
       const { fixture } = setup();
       const component = fixture.componentInstance;
-      component.queueExtraHeightPx.set(320);
+      geometry(component);
+      component.panelState.set({ tab: 'queue', snap: 'full' });
       const { row } = panelZone(0);
 
       component.onBodyPointerDown(pointer('pointerdown', 300, { target: row }));
       move(250);
       expect(component.dragging()).toBe(false);
-      expect(component.queueExtraHeightPx()).toBe(320);
+      expect(component.panelSnap()).toBe('full');
     });
 
     it('at lg (side-panel layout) an up-swipe is released and a down-swipe dismisses', () => {
@@ -1063,7 +1207,7 @@ describe('NowPlayingComponent', () => {
       component.onBodyPointerDown(pointer('pointerdown', 300));
       move(200);
       expect(component.dragging()).toBe(false);
-      expect(component.queueExtraHeightPx()).toBe(0);
+      expect(component.panelTopPx()).toBe(0);
 
       component.onBodyPointerDown(pointer('pointerdown', 100));
       move(200);
