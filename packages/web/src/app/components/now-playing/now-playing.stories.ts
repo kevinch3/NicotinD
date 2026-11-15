@@ -108,6 +108,13 @@ export const Idle: Story = { ...withState({ ...loaded, isPlaying: false }) };
 export const QueueFull: Story = { ...withState({ ...loaded, isPlaying: true }, 'queue', 'full') };
 
 /**
+ * Karaoke is the Lyrics tab at `full` (#1680): the same panel state, so a pull
+ * down on the follow view, the ✕ or Back brings it to Lyrics at `rest`. It
+ * covers the sheet at every width, the side column included.
+ */
+export const Karaoke: Story = { ...withState({ ...loaded, isPlaying: true }, 'lyrics', 'full') };
+
+/**
  * Playing. The elapsed time comes from the real audio element, so this story
  * ticks; the queue below is the live `PlayerService.queue`, which is what the
  * rows are reordered and removed from.

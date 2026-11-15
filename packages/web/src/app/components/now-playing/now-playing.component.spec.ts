@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { Component, NO_ERRORS_SCHEMA, input, signal, type Provider } from '@angular/core';
 import { vi } from 'vitest';
 import { of, throwError, Subject } from 'rxjs';
 import type { Observable } from 'rxjs';
@@ -19,6 +19,26 @@ import { LibraryApiService } from '../../services/api/library-api.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { BackButtonService } from '../../services/native/back-button.service';
+import { DEFAULT_PLAYER_PANEL_TABS, PLAYER_PANEL_TABS } from './player-panel-tabs';
+
+/** A third tab, registered only here: its body knows nothing of gestures. */
+@Component({
+  selector: 'app-fake-notes-tab',
+  template: `<div data-testid="fake-notes-body" class="overflow-y-auto overflow-x-hidden">
+    notes at {{ snap() }}
+  </div>`,
+})
+class FakeNotesTabComponent {
+  readonly snap = input<'rest' | 'full'>('rest');
+}
+const NOTES_TAB = {
+  id: 'notes',
+  icon: 'list',
+  labelKey: 'nowPlaying.lyrics',
+  testid: 'now-playing-tab-notes',
+  body: FakeNotesTabComponent,
+  full: { chrome: 'own', atLg: false },
+} as const;
 
 function makePlayerStub() {
   const stub = {
@@ -102,7 +122,7 @@ function makeLibraryStub() {
   };
 }
 
-function setup() {
+function setup(extraProviders: Provider[] = []) {
   const playerStub = makePlayerStub();
   const remoteStub = makeRemoteStub();
   const libraryStub = makeLibraryStub();
@@ -126,6 +146,7 @@ function setup() {
           sendCommand: () => {},
         },
       },
+      ...extraProviders,
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });
@@ -813,6 +834,76 @@ describe('NowPlayingComponent', () => {
       return e;
     }
     afterEach(() => document.querySelectorAll('[data-np-zone]').forEach((n) => n.remove()));
+  });
+
+  describe('a registered third tab needs no gesture code (#1681)', () => {
+    const tabs = () =>
+      setup([{ provide: PLAYER_PANEL_TABS, useValue: [...DEFAULT_PLAYER_PANEL_TABS, NOTES_TAB] }]);
+    const pointer = (type: string, clientY: number, t = 0, target?: Element) => {
+      const e = new MouseEvent(type, { clientY, button: 0 }) as unknown as PointerEvent;
+      Object.defineProperty(e, 'timeStamp', { value: t });
+      if (target) Object.defineProperty(e, 'target', { value: target });
+      return e;
+    };
+
+    beforeEach(() => localStorage.clear());
+
+    it('appears in the strip and renders its own body', () => {
+      const { fixture, playerStub } = tabs();
+      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(fixture.componentInstance.panelTabs.map((t) => t.id)).toEqual([
+        'queue',
+        'lyrics',
+        'notes',
+      ]);
+      fixture.componentInstance.onTabSelected('notes');
+      fixture.detectChanges();
+      expect(el.querySelector('[data-testid="fake-notes-body"]')).not.toBeNull();
+      expect(el.querySelector('app-now-playing-queue-panel')).toBeNull();
+    });
+
+    it('is driven through every snap by the shell: tab, notch, pull, Back', () => {
+      const { fixture, playerStub } = tabs();
+      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      playerStub.nowPlayingOpen.set(true);
+      fixture.detectChanges();
+      const c = fixture.componentInstance;
+      vi.spyOn(c, 'measurePanelGeometry').mockReturnValue({ fullLiftPx: 400, coverMaxPx: 0 });
+
+      c.onTabSelected('notes');
+      c.onTabSelected('notes'); // the active tab: full
+      expect(c.panelState()).toEqual({ tab: 'notes', snap: 'full' });
+      expect(c.showCompactTransport()).toBe(false); // chrome: 'own'
+      expect(c.karaokeFullscreen()).toBe(false);
+      c.onNotchClick();
+      expect(c.panelSnap()).toBe('rest');
+
+      // A pull from inside its body: the frame owns it.
+      fixture.detectChanges();
+      const body = fixture.nativeElement.querySelector('[data-testid="fake-notes-body"]');
+      c.onBodyPointerDown(pointer('pointerdown', 500, 0, body));
+      document.dispatchEvent(pointer('pointermove', 300, 500));
+      document.dispatchEvent(pointer('pointerup', 300, 1000));
+      expect(c.panelSnap()).toBe('full');
+
+      expect(TestBed.inject(BackButtonService).stack.handleBack()).toBe(true);
+      expect(c.panelSnap()).toBe('rest');
+      // Persisted by id, like the built-ins.
+      expect(JSON.parse(localStorage.getItem('nicotind:np-panel')!).tab).toBe('notes');
+    });
+
+    it('a stored tab that is no longer registered falls back to the first one', () => {
+      localStorage.setItem(
+        'nicotind:np-panel',
+        JSON.stringify({ v: 1, tab: 'notes', snap: 'full' }),
+      );
+      expect(setup().fixture.componentInstance.panelState()).toEqual({
+        tab: 'queue',
+        snap: 'full',
+      });
+    });
   });
 
   describe('hoisted resize handle (shell-owned)', () => {

@@ -1,6 +1,6 @@
 # Player panel: one snap-point state machine (design proposal)
 
-**Status: decided (owner, 2026-11-09); #1678, #1679 and #1680 built (see "Built so far").** This is Step 0 of #1651 (sub-issue #1677). It
+**Status: built (owner decisions 2026-11-09; #1678, #1679, #1680, #1681). See "Built so far".** This is Step 0 of #1651 (sub-issue #1677). It
 unblocks #1678 (pure state machine), #1679 (full height, and the pull-down past rest), #1680 (karaoke fold) and #1681 (tab registration
 and coverage), and it coordinates with #1668 (the shared tab component). Nothing here describes
 shipped behaviour except the "Today" sections, and each claim there cites `file:line` on `master`
@@ -489,3 +489,15 @@ below as the record of what was weighed. D3 A's "three fixed snaps" became two b
   Browse enters on `wheel`, the keyboard toggle and the body swipe's `onRelease`, never on an owned
   `touchmove`. `resolveLyricsScrollContainer` stays for now; moving the auto-scroll into the tab is
   rule 4 of the tab contract (#1681).
+- **#1681, tabs are data:** `components/now-playing/player-panel-tabs.ts` holds `PlayerPanelTab`
+  and the `PLAYER_PANEL_TABS` token (default: Queue and Lyrics). The strip renders from it (badges
+  included), and the shell reads it for the persisted ids, `full.atLg` and the D6 chrome
+  (`showCompactTransport`). A tab with a `body` renders through `NgComponentOutlet` with a `snap`
+  input. The built-ins render in the template, because their outputs cannot cross an outlet.
+  `player-panel-tabs.spec.ts` sweeps every registered body template for rules 1 and 2 and asserts
+  its own denominator. The component spec registers a fake third tab and drives it through tab,
+  notch, pull and Back with no gesture code. Storybook: `NowPlaying/Idle` (rest), `QueueFull`,
+  `Karaoke`. Differences from §4: the strip keeps `aria-pressed` buttons until #1668's shared
+  tab component exists; `full.body` is not generalised (Lyrics' full view is karaoke, wired in
+  the shell); rule 4 is not yet met by Lyrics (`resolveLyricsScrollContainer` still crosses the
+  boundary).

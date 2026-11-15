@@ -1,17 +1,15 @@
-import { Component, input, output } from '@angular/core';
+import { Component, computed, input, output } from '@angular/core';
 import { IconComponent } from '../../icon/icon.component';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
 import { haptic } from '../../../lib/haptics';
+import { DEFAULT_PLAYER_PANEL_TABS, type PlayerPanelTab } from '../player-panel-tabs';
 
 /**
- * Queue/Lyrics tab switcher for the Now Playing panel — a live queue-count
- * badge on the queue tab and a lyrics-availability dot on the lyrics tab
- * (self-suppressed once that tab is already active, see the template).
- * Renders `SettingsGroupHeaderComponent`-style icon-in-box headers as
- * interactive tab buttons (that component itself is static/non-clickable,
- * so its visual language is replicated inline rather than composed).
+ * The Now Playing panel's tab strip, rendered from the tab registry
+ * (`PLAYER_PANEL_TABS`, #1681): an icon-in-box per tab, its label, and the
+ * tab's badge (the queue count after the label, the lyrics dot on the icon).
  */
 @Component({
   selector: 'app-now-playing-panel-tabs',
@@ -23,14 +21,30 @@ import { haptic } from '../../../lib/haptics';
   templateUrl: './now-playing-panel-tabs.component.html',
 })
 export class NowPlayingPanelTabsComponent {
-  readonly activePanel = input<'queue' | 'lyrics'>('queue');
+  readonly tabs = input<readonly PlayerPanelTab[]>(DEFAULT_PLAYER_PANEL_TABS);
+  readonly activePanel = input<string>('queue');
   readonly queueCount = input(0);
   readonly hasLyrics = input(false);
 
-  readonly panelSelected = output<'queue' | 'lyrics'>();
+  readonly panelSelected = output<string>();
 
-  /** A switch ticks; pressing the tab already shown changes nothing, so it does not. */
-  select(panel: 'queue' | 'lyrics'): void {
+  /** Each tab with its badge already worked out for the current state. */
+  readonly view = computed(() =>
+    this.tabs().map((tab) => {
+      const active = tab.id === this.activePanel();
+      const badge =
+        tab.badge?.({ queueCount: this.queueCount(), hasLyrics: this.hasLyrics(), active }) ?? null;
+      return {
+        tab,
+        active,
+        count: typeof badge === 'number' ? badge : null,
+        dot: badge === true,
+      };
+    }),
+  );
+
+  /** Pressing the tab already shown changes the snap, not the tab: no `select` tick. */
+  select(panel: string): void {
     if (panel !== this.activePanel()) haptic('select');
     this.panelSelected.emit(panel);
   }

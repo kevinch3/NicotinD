@@ -100,8 +100,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   mini-bar live-follow open, the Now Playing mode table (panel/dismiss, continuation) and the
   `lg:` side-panel splitter (`sidePanelWidthPx`). → [web-ui.md](../web-ui.md)
 - **Player panel snap points (#1651)**: one rest/full state machine for the Now Playing
-  panel (`panelState`, `resolvePullMode`, `settle`); karaoke is Lyrics at full
-  (`karaokeOffsetPx`). → [player-panel.md](../player-panel.md)
+  panel (`panelState`, `resolvePullMode`, `settle`); karaoke is Lyrics at full; tabs are data
+  (`PLAYER_PANEL_TABS`). → [player-panel.md](../player-panel.md)
 - **Queue row gestures**: `createRowGesture` — swipe left removes with Undo (`insertInQueue`),
   long-press then drag reorders (`reorderTargetIndex`); blocker armed only at the long-press.
   → [web-ui.md](../web-ui.md)
