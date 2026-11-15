@@ -149,6 +149,25 @@ async function visibleCentre(selector: string): Promise<Point> {
   return c;
 }
 
+/**
+ * Click the first match that is actually laid out. A selector can match a hidden
+ * twin (the tab bar's Settings link has one), and WebDriver's click refuses an
+ * invisible element rather than trying the next.
+ */
+async function clickVisible(selector: string): Promise<number> {
+  const n = await js<number>(
+    `const els = [...document.querySelectorAll(arguments[0])].filter((el) => {
+       const b = el.getBoundingClientRect();
+       return b.width > 0 && b.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+     });
+     if (els.length) els[0].click();
+     return els.length;`,
+    [selector],
+  );
+  if (n === 0) throw new Error(`${selector}: nothing visible to click`);
+  return n;
+}
+
 let token = '';
 let albumId = '';
 let offset: Point | undefined;
@@ -339,14 +358,23 @@ if (attached) {
   // As a user does it: close the sheet, open Settings from the tab bar, press Off.
   await step('settings: turn haptics Off', async () => {
     await inPage();
-    await driver.click(await driver.find('css selector', '[data-testid="now-playing-close"]'));
-    await driver.click(await driver.find('css selector', 'a[href="/settings"]'));
-    const off = await poll(
+    await clickVisible('[data-testid="now-playing-close"]');
+    // The sheet slides away on a 300 ms transform; the tab bar is under it until then.
+    await poll(
+      'the sheet closed',
+      () =>
+        visibleCentre('[data-testid="now-playing-cover-art"]').then(
+          () => null,
+          () => true,
+        ),
+      5_000,
+    );
+    await clickVisible('a[href="/settings"]');
+    await poll(
       'the Off button',
-      () => driver.find('css selector', '[data-testid="settings-haptics-off"]').catch(() => null),
+      () => clickVisible('[data-testid="settings-haptics-off"]').catch(() => null),
       15_000,
     );
-    await driver.click(off);
     return poll(
       'Off pressed',
       () =>
