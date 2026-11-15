@@ -77,8 +77,17 @@ jobs:
       - name: Patch Info.plist
         run: bun run packages/mobile/scripts/ios-plist.ts
 
-      # Debug, so Capacitor marks the WKWebView inspectable — Appium attaches
-      # through the same remote inspector Safari uses.
+      # Appium attaches through the same remote inspector Safari uses, which needs
+      # the WKWebView marked inspectable. A Debug build alone did not do it (the
+      # inspector listed no web apps, measured 2026-11-15), so this lane sets
+      # Capacitor's key in its throwaway project. The committed config and the
+      # release build are untouched.
+      - name: Make the WebView inspectable (this lane only)
+        run: |
+          set -euo pipefail
+          f=packages/mobile/ios/App/App/capacitor.config.json
+          jq '.ios.webContentsDebuggingEnabled = true' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+
       - name: Build Debug simulator app
         working-directory: packages/mobile/ios/App
         run: |
@@ -87,7 +96,10 @@ jobs:
             -configuration Debug -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
-          echo "IOS_APP_PATH=$PWD/build/Build/Products/Debug-iphonesimulator/App.app" >> "$GITHUB_ENV"
+          app="$PWD/build/Build/Products/Debug-iphonesimulator/App.app"
+          # Fail here, not 30 s into an empty context list, if the key did not ship.
+          jq -e '.ios.webContentsDebuggingEnabled == true' "$app/capacitor.config.json"
+          echo "IOS_APP_PATH=$app" >> "$GITHUB_ENV"
 
       - name: Boot the newest iPhone simulator
         id: sim

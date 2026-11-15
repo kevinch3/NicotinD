@@ -33,8 +33,11 @@ nobody can log into, that artifact is the debugging session.
   Safari uses, and switches between the page (`WEBVIEW_…` context) and native UI (`NATIVE_APP`).
 - **No client library.** `ios/webdriver.ts` speaks the dozen W3C WebDriver endpoints over `fetch`. A
   client library would add a lockfile dependency for one manual job.
-- **A Debug build.** Capacitor marks the WKWebView inspectable in Debug builds, which is what lets Appium
-  attach. A Release build would not be inspectable.
+- **An inspectable WebView.** Appium attaches through the Simulator's web inspector, which lists a
+  WKWebView only when it is marked inspectable. A Debug build alone did not do it: the inspector listed no
+  web apps (measured 2026-11-15). So the workflow sets `ios.webContentsDebuggingEnabled` in the generated
+  `capacitor.config.json` of its throwaway project, then checks that the built `.app` carries it. The
+  committed config and the release build are untouched.
 - **One calibration tap.** Gestures are native (`NATIVE_APP` W3C actions, screen points), while element
   positions come from the page (CSS pixels). On iOS a CSS pixel is a point, so one tap at a known screen
   point, plus the `clientX/Y` the page records for it, gives the whole mapping (`viewportOffset`). That
