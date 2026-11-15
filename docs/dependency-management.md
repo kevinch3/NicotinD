@@ -78,6 +78,15 @@ instead of at the build step. A failed download only warns; the session still st
 `scripts/cloud-node.test.ts`. The cloud environment's setup script can do the same install outside
 the repo; the hook is the version-controlled half.
 
+A second SessionStart hook, `scripts/cloud-playwright.sh`, does the same for the browser (#1534).
+The container ships a Chromium build under `PLAYWRIGHT_BROWSERS_PATH` that is older than the one the
+repo's Playwright expects, so `gates:storybook` and `bun run e2e` failed at launch with
+"Executable doesn't exist". The hook reads the Playwright version **`bun.lock` resolved** (not
+`package.json`'s range) and runs `npx -y playwright@<version> install chromium`, which is a no-op
+when that build is already present (~3 s). It needs no `bun install` first. A failure warns and
+names the gates that will not launch, so a session reports them as not run rather than guessing.
+Tested in `scripts/cloud-playwright.test.ts`.
+
 ## One Bun everywhere (#1409)
 
 CI, the desktop package and the prod image run the **same** Bun: every workflow's `BUN_VERSION` must
