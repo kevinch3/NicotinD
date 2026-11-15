@@ -222,3 +222,58 @@ describe('AlbumGetService', () => {
     expect(await second.json()).toEqual({ error: 'already-downloading', jobId });
   });
 });
+
+/**
+ * #1824: a bulk Get broke down past ~25 albums while the browser drove each
+ * hunt → pick → enqueue chain. Since #1831 the server owns it; this burst is
+ * past both that report and the interactive hunt queue's 50-waiting cap.
+ */
+describe('AlbumGetService under a bulk Get (#1824)', () => {
+  it('accepts a 60-album burst and enqueues every one, one search at a time', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let jobs = 0;
+    const client = {
+      baseUrl: 'http://addon:9999',
+      albumsSearch: async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 1));
+        inFlight--;
+        return FOUND;
+      },
+      createJob: async () => ({ id: `aj-${++jobs}`, intent: 'album', items: [] }),
+    } as unknown as AddonClient;
+    const addon = new RemoteAddonPlugin(MANIFEST, client);
+    const lidarr = {
+      album: {
+        get: async (id: number) => ({ title: `Album ${id}`, artist: { artistName: 'Artist' } }),
+      },
+      track: { listByAlbum: async () => [{ title: 'Song One' }, { title: 'Song Two' }] },
+    } as unknown as Lidarr;
+    const svc = new AlbumGetService({ db, lidarr, getAddon: () => addon, schedule: () => {} });
+
+    const ids = Array.from({ length: 60 }, (_, i) => 100 + i);
+    const answers = await Promise.all(
+      ids.map((id) => svc.request({ lidarrAlbumId: id, userId: 'u1' })),
+    );
+    expect(answers.map((a) => a.status)).toEqual(ids.map(() => 'accepted'));
+
+    const jobIds = answers.map((a) => (a.status === 'accepted' ? a.jobId : ''));
+    for (const jobId of jobIds) await svc.settled(jobId);
+
+    const rows = db
+      .query<{ stage: string; source_ref: string | null }, []>(
+        `SELECT stage, source_ref FROM acquisition_jobs`,
+      )
+      .all();
+    expect(rows).toHaveLength(60);
+    expect(rows.every((r) => r.stage === 'queued')).toBe(true);
+    expect(new Set(rows.map((r) => r.source_ref)).size).toBe(60);
+    expect(jobs).toBe(60);
+    // The source's pace, not the click's: never two searches at once.
+    expect(maxInFlight).toBe(1);
+  });
+});
