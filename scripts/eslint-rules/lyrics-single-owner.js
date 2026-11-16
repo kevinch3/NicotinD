@@ -38,6 +38,7 @@ export const LYRICS_API_METHODS = [
   'getLyrics',
   'fetchLyrics',
   'nextLyrics',
+  'undoLyrics',
   'saveLyrics',
   'setLyricsOffset',
   'deleteLyrics',

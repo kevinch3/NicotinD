@@ -78,6 +78,19 @@
     </div>
   }
 
+  @if (tryState()?.canUndo) {
+    <button
+      type="button"
+      data-testid="lyrics-undo"
+      (click)="undo.emit()"
+      [disabled]="tryState()?.busy"
+      class="mb-3 mr-2 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-60 focus:outline-none focus-visible:ring-2"
+      [class]="tone() === 'overlay' ? 'bg-white/10 text-white hover:bg-white/20 focus-visible:ring-white' : 'bg-theme-surface-2 text-theme-secondary hover:text-theme-primary'"
+    >
+      {{ 'nowPlaying.lyricsUndo' | t }}
+    </button>
+  }
+
   @if (canEditTiming()) {
     <button
       type="button"

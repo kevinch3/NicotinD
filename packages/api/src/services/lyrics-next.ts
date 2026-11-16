@@ -206,6 +206,8 @@ export async function nextSongLyrics(
     synced: next.synced,
     source: next.source,
     customized: false,
+    // What "Undo last change" puts back (#1960).
+    snapshot: !!existing,
     matchedDurationSec: next.matchedDurationSec ?? null,
     sourceTrackId: next.sourceTrackId ?? null,
     ...(existing?.synced && next.synced && sameLrc(existing.synced, next.synced)

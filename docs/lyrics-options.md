@@ -27,9 +27,17 @@ Some of #1657 has shipped since it was filed. This doc treats it as existing beh
   `candidateKey`, `index`, `total`, `duplicates`, `via: 'next'` and `passedOver` into
   `choice_json`, and `LyricsDto.walk` carries `index`/`total` to the options sheet's source line.
   **Not built from sections 1 to 3:** the first and the forced fetch still take each source's own
-  single answer (`fetchLyrics`), so a row they wrote has no "n of m" until the first press;
-  `customized_kind`; `previous_json` and "Undo last change" (they arrive with #1675, whose timing
-  save needs the same snapshot); and the "A timed version is available" hint.
+  single answer (`fetchLyrics`), so a row they wrote has no "n of m" until the first press; and
+  the "A timed version is available" hint.
+- **One previous version, and what an edit changed** (#1960). `setLyrics({ snapshot: true })` keeps
+  the row it replaces in `previous_json`; "Try another source", a forced fetch that replaces a row,
+  and a timing save (`PUT` with `synced`) pass it. **Any other whole-row write clears it**, so
+  "Undo last change" always means the last change and never an older one; an offset change leaves
+  it alone. `undoLyrics` puts the row back (words, timing, offset, provenance) and forgets it;
+  `POST /api/library/songs/:id/lyrics/undo` (curators) serves it and answers 409
+  `lyrics-nothing-to-undo` otherwise. `LyricsDto.canUndo` drives the sheet's `lyrics-undo` button.
+  `customized_kind` is set by `PUT` from `lyricsEditKind` (the incoming body against the stored
+  row, keeping an earlier edit's kind) and read back as `LyricsProvenance.customizedKind`.
 - **The track-info sheet asks before an edit drops the timing** (#1666;
   `track-info-sheet.component.ts:401-416`). The drop itself still happens.
 
@@ -299,8 +307,7 @@ enabled only once every non-empty line is stamped, sending `PUT { plain, synced 
 times so the stored offset returns to 0; and Preview. **Differences from the design below:**
 Preview highlights the playing line inside the editor's own list (the same "last stamp at or before
 the playhead" rule as `findActiveLine`) instead of switching to the karaoke panel; a stepper press
-does not repeat while held; and the editor is not reachable from the track-info sheet. Still not
-built: `previous_json` with "Undo last change", and `customized_kind`.
+does not repeat while held; and the editor is not reachable from the track-info sheet.
 
 For curators, on the phone first. It is reached from the options group ("Edit timing") and from
 the track-info sheet when the row is timed or plain.
@@ -373,7 +380,7 @@ the track-info sheet when the row is timed or plain.
 **Built:** the Options button, the sheet, the source line with "n of m" (without the editor's
 name, which needs the provenance read), "Try another source" (#1674: `lyrics-try-another`, with
 its outcome in the `lyrics-try-result` status line) and the sync tool with fixed geometry, words
-and press and hold. Items 4 and 5 below arrive with #1675.
+and press and hold, "Edit timing" (#1675) and "Undo last change" (#1960).
 
 One "Options" button (a sliders icon) in the karaoke header, between the title and the vocal-mute
 button (`now-playing-karaoke-fullscreen.component.html:44-99`), and the same button in the Lyrics

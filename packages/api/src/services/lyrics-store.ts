@@ -3,6 +3,7 @@ import type {
   LyricsActor,
   LyricsChoice,
   LyricsDto,
+  LyricsEditKind,
   LyricsExportDto,
   LyricsProvenance,
 } from '@nicotind/core';
@@ -38,6 +39,8 @@ interface DbRow {
   customized_at: number | null;
   offset_by: string | null;
   offset_at: number | null;
+  previous_json: string | null;
+  customized_kind: string | null;
 }
 
 export interface SetLyricsInput {
@@ -68,6 +71,14 @@ export interface SetLyricsInput {
   choice?: LyricsChoice;
   /** User id of whoever wrote a `customized` row; recorded with the time. */
   actor?: string | null;
+  /** What this edit changed, for a `customized` row (`lyricsEditKind`). */
+  customizedKind?: LyricsEditKind | null;
+  /**
+   * Keep the row being replaced as the one previous version (#1960). **Omitted
+   * clears any kept version**: every whole-row write either becomes the thing
+   * "Undo last change" undoes, or ends the chance to undo an older one.
+   */
+  snapshot?: boolean;
 }
 
 function toDto(r: DbRow): LyricsDto {
@@ -81,7 +92,75 @@ function toDto(r: DbRow): LyricsDto {
     sourceTrackId: r.source_id,
     offsetMs: r.offset_ms ?? 0,
     walk: walkOf(r.customized === 1, parseChoice(r.choice_json)),
+    canUndo: r.previous_json != null,
   };
+}
+
+const rawRow = (db: Database, songId: string): DbRow | null =>
+  db.query<DbRow, [string]>('SELECT * FROM library_lyrics WHERE song_id = ?').get(songId);
+
+/**
+ * What an edit changed, against the row it replaces (#1960): the words, the
+ * timing, or both. An earlier edit's kind is kept, so words rewritten last week
+ * and timings fixed today read `text+timing`.
+ */
+export function lyricsEditKind(
+  db: Database,
+  songId: string,
+  plain: string | null,
+  synced: string | null,
+): LyricsEditKind {
+  const norm = (t: string | null | undefined) => (t ?? '').replace(/\r\n?/g, '\n').trim();
+  const stored = rawRow(db, songId);
+  const text = norm(stored?.plain_text) !== norm(plain);
+  const timing = norm(stored?.synced_text) !== norm(synced);
+  const before = stored?.customized === 1 ? stored.customized_kind : null;
+  const hadText = text || before === 'text' || before === 'text+timing';
+  const hadTiming = timing || before === 'timing' || before === 'text+timing';
+  if (hadText && hadTiming) return 'text+timing';
+  return hadTiming ? 'timing' : 'text';
+}
+
+/**
+ * Put back the one previous version of a song's lyrics (#1960) and forget it:
+ * words, timing, offset and provenance as they were. Null when none is kept.
+ */
+export function undoLyrics(db: Database, songId: string): LyricsDto | null {
+  const row = rawRow(db, songId);
+  if (!row?.previous_json) return null;
+  let prev: DbRow;
+  try {
+    prev = JSON.parse(row.previous_json) as DbRow;
+  } catch {
+    return null;
+  }
+  db.run(
+    `UPDATE library_lyrics SET
+       plain_text = ?, synced_text = ?, source = ?, customized = ?, updated_at = ?,
+       matched_duration = ?, source_id = ?, offset_ms = ?, choice_json = ?,
+       customized_by = ?, customized_at = ?, offset_by = ?, offset_at = ?,
+       customized_kind = ?, previous_json = NULL
+     WHERE song_id = ?`,
+    [
+      prev.plain_text,
+      prev.synced_text,
+      prev.source,
+      prev.customized,
+      Date.now(),
+      prev.matched_duration,
+      prev.source_id,
+      prev.offset_ms ?? 0,
+      prev.choice_json,
+      prev.customized_by,
+      prev.customized_at,
+      prev.offset_by,
+      prev.offset_at,
+      prev.customized_kind ?? null,
+      songId,
+    ],
+  );
+  announce(songId);
+  return getLyrics(db, songId);
 }
 
 /** "n of m" for a row "Try another source" wrote and nobody has edited since. */
@@ -122,11 +201,16 @@ export function setLyrics(db: Database, songId: string, input: SetLyricsInput): 
   const offsetMs = clampLyricsOffset(input.offsetMs ?? 0);
   const keepChoice = input.choice === undefined ? 1 : 0;
   const keepOffsetBy = input.offsetMs === undefined ? 0 : 1;
+  // The snapshot never nests: the kept version holds no kept version of its own.
+  const replaced = input.snapshot ? rawRow(db, songId) : null;
+  const previousJson = replaced ? JSON.stringify({ ...replaced, previous_json: null }) : null;
+  const customizedKind = input.customized ? (input.customizedKind ?? null) : null;
   db.run(
     `INSERT INTO library_lyrics
        (song_id, plain_text, synced_text, source, customized, updated_at,
-        matched_duration, source_id, offset_ms, choice_json, customized_by, customized_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        matched_duration, source_id, offset_ms, choice_json, customized_by, customized_at,
+        previous_json, customized_kind)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(song_id) DO UPDATE SET
        plain_text = excluded.plain_text,
        synced_text = excluded.synced_text,
@@ -139,6 +223,8 @@ export function setLyrics(db: Database, songId: string, input: SetLyricsInput): 
        choice_json = CASE WHEN ? THEN library_lyrics.choice_json ELSE excluded.choice_json END,
        customized_by = excluded.customized_by,
        customized_at = excluded.customized_at,
+       previous_json = excluded.previous_json,
+       customized_kind = excluded.customized_kind,
        offset_by = CASE WHEN ? THEN library_lyrics.offset_by END,
        offset_at = CASE WHEN ? THEN library_lyrics.offset_at END`,
     [
@@ -154,6 +240,8 @@ export function setLyrics(db: Database, songId: string, input: SetLyricsInput): 
       input.choice ? JSON.stringify(input.choice) : null,
       input.customized ? (input.actor ?? null) : null,
       input.customized ? updatedAt : null,
+      previousJson,
+      customizedKind,
       keepChoice,
       keepOffsetBy,
       keepOffsetBy,
@@ -170,6 +258,7 @@ export function setLyrics(db: Database, songId: string, input: SetLyricsInput): 
     sourceTrackId,
     offsetMs,
     walk: walkOf(input.customized, input.choice),
+    canUndo: previousJson != null,
   };
 }
 
@@ -221,6 +310,8 @@ function toProvenance(r: ProvenanceRow): LyricsProvenance {
     sourceTrackId: r.source_id,
     choice: parseChoice(r.choice_json),
     customized: r.customized === 1,
+    customizedKind:
+      r.customized === 1 ? ((r.customized_kind as LyricsEditKind | null) ?? null) : null,
     customizedBy: actor(r.customized_by, r.customized_name),
     customizedAt: r.customized_at,
     offsetBy: actor(r.offset_by, r.offset_name),

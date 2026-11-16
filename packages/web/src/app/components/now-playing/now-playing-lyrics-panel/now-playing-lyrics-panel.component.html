@@ -90,6 +90,7 @@
       [edited]="lyricsEdited()"
       [tryState]="lyricsTry()"
       (tryAnother)="tryAnotherSource.emit()"
+      (undo)="undoRequested.emit()"
       [canEditTiming]="canSync()"
       (editTiming)="optionsOpen.set(false); editTimingRequested.emit()"
       [offsetMs]="offsetMs()"

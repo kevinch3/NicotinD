@@ -136,6 +136,8 @@ export async function fetchSongLyrics(
       synced: result.synced,
       source: result.source,
       customized: false,
+      // A forced fetch replacing a row keeps it for "Undo last change" (#1960).
+      snapshot: !!opts.force && !!existing,
       // Recorded so a wrong-take match stays visible after the fact; a source
       // that reports no duration leaves these null, i.e. unverified (#1212).
       matchedDurationSec: result.matchedDurationSec ?? null,

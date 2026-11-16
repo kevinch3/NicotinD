@@ -90,6 +90,17 @@ describe('LyricsOptionsSheetComponent (#1656)', () => {
       expect(withTry(state({ walk }), true).q('lyrics-options-position')).toBeNull();
     });
 
+    it('offers "Undo last change" only while a previous version is kept (#1960)', () => {
+      expect(withTry(state()).q('lyrics-undo')).toBeNull();
+      const { fixture, q } = withTry(state({ canUndo: true }));
+      let undos = 0;
+      fixture.componentInstance.undo.subscribe(() => undos++);
+      q('lyrics-undo')!.click();
+      expect(undos).toBe(1);
+      const busy = withTry(state({ canUndo: true, busy: true })).q('lyrics-undo');
+      expect((busy as HTMLButtonElement).disabled).toBe(true);
+    });
+
     it('reports each outcome in a status region', () => {
       const text = (kind: 'applied' | 'only-one' | 'no-match' | 'error') => {
         const applied =

@@ -706,3 +706,88 @@ describe('POST /songs/:id/lyrics/next (#1674)', () => {
     );
   });
 });
+
+describe('one previous version and "Undo last change" (#1960)', () => {
+  const json = (method: string, body: object = {}) => ({
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const TAKE_B: LyricsResult = { plain: 'take b', synced: '[00:02.00]take b', source: 'lrclib' };
+
+  /** A song holding LYRICS, fetched from the source. */
+  async function fetched(): Promise<void> {
+    seedSong(testDb, 'song-1');
+    const { registry } = makeRegistry({ result: LYRICS });
+    await makeApp('user', registry).request('/songs/song-1/lyrics/fetch', { method: 'POST' });
+  }
+  const undo = (role: 'admin' | 'user' = 'admin') =>
+    makeApp(role).request('/songs/song-1/lyrics/undo', { method: 'POST' });
+
+  it('a first fetch keeps nothing, and undo answers 409', async () => {
+    await fetched();
+    expect(getLyrics(testDb, 'song-1')?.canUndo).toBe(false);
+    const res = await undo();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('lyrics-nothing-to-undo');
+  });
+
+  it('a forced fetch that replaces the row can be undone', async () => {
+    await fetched();
+    const { registry } = makeRegistry({ result: TAKE_B });
+    const forced = await makeApp('user', registry).request(
+      '/songs/song-1/lyrics/fetch',
+      json('POST', { force: true }),
+    );
+    expect((await forced.json()).canUndo).toBe(true);
+
+    const res = await undo();
+    expect(res.status).toBe(200);
+    expect((await res.json()).synced).toBe(LYRICS.synced);
+    expect(getLyrics(testDb, 'song-1')?.canUndo).toBe(false);
+  });
+
+  it('"Try another source" can be undone', async () => {
+    await fetched();
+    const { registry } = makeRegistry({ result: TAKE_B });
+    const next = await makeApp('admin', registry).request(
+      '/songs/song-1/lyrics/next',
+      json('POST'),
+    );
+    expect((await next.json()).lyrics.canUndo).toBe(true);
+    expect((await (await undo()).json()).synced).toBe(LYRICS.synced);
+  });
+
+  it('a timing save can be undone, and is recorded as a timing edit', async () => {
+    await fetched();
+    const saved = await makeApp('admin').request(
+      '/songs/song-1/lyrics',
+      json('PUT', { plain: LYRICS.plain, synced: '[00:03.00]la selva' }),
+    );
+    expect((await saved.json()).canUndo).toBe(true);
+    expect(getLyricsProvenance(testDb, 'song-1')?.customizedKind).toBe('timing');
+
+    const restored = await (await undo()).json();
+    expect(restored.synced).toBe(LYRICS.synced);
+    expect(restored.customized).toBe(false);
+    expect(getLyricsProvenance(testDb, 'song-1')?.customizedKind).toBeNull();
+  });
+
+  it('a text-only save keeps nothing, and is recorded as text plus timing when it drops the LRC', async () => {
+    await fetched();
+    const saved = await makeApp('admin').request(
+      '/songs/song-1/lyrics',
+      json('PUT', { plain: 'my words' }),
+    );
+    expect((await saved.json()).canUndo).toBe(false);
+    expect(getLyricsProvenance(testDb, 'song-1')?.customizedKind).toBe('text+timing');
+    expect((await undo()).status).toBe(409);
+  });
+
+  it('is curator-only, and 404 for an unknown song', async () => {
+    await fetched();
+    expect((await undo('user')).status).toBe(403);
+    const res = await makeApp('admin').request('/songs/nope/lyrics/undo', { method: 'POST' });
+    expect(res.status).toBe(404);
+  });
+});

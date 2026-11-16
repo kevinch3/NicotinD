@@ -1159,6 +1159,7 @@
   "nowPlaying.lyricsFromFile": "Del archivo de audio",
   "nowPlaying.lyricsTimed": "sincronizada",
   "nowPlaying.lyricsUntimed": "sin sincronizar",
+  "nowPlaying.lyricsUndo": "Deshacer el último cambio",
   "nowPlaying.lyricsPosition": "{index} de {total}",
   "nowPlaying.lyricsTryAnother": "Probar otra fuente",
   "nowPlaying.lyricsTryApplied": "Aplicada: {source} · {timing} · {index} de {total}",

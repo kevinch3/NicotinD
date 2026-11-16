@@ -166,4 +166,36 @@ test.describe('lyrics source (fixture LRCLIB)', () => {
       'another take, line one',
     );
   });
+
+  test('Undo last change puts the first take back, once (#1960)', async ({ page, request }) => {
+    await twoTakes();
+    await next(request);
+    await next(request);
+    const stored = async () =>
+      (await (
+        await request.get(`/api/library/songs/${song.id}/lyrics`, { headers: bearer(token) })
+      ).json()) as { synced: string; canUndo: boolean };
+    expect(await stored()).toMatchObject({ synced: LRC_B, canUndo: true });
+
+    await page.goto('/library');
+    await page
+      .getByTestId('library-tabs')
+      .getByRole('button', { name: 'Songs', exact: true })
+      .click();
+    const row = page.locator('app-track-row').filter({ hasText: SONG.title }).first();
+    await row.getByTestId('track-row-title').click();
+    await page.getByTestId('player-title').click();
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    const panel = page.getByTestId('now-playing-lyrics');
+    await expect(panel.locator('[data-karaoke-line]').first()).toContainText(
+      'another take, line one',
+    );
+
+    await page.getByTestId('lyrics-options-toggle').click();
+    await page.getByTestId('lyrics-undo').click();
+
+    await expect(panel.locator('[data-karaoke-line]').first()).toContainText('first timed line');
+    await expect(page.getByTestId('lyrics-undo')).toHaveCount(0);
+    expect(await stored()).toMatchObject({ synced: LRC, canUndo: false });
+  });
 });

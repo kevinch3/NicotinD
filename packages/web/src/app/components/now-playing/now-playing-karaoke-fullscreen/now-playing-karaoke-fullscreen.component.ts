@@ -76,6 +76,7 @@ export class NowPlayingKaraokeFullscreenComponent {
 
   readonly tryAnotherSource = output<void>();
   readonly editTimingRequested = output<void>();
+  readonly undoRequested = output<void>();
   readonly exit = output<void>();
   /** Emits the delta in ms — the overlay doesn't own the stored offset. */
   readonly offsetNudged = output<number>();
