@@ -126,3 +126,6 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   WKWebView over Appium, through a plain-`fetch` W3C client. Page → screen mapping from one tap
   (`viewportOffset`); haptics checked at the Capacitor bridge (`hapticCalls`); Simulator picked by runtime
   (`pickSimulator`). → [e2e-ios-simulator.md](../e2e-ios-simulator.md)
+- **Deployment pipeline, as built**: one map of every workflow, gate, secret, version reader and
+  update path, with run timings, findings and a beta-channel proposal that is not built.
+  → [deployment-pipeline.md](../deployment-pipeline.md)

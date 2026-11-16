@@ -114,6 +114,9 @@ in-job check would leave those changelogs checked by nothing.
 
 ### Edge and releases
 
+The whole pipeline on one page, workflow by workflow, is
+[deployment-pipeline.md](deployment-pipeline.md).
+
 Every merge used to be a public release: 685 tags in 140 days, 65 % of them a
 single commit, each one an update prompt in every installed app, a new
 `release` image for every self-hoster, and a CI run on the bump commit. The
