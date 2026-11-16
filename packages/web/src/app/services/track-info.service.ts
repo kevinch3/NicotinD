@@ -12,6 +12,9 @@ export interface TrackInfoTarget {
   albumId?: string | null;
 }
 
+/** A curator section the sheet opens on, ready to use (#2017). */
+export type TrackInfoFocus = 'tags' | 'artist' | 'identify' | 'genre';
+
 /**
  * Opens the track-info sheet from anywhere. A single TrackInfoHost (mounted in
  * the layout) renders `target()`; the now-playing view and every song-row menu
@@ -23,7 +26,10 @@ export class TrackInfoService {
   private unregisterBack: (() => void) | null = null;
 
   readonly target = signal<TrackInfoTarget | null>(null);
-  open(t: TrackInfoTarget): void {
+  /** The section this opening goes straight to; null opens at the top. */
+  readonly focus = signal<TrackInfoFocus | null>(null);
+  open(t: TrackInfoTarget, opts: { focus?: TrackInfoFocus } = {}): void {
+    this.focus.set(opts.focus ?? null);
     this.target.set(t);
     // Hardware Back closes the sheet first (issue #394) — pushed per-open so
     // it sits above the persistent Now Playing handler.
@@ -34,6 +40,7 @@ export class TrackInfoService {
   }
   close(): void {
     this.target.set(null);
+    this.focus.set(null);
     this.unregisterBack?.();
     this.unregisterBack = null;
   }

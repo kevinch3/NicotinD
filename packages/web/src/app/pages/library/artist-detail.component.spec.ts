@@ -636,28 +636,27 @@ describe('ArtistDetailComponent — genre headline + About block', () => {
 });
 
 describe('ArtistDetailComponent — delete (admin only)', () => {
-  it('exposes a destructive "Remove from library" track action for admins', async () => {
+  it('offers the Curate submenu, which holds Remove from library, to admins', async () => {
     const { component } = setup('admin');
     await fixture_stable();
     component.setTab('songs');
     await flush();
 
     const action = component.songMenu
-      .build(component.songs()[0], { hideGoToArtist: true, removable: true })
-      .find((a) => a.label === 'Remove from library');
-    expect(action).toBeDefined();
-    expect(action!.destructive).toBe(true);
+      .build(component.songs()[0], { hideGoToArtist: true })
+      .find((a) => a.label === 'Curate');
+    expect(action?.children).toBeDefined();
   });
 
-  it('hides the "Remove from library" track action from non-admins', async () => {
+  it('hides the Curate submenu from non-admins', async () => {
     const { component } = setup('user');
     await fixture_stable();
     component.setTab('songs');
     await flush();
 
     const action = component.songMenu
-      .build(component.songs()[0], { hideGoToArtist: true, removable: true })
-      .find((a) => a.label === 'Remove from library');
+      .build(component.songs()[0], { hideGoToArtist: true })
+      .find((a) => a.label === 'Curate');
     expect(action).toBeUndefined();
   });
 

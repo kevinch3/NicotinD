@@ -1,7 +1,8 @@
+import { of } from 'rxjs';
 import { TestBed, getTestBed } from '@angular/core/testing';
 import { startsGroup } from '../lib/menu-groups';
 import { Router } from '@angular/router';
-import { SongMenuService } from './song-menu.service';
+import { SongMenuService, type SongContext } from './song-menu.service';
 import { PlayerService } from './player.service';
 import { PlaylistService } from './playlist.service';
 import { PreserveService } from './preserve.service';
@@ -31,7 +32,7 @@ const song = (over: Partial<BaseSong> = {}): BaseSong => ({
   ...over,
 });
 
-function setup(role: Role = 'user', excluded = false, acquisitionOn = true) {
+function setup(role: Role = 'user', excluded = false, acquisitionOn = true, identify = true) {
   const router = { navigate: vi.fn() };
   const auth = {
     role: () => role,
@@ -55,7 +56,10 @@ function setup(role: Role = 'user', excluded = false, acquisitionOn = true) {
       },
       {
         provide: LibraryApiService,
-        useValue: { deleteSongs: vi.fn(() => ({ subscribe: vi.fn() })) },
+        useValue: {
+          deleteSongs: vi.fn(() => of({})),
+          getIdentifyAvailable: vi.fn(() => of({ available: identify })),
+        },
       },
       { provide: TransferService, useValue: { addDeletedIds: vi.fn() } },
       { provide: TrackInfoService, useValue: { open: vi.fn() } },
@@ -148,7 +152,7 @@ describe('SongMenuService.build', () => {
   it('groups the menu Play, Go to, Keep, Info, Feedback, Role, Remove, with a page extra last', () => {
     const { svc } = setup('admin');
     const actions = svc.build(song({ artistId: 'ar1', albumId: 'al1' }), {
-      removable: true,
+      onRemoveFromPlaylist: () => {},
       extraActions: [{ label: 'Page extra', action: () => {} }],
     });
     expect(actions.map((a) => a.group ?? null)).toEqual([
@@ -164,6 +168,7 @@ describe('SongMenuService.build', () => {
       'feedback',
       'feedback',
       'role',
+      'role',
       'remove',
       null,
     ]);
@@ -174,7 +179,7 @@ describe('SongMenuService.build', () => {
       'Song info',
       "Don't recommend this",
       'Get more',
-      'Remove from library',
+      'Remove from playlist',
       'Page extra',
     ]);
   });
@@ -330,19 +335,77 @@ describe('SongMenuService.build', () => {
     expect(out).not.toContain('Go to album');
   });
 
-  it('adds Remove from library only for curators (refiner/admin) + removable', () => {
-    expect(labels(song(), setup('listener').svc, { removable: true })).not.toContain(
-      'Remove from library',
-    );
-    expect(labels(song(), setup('user').svc, { removable: true })).not.toContain(
-      'Remove from library',
-    );
-    expect(labels(song(), setup('refiner').svc, { removable: true })).toContain(
-      'Remove from library',
-    );
-    expect(labels(song(), setup('admin').svc, { removable: true })).toContain(
-      'Remove from library',
-    );
+  // #2017: a curator's song actions, one tap in, on every page.
+  describe('Curate', () => {
+    const curate = (svc: SongMenuService, ctx: SongContext = {}) =>
+      svc.build(song({ id: 's9', title: 'Nine' }), ctx).find((a) => a.label === 'Curate');
+
+    it('is offered to a refiner and an admin, not to a listener or a user', () => {
+      expect(curate(setup('listener').svc)).toBeUndefined();
+      expect(curate(setup('user').svc)).toBeUndefined();
+      expect(curate(setup('refiner').svc)).toBeDefined();
+      expect(curate(setup('admin').svc)!.group).toBe('role');
+    });
+
+    it('is hidden offline: every entry writes to the server', () => {
+      const { svc } = setup('admin');
+      TestBed.inject(OfflineModeService).serverUnreachable.set(true);
+      expect(curate(svc)).toBeUndefined();
+    });
+
+    it('lists the four editors and Remove, on a page that passes no options', async () => {
+      const entries = await curate(setup('refiner').svc)!.children!();
+      expect(entries.map((e) => e.label)).toEqual([
+        'Edit tags',
+        'Fix artist credit',
+        'Identify',
+        'Set genre',
+        'Remove from library',
+      ]);
+      expect(entries[4]).toMatchObject({ destructive: true, group: 'remove' });
+    });
+
+    it('leaves Identify out when the server cannot fingerprint', async () => {
+      const entries = await curate(setup('refiner', false, true, false).svc)!.children!();
+      expect(entries.map((e) => e.label)).not.toContain('Identify');
+    });
+
+    it('asks the server about Identify once, not per menu', async () => {
+      const { svc } = setup('refiner');
+      await curate(svc)!.children!();
+      await curate(svc)!.children!();
+      const api = TestBed.inject(LibraryApiService) as unknown as {
+        getIdentifyAvailable: ReturnType<typeof vi.fn>;
+      };
+      expect(api.getIdentifyAvailable).toHaveBeenCalledTimes(1);
+    });
+
+    for (const [label, focus] of [
+      ['Edit tags', 'tags'],
+      ['Fix artist credit', 'artist'],
+      ['Identify', 'identify'],
+      ['Set genre', 'genre'],
+    ] as const) {
+      it(`${label} opens Song info at ${focus}`, async () => {
+        const { svc } = setup('refiner');
+        const entries = await curate(svc)!.children!();
+        entries.find((e) => e.label === label)!.action();
+        expect(TestBed.inject(TrackInfoService).open).toHaveBeenCalledWith(
+          expect.objectContaining({ songId: 's9' }),
+          { focus },
+        );
+      });
+    }
+
+    it('Remove from library confirms, deletes and marks the song deleted', async () => {
+      const { svc } = setup('admin');
+      const entries = await curate(svc)!.children!();
+      entries.find((e) => e.label === 'Remove from library')!.action();
+      await vi.waitFor(() =>
+        expect(TestBed.inject(TransferService).addDeletedIds).toHaveBeenCalledWith(['s9']),
+      );
+      expect(TestBed.inject(ConfirmService).ask).toHaveBeenCalled();
+    });
   });
 
   it('appends onRemoveFromPlaylist and extraActions last', () => {
@@ -416,22 +479,26 @@ describe('SongMenuService.build — every item is translated', () => {
   const en = EN as Record<string, string>;
   const es = ES as Record<string, string>;
 
-  function everyAction(liked: boolean, excluded: boolean) {
+  async function everyAction(liked: boolean, excluded: boolean) {
     const { svc } = setup('admin', excluded);
     const likes = TestBed.inject(LikeService) as unknown as { isLiked: () => boolean };
     likes.isLiked = () => liked;
-    return svc.build(song({ artistId: 'ar1', albumId: 'al1' }), {
-      removable: true,
+    const top = svc.build(song({ artistId: 'ar1', albumId: 'al1' }), {
       onRemoveFromPlaylist: () => {},
     });
+    // Curate and Get more carry their own items; playlists and artists are names.
+    const nested = await Promise.all(
+      top.filter((a) => a.label === 'Curate' || a.label === 'Get more').map((a) => a.children!()),
+    );
+    return [...top, ...nested.flat()];
   }
 
   for (const [liked, excluded] of [
     [false, false],
     [true, true],
   ] as const) {
-    it(`carries a key in en and es for every item (liked=${liked}, excluded=${excluded})`, () => {
-      for (const action of everyAction(liked, excluded)) {
+    it(`carries a key in en and es for every item (liked=${liked}, excluded=${excluded})`, async () => {
+      for (const action of await everyAction(liked, excluded)) {
         expect(action.labelKey, `${action.label} has no labelKey`).toBeTruthy();
         expect(en[action.labelKey!], `${action.labelKey} missing from en.json`).toBeTruthy();
         expect(es[action.labelKey!], `${action.labelKey} missing from es.json`).toBeTruthy();
@@ -439,9 +506,9 @@ describe('SongMenuService.build — every item is translated', () => {
     });
   }
 
-  it('keeps the English label as the stable identity (the e2e testid suffix)', () => {
+  it('keeps the English label as the stable identity (the e2e testid suffix)', async () => {
     const labelsByKey = Object.fromEntries(
-      everyAction(false, false).map((a) => [a.labelKey, a.label]),
+      (await everyAction(false, false)).map((a) => [a.labelKey, a.label]),
     );
     expect(labelsByKey['song.addToQueue']).toBe('Add to queue');
     expect(en['song.addToQueue']).toBe('Add to queue');

@@ -1,3 +1,4 @@
+import { TrackInfoService } from '../../services/track-info.service';
 import { TestBed } from '@angular/core/testing';
 import { computed, signal } from '@angular/core';
 import { vi } from 'vitest';
@@ -424,6 +425,67 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     c.applyIdentifyNow();
     expect(c.applyingIdentify()).toBe(false);
     expect(c.identifyApplied()).toBe(false);
+  });
+
+  // #2017: the Curate submenu opens the sheet on one section, ready to use.
+  describe('opening on a section', () => {
+    const openOn = (focus: 'tags' | 'artist' | 'identify' | 'genre') => {
+      TestBed.inject(TrackInfoService).open({ songId: 'song-1' }, { focus });
+      const c = create();
+      c.ngOnInit();
+      return c;
+    };
+    afterEach(() => TestBed.inject(TrackInfoService).close());
+
+    it('opens at the top with no focus', () => {
+      TestBed.inject(TrackInfoService).open({ songId: 'song-1' });
+      const c = create();
+      c.ngOnInit();
+      expect(c.editingTags()).toBe(false);
+      expect(c.identityOpen()).toBe(false);
+      expect(c.addingGenre()).toBe(false);
+      expect(identifyLibrarySong).not.toHaveBeenCalled();
+    });
+
+    it('tags: the editor is open, prefilled from the loaded song', () => {
+      getSong.mockReturnValue(of({ id: 'song-1', title: 'Real Title' } as never));
+      const c = openOn('tags');
+      expect(c.editingTags()).toBe(true);
+      expect(c.tagDraft().title).toBe('Real Title');
+    });
+
+    it('artist: the credit fix is open', () => {
+      expect(openOn('artist').identityOpen()).toBe(true);
+    });
+
+    it('genre: the add-genre field is open', () => {
+      expect(openOn('genre').addingGenre()).toBe(true);
+    });
+
+    it('identify: the fingerprint runs once the server says it can', () => {
+      openOn('identify');
+      expect(identifyLibrarySong).toHaveBeenCalledWith('song-1');
+    });
+
+    it('identify: nothing runs when the server cannot fingerprint', () => {
+      getIdentifyAvailable.mockReturnValueOnce(of({ available: false }));
+      openOn('identify');
+      expect(identifyLibrarySong).not.toHaveBeenCalled();
+    });
+
+    it('ignores the focus for someone who cannot curate', () => {
+      role.set('user');
+      const c = openOn('tags');
+      expect(c.editingTags()).toBe(false);
+    });
+
+    it('closing forgets the focus, so the next plain opening starts at the top', () => {
+      const info = TestBed.inject(TrackInfoService);
+      info.open({ songId: 'song-1' }, { focus: 'genre' });
+      info.close();
+      info.open({ songId: 'song-1' });
+      expect(info.focus()).toBeNull();
+    });
   });
 });
 

@@ -8,7 +8,7 @@ import { PreserveService } from './preserve.service';
 import { AuthService } from './auth.service';
 import { LibraryApiService } from './api/library-api.service';
 import { TransferService } from './transfer.service';
-import { TrackInfoService } from './track-info.service';
+import { TrackInfoService, type TrackInfoFocus, type TrackInfoTarget } from './track-info.service';
 import { ConfirmService } from './confirm.service';
 import { LikeService } from './like.service';
 import { RecommendationExclusionsService } from './recommendation-exclusions.service';
@@ -27,8 +27,6 @@ export interface SongContext {
   hideGoToArtist?: boolean;
   /** Suppress "Go to album" (e.g. on the album page). */
   hideGoToAlbum?: boolean;
-  /** Offer admin-gated "Remove from library". */
-  removable?: boolean;
   /** Offer "Remove from playlist" wired to this callback. */
   onRemoveFromPlaylist?: () => void;
   /** Page-unique actions appended last. */
@@ -144,6 +142,15 @@ export class SongMenuService {
       });
     }
 
+    const infoTarget: TrackInfoTarget = {
+      songId: song.id,
+      title: song.title,
+      artist: song.artist,
+      album: song.album,
+      coverArt: song.coverArt ?? null,
+      coverRev: song.coverRev,
+      albumId: song.albumId ?? null,
+    };
     actions.push(addToPlaylistAction(this.playlists, song.id));
     actions.push(offlineTrackAction(this.preserve, track));
     actions.push({
@@ -151,16 +158,7 @@ export class SongMenuService {
       labelKey: 'song.info',
       icon: 'info',
       group: 'info',
-      action: () =>
-        this.trackInfo.open({
-          songId: song.id,
-          title: song.title,
-          artist: song.artist,
-          album: song.album,
-          coverArt: song.coverArt ?? null,
-          coverRev: song.coverRev,
-          albumId: song.albumId ?? null,
-        }),
+      action: () => this.trackInfo.open(infoTarget),
     });
 
     // A personal veto on the feeds (docs/radio.md "Per-user exclusions"): the
@@ -220,14 +218,54 @@ export class SongMenuService {
       });
     }
 
-    if (ctx.removable && this.auth.canCurate()) {
+    // A curator's song actions, one tap in, on every page (#2017). They all
+    // write to the server.
+    if (this.auth.canCurate() && !this.offline()) {
+      const info = (focus: TrackInfoFocus) => () => this.trackInfo.open(infoTarget, { focus });
       actions.push({
-        label: 'Remove from library',
-        labelKey: 'song.removeFromLibrary',
-        icon: 'delete',
-        group: 'remove',
-        destructive: true,
-        action: () => void this.removeFromLibrary(song.id, song.title),
+        label: 'Curate',
+        labelKey: 'song.curate',
+        icon: 'edit',
+        group: 'role',
+        action: () => {},
+        children: async () => [
+          {
+            label: 'Edit tags',
+            labelKey: 'song.curateTags',
+            icon: 'tag',
+            action: info('tags'),
+          },
+          {
+            label: 'Fix artist credit',
+            labelKey: 'song.curateArtist',
+            icon: 'user',
+            action: info('artist'),
+          },
+          ...((await this.canIdentify())
+            ? [
+                {
+                  label: 'Identify',
+                  labelKey: 'song.curateIdentify',
+                  icon: 'search' as const,
+                  action: info('identify'),
+                },
+              ]
+            : []),
+          {
+            label: 'Set genre',
+            labelKey: 'song.curateGenre',
+            icon: 'music',
+            action: info('genre'),
+          },
+          {
+            label: 'Remove from library',
+            labelKey: 'song.removeFromLibrary',
+            icon: 'delete',
+            group: 'remove',
+            destructive: true,
+            action: () => void this.removeFromLibrary(song.id, song.title),
+          },
+        ],
       });
     }
     if (ctx.onRemoveFromPlaylist) {
@@ -243,6 +281,15 @@ export class SongMenuService {
     if (ctx.extraActions?.length) actions.push(...ctx.extraActions);
 
     return actions;
+  }
+
+  private identify?: Promise<boolean>;
+  /** Whether the server can fingerprint a song; asked once, when a Curate menu first opens. */
+  private canIdentify(): Promise<boolean> {
+    return (this.identify ??= firstValueFrom(this.api.getIdentifyAvailable()).then(
+      (r) => r.available,
+      () => false,
+    ));
   }
 
   /** Confirm → delete → mark deleted. Listings filter through

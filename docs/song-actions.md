@@ -87,8 +87,8 @@ next (`startsGroup` in `lib/menu-groups.ts`). The groups, in order (`MENU_GROUPS
 | `keep` | Add to playlist, Save offline |
 | `info` | Song info |
 | `feedback` | Don't recommend this, Report this track |
-| `role` | reserved for the Get more and Curate submenus (#2013, #2017) |
-| `remove` | Remove from library, Remove from playlist |
+| `role` | Get more ▸, Curate ▸ |
+| `remove` | Remove from playlist; inside Curate ▸, Remove from library |
 
 A page's `extraActions` that carry no group come last, behind a separator of their own.
 
@@ -156,6 +156,27 @@ The label names the primary credited artist through `labelParams`, the values `M
 passes to the `t` pipe for a `labelKey` with placeholders. Full album, similar artists and a
 better copy are separate issues (#2014, #2015, #2016).
 
+## Curate ▸ (#2017)
+
+Shown when `AuthService.canCurate()` is true (refiner and admin), on **every** page, in the `role`
+group. Hidden offline, because every entry writes to the server.
+
+| Entry | Does |
+| --- | --- |
+| **Edit tags** | Song info with the tag editor open, prefilled |
+| **Fix artist credit** | Song info with the one act / split / merge dialog open |
+| **Identify** | Song info, and the fingerprint lookup already running |
+| **Set genre** | Song info with the add-genre field open |
+| **Remove from library** | confirm, delete, mark deleted |
+
+- The four editors are `TrackInfoService.open(target, { focus })` with a `TrackInfoFocus`. The sheet
+  reads the focus once when it opens, scrolls the section into view, and `close()` forgets it.
+- **Identify** is listed only when the server can fingerprint (`GET /api/library/identify/available`),
+  asked once per session when a Curate menu first opens. It is why the submenu's `children` is async.
+- **Remove from library** used to be a top-level item on the five pages that passed `removable`.
+  That option is gone: removal is global (listings filter through `deletedSongIds()`), so no page
+  had to opt in.
+
 ## Entity menus: albums, artists, genres, playlists (#1298)
 
 The same rule, one level up. `EntityMenuService.build(ref, ctx)` is the single source of a
@@ -170,7 +191,7 @@ as before, so the two sources never overlap. See [web-ui.md](web-ui.md) "Tile in
 
 - `hideGoToArtist` / `hideGoToAlbum` — suppress the redundant link on the
   artist / album page.
-- `removable` — admin-only **Remove from library**: `ConfirmService.ask` →
+- **Remove from library** takes no option: it is in Curate ▸ on every page. `ConfirmService.ask` →
   `api.deleteSongs` → `transferService.addDeletedIds`. **No per-page prune** —
   every listing filters rendered rows through `transferService.deletedSongIds()`.
 - `onRemoveFromPlaylist` — **Remove from playlist** (playlist page).

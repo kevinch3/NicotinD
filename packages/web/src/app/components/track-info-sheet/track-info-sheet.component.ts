@@ -7,6 +7,9 @@ import {
   computed,
   inject,
   OnInit,
+  ElementRef,
+  Injector,
+  afterNextRender,
 } from '@angular/core';
 import { themeHue } from '../../lib/theme-hue';
 import { CommonModule } from '@angular/common';
@@ -49,6 +52,7 @@ import { TrackStatsBarsComponent } from '../track-stats-bars/track-stats-bars.co
 import { ArtistIdentityModalComponent } from '../artist-identity-modal/artist-identity-modal.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
+import { TrackInfoService } from '../../services/track-info.service';
 
 const ACTION_LABELS: Record<string, string> = {
   duplicate_removed: 'Duplicate removed',
@@ -247,6 +251,9 @@ export class TrackInfoSheetComponent implements OnInit {
   // Admin fix for a wrong artist-credit decision, acting on the song's RAW tag
   // artist string (covers compounds that no longer have their own artist page).
   readonly identityOpen = signal(false);
+  private readonly trackInfo = inject(TrackInfoService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
 
   /**
    * After the identity fix's synchronous rescan, close the sheet and navigate to
@@ -341,10 +348,19 @@ export class TrackInfoSheetComponent implements OnInit {
     // Callers that pass only a songId (the player) have no Song to read the
     // stored bpm/genre from — fetch it so analysis values render instead of
     // "Unknown".
+    const focus = this.trackInfo.focus();
+    if (focus && this.canCurate()) {
+      if (focus === 'artist') this.identityOpen.set(true);
+      if (focus === 'genre') this.addingGenre.set(true);
+      if (focus === 'genre') this.reveal('new-genre-input');
+      // Tags are edited from the song's current values, so they wait for it.
+      if (focus === 'tags' && provided) this.focusTags();
+    }
     if (!provided) {
       this.api.getSong(this.songId()).subscribe({
         next: (s) => {
           this.loadedSong.set(s);
+          if (focus === 'tags' && this.canCurate()) this.focusTags();
           if (s.bpm) {
             this.bpm.set(s.bpm);
             this.bpmSource.set('tag');
@@ -355,7 +371,13 @@ export class TrackInfoSheetComponent implements OnInit {
     }
     if (this.canCurate()) {
       this.api.getIdentifyAvailable().subscribe({
-        next: (r) => this.identifyAvailable.set(r.available),
+        next: (r) => {
+          this.identifyAvailable.set(r.available);
+          if (focus === 'identify' && r.available) {
+            this.identifyNow();
+            this.reveal('identify-song-button');
+          }
+        },
         error: () => this.identifyAvailable.set(false),
       });
     }
@@ -684,6 +706,23 @@ export class TrackInfoSheetComponent implements OnInit {
       movement: s?.movement ?? '',
       year: s?.year ? String(s.year) : '',
     };
+  }
+
+  private focusTags(): void {
+    this.startEditTags();
+    this.reveal('tags-section');
+  }
+
+  /** Scroll a section into view and put the caret in its field, once it is drawn. */
+  private reveal(testid: string): void {
+    afterNextRender(
+      () => {
+        const el = this.host.nativeElement.querySelector<HTMLElement>(`[data-testid="${testid}"]`);
+        el?.scrollIntoView?.({ block: 'center' });
+        (el?.matches('input') ? el : el?.querySelector<HTMLElement>('input'))?.focus();
+      },
+      { injector: this.injector },
+    );
   }
 
   startEditTags(): void {
