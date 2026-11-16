@@ -1198,6 +1198,7 @@ Surfaces:
   item, queue panel, song picker, search, playlist detail, library songs) and asserts its
   own denominator. Covered by `track-row.component.spec.ts` ("density") and the
   `OfflineWithoutCover` story.
+- **A track row's menu opens three ways with the same items (#2011)**: the ⋯ button (anchored to it), a **right-click anywhere on the row** (at the pointer), and the keyboard's menu key or Shift+F10 on a focused control in the row. The last two come from `EntityActionsDirective` on the row, which the row has carried since #1345; `song-menu.spec.ts` asserts that a right-click lists exactly the ⋯ menu's items, opens where the pointer was and does not play the row. The pointer menu's rows carry `entity-action-<label>` test ids, the anchored one's `track-action-<label>`. A touch-hold on a row opens it too.
 - **Track rows** (`TrackRowComponent`, injected `PlayerService`): the current
   row accents its title and swaps the index number for a spinner (buffering),
   animated `.eq-bars` (playing), or static bars (paused) — logic in the pure
