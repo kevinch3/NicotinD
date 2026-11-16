@@ -785,7 +785,8 @@ describe('descriptor axes (formula v8, issue #642)', () => {
     expect(DEFAULT_WEIGHTS.spectralBalance).toBe(3);
     // v9 since #1121: the learned genre axis is the default, and a v8 snapshot
     // cannot grade it (no centroids in a snapshot). The number is the fence.
-    expect(RADIO_FORMULA_VERSION).toBe(9);
+    // v10 since #1486: the shared-listeners axis has a weight.
+    expect(RADIO_FORMULA_VERSION).toBe(10);
   });
 
   it('rewards timbre / groove / spectral-balance closeness at equal classic features', () => {
@@ -1056,11 +1057,13 @@ describe('station affinity axis (filter radio, formula v3)', () => {
 describe('the cultural axis (#1486)', () => {
   const related = (id: string) => (id === 'neighbour' ? 0.9 : null);
 
-  it('is off by default: a lookup changes nothing', () => {
-    expect(DEFAULT_WEIGHTS.cultural).toBe(0);
+  it('has the calibrated weight, and changes nothing for a seed artist with no relations', () => {
+    expect(DEFAULT_WEIGHTS.cultural).toBe(4);
     const c = makeCandidate({ artistId: 'neighbour' });
-    expect(scoreSimilarity(makeSeed(), c, DEFAULT_WEIGHTS, { culturalAffinity: related })).toBe(
-      scoreSimilarity(makeSeed(), c, DEFAULT_WEIGHTS),
+    const off = { ...DEFAULT_WEIGHTS, cultural: 0 };
+    // No lookup is what a seed artist with no stored relations gets.
+    expect(scoreSimilarity(makeSeed(), c, DEFAULT_WEIGHTS)).toBe(
+      scoreSimilarity(makeSeed(), c, off),
     );
   });
 

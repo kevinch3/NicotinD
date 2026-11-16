@@ -170,8 +170,13 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   timbre: 6,
   groove: 5,
   spectralBalance: 3,
-  // Shared listeners (#1486): off until measured. See docs/artist-relations.md.
-  cultural: 0,
+  // Shared listeners (#1486). 4 from a sweep of 0/4/8/12/18 on the production
+  // library (120 radios each, ten seed artists): the share of the queue from
+  // listener-related artists went 49% -> 61% while genre match (86.5 -> 86.1%)
+  // and artists per queue (9.1 -> 9.0) held; from 12 up both fell and the big
+  // catalogues became 98-100% related. Does nothing for an artist with no
+  // stored relations. See docs/artist-relations.md.
+  cultural: 4,
   // Applied post-normalization as a delta on the 0..1 fit score.
   artistPenalty: 0.15,
   // Slightly above artistPenalty: hearing the *same track* again soon is more
@@ -251,8 +256,10 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
  *      queue's mean embedding cosine 0.604 -> 0.706. The v8 votes cannot
  *      grade v9: the centroid store is not part of a poll snapshot, so a
  *      replay of a v8 scenario can only re-derive the axis lexically.
+ * v10 - a shared-listeners axis at weight 4 (issue #1486): the seed artist's
+ *      ListenBrainz relations, where stored. Votes on v9 cannot grade it.
  */
-export const RADIO_FORMULA_VERSION = 9;
+export const RADIO_FORMULA_VERSION = 10;
 
 /**
  * Parse a `--weights axis=n[,axis=n...]` override spec against a base weight
