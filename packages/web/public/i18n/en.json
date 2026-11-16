@@ -1300,6 +1300,7 @@
   "song.curateGenre": "Set genre",
   "song.getMore": "Get more",
   "song.moreByArtist": "More by {artist}",
+  "song.similarArtists": "Similar artists",
   "song.playlistFind": "Find a playlist",
   "song.playlistNewName": "New playlist name",
   "song.addToQueue": "Add to queue",

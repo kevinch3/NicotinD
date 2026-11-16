@@ -1,7 +1,9 @@
-import { of } from 'rxjs';
+import { of, throwError, type Observable } from 'rxjs';
 import { TestBed, getTestBed } from '@angular/core/testing';
 import { startsGroup } from '../lib/menu-groups';
 import { Router } from '@angular/router';
+import { SearchService } from './search.service';
+import type { RelatedArtistsResponse } from './api/api-types';
 import { SongMenuService, type SongContext } from './song-menu.service';
 import { PlayerService } from './player.service';
 import { PlaylistService } from './playlist.service';
@@ -32,6 +34,9 @@ const song = (over: Partial<BaseSong> = {}): BaseSong => ({
   ...over,
 });
 
+/** What the related-artists endpoint answers; a test swaps it before building a menu. */
+let related: () => Observable<RelatedArtistsResponse> = () => of({ artists: [] });
+
 function setup(role: Role = 'user', excluded = false, acquisitionOn = true, identify = true) {
   const router = { navigate: vi.fn() };
   const auth = {
@@ -59,7 +64,12 @@ function setup(role: Role = 'user', excluded = false, acquisitionOn = true, iden
         useValue: {
           deleteSongs: vi.fn(() => of({})),
           getIdentifyAvailable: vi.fn(() => of({ available: identify })),
+          getRelatedArtists: vi.fn(() => related()),
         },
+      },
+      {
+        provide: SearchService,
+        useValue: { query: () => 'old', resetResults: vi.fn(), setQuery: vi.fn() },
       },
       { provide: TransferService, useValue: { addDeletedIds: vi.fn() } },
       { provide: TrackInfoService, useValue: { open: vi.fn() } },
@@ -131,6 +141,66 @@ describe('SongMenuService.build', () => {
       expect(svc.build(s(), { hideGoToArtist: true }).some((a) => a.label === 'Get more')).toBe(
         false,
       );
+    });
+
+    // #2015: artists close to this one that the library does not have.
+    describe('Similar artists', () => {
+      const notOwned = (n: number) =>
+        Array.from({ length: n }, (_, i) => ({
+          mbid: `m${i}`,
+          name: `Artist ${i}`,
+          score: 1 - i / 10,
+        }));
+      const entries = async (svc: SongMenuService) =>
+        (await getMore(svc)!.children!()).map((e) => e.label);
+      afterEach(() => (related = () => of({ artists: [] })));
+
+      it('is left out when the library has every related artist', async () => {
+        expect(await entries(setup('user').svc)).toEqual(['More by this artist']);
+      });
+
+      it('is left out when no source knows the artist', async () => {
+        related = () => of({ artists: [], notOwned: notOwned(2), reason: 'no-signal' as const });
+        expect(await entries(setup('user').svc)).toEqual(['More by this artist']);
+      });
+
+      it('is left out when the lookup fails, and the rest of the menu still opens', async () => {
+        related = () => throwError(() => new Error('502'));
+        expect(await entries(setup('user').svc)).toEqual(['More by this artist']);
+      });
+
+      it('lists at most five, and picking one opens Get with the name prefilled', async () => {
+        related = () => of({ artists: [], notOwned: notOwned(8) });
+        const { svc, router } = setup('user');
+        const similar = (await getMore(svc)!.children!()).find(
+          (e) => e.label === 'Similar artists',
+        )!;
+        const names = await similar.children!();
+        expect(names.map((n) => n.label)).toEqual([
+          'Artist 0',
+          'Artist 1',
+          'Artist 2',
+          'Artist 3',
+          'Artist 4',
+        ]);
+        names[1]!.action();
+        const search = TestBed.inject(SearchService);
+        expect(search.resetResults).toHaveBeenCalled();
+        expect(search.setQuery).toHaveBeenCalledWith('Artist 1');
+        expect(router.navigate).toHaveBeenLastCalledWith(['/get'], { queryParams: { tab: 'add' } });
+      });
+
+      it('asks once per artist, for the primary credited one', async () => {
+        related = () => of({ artists: [], notOwned: notOwned(1) });
+        const { svc } = setup('user');
+        await getMore(svc)!.children!();
+        await getMore(svc)!.children!();
+        const api = TestBed.inject(LibraryApiService) as unknown as {
+          getRelatedArtists: ReturnType<typeof vi.fn>;
+        };
+        expect(api.getRelatedArtists).toHaveBeenCalledTimes(1);
+        expect(api.getRelatedArtists).toHaveBeenCalledWith('one');
+      });
     });
 
     it('opens a submenu whose first entry goes to the artist, named in its label', async () => {

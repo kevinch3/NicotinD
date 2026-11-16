@@ -165,10 +165,18 @@ artist's own page.
 | Entry | Does |
 | --- | --- |
 | **More by <artist>** | opens the artist page, whose discography already marks the albums the library lacks |
+| **Similar artists ▸** | up to five related artists the library lacks (`SIMILAR_ARTISTS_SHOWN`); picking one opens Get → Add with the name prefilled (#2015) |
 
 The label names the primary credited artist through `labelParams`, the values `MenuItemComponent`
-passes to the `t` pipe for a `labelKey` with placeholders. Full album, similar artists and a
-better copy are separate issues (#2014, #2015, #2016).
+passes to the `t` pipe for a `labelKey` with placeholders. Full album and a better copy are
+separate issues (#2014, #2016).
+
+Similar artists come from `GET /api/library/artists/:id/related`'s `notOwned`
+([artist-relations.md](artist-relations.md)), for the song's primary artist. They are fetched when
+Get more ▸ opens, not when Similar artists ▸ does, because the item is left out when there are
+none, when the response says `no-signal`, or when the lookup fails; the answer is kept per artist
+for the session. The hand-off is the artist page's own Find: the name goes into the Get page's
+search box.
 
 ## Curate ▸ (#2017)
 
