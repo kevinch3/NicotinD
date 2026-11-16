@@ -1,5 +1,6 @@
 import { Component, computed, input, output } from '@angular/core';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
+import type { LyricsTryResult } from '../../../services/lyrics.service';
 import { LyricsSyncToolComponent } from '../lyrics-sync-tool/lyrics-sync-tool.component';
 
 /**
@@ -8,8 +9,9 @@ import { LyricsSyncToolComponent } from '../lyrics-sync-tool/lyrics-sync-tool.co
  * Options button and closed every time its view opens. It holds the lyrics
  * settings, not vocal mute, which stays a header button (owner, 2026-11-09).
  *
- * Today: where the lyrics came from, and the sync tool. Fetch again (#1674) and
- * the timing editor (#1675) join it.
+ * Today: where the lyrics came from (with "n of m" once a walk wrote the row),
+ * "Try another source" (#1674) and the sync tool. The timing editor (#1675)
+ * joins it.
  */
 @Component({
   selector: 'app-lyrics-options-sheet',
@@ -26,7 +28,10 @@ export class LyricsOptionsSheetComponent {
   readonly timed = input(false);
   readonly edited = input(false);
   readonly offsetMs = input(0);
+  /** "Try another source" state; null hides the button (the default, and TV). */
+  readonly tryState = input<LyricsTryState | null>(null);
 
+  readonly tryAnother = output<void>();
   readonly closed = output<void>();
   readonly nudged = output<number>();
   readonly reset = output<void>();
@@ -38,4 +43,17 @@ export class LyricsOptionsSheetComponent {
     if (s === 'file-tag') return null;
     return s;
   });
+
+  /** A source id as the sheet names it. */
+  nameOf(source: string): string {
+    return source === 'lrclib' ? 'LRCLIB' : source;
+  }
+}
+
+/** What the sheet needs to offer and report "Try another source" (#1674). */
+export interface LyricsTryState {
+  /** Where the stored words sit among the candidates, when a walk wrote them. */
+  walk: { index: number; total: number } | null;
+  busy: boolean;
+  result: LyricsTryResult | null;
 }

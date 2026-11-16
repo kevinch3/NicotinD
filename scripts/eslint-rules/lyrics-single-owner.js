@@ -37,6 +37,7 @@ export const LYRICS_API = 'packages/web/src/app/services/api/library-api.service
 export const LYRICS_API_METHODS = [
   'getLyrics',
   'fetchLyrics',
+  'nextLyrics',
   'saveLyrics',
   'setLyricsOffset',
   'deleteLyrics',

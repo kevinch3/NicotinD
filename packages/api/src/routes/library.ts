@@ -8,7 +8,7 @@ import {
   trackReportReasonText,
   TRACK_REPORT_REASONS,
 } from '@nicotind/core';
-import type { Song, Album, Artist } from '@nicotind/core';
+import type { Song, Album, Artist, LyricsNextDto } from '@nicotind/core';
 import type { Lidarr } from '../lidarr/index.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { requireAdmin, requireCurator } from '../middleware/current-user.js';
@@ -35,6 +35,7 @@ import {
   deleteLyrics,
 } from '../services/lyrics-store.js';
 import { fetchSongLyrics } from '../services/lyrics-fetch.js';
+import { nextSongLyrics } from '../services/lyrics-next.js';
 import { clusterDuplicateSongs, markSameRelease } from '../services/duplicate-songs.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
 import {
@@ -2751,6 +2752,49 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         return c.json(null);
       default:
         return c.json(r.lyrics);
+    }
+  });
+
+  // "Try another source" (curator, #1674): apply the candidate after the stored
+  // one from the ranked, de-duplicated list every enabled source offers, wrapping
+  // at the end. Curator-only because it replaces the shared row for every
+  // listener. A user-edited row answers 409 `lyrics-customized` without
+  // `confirmReplaceEdit`. `only-one` and `no-match` leave the row unchanged.
+  app.post('/songs/:id/lyrics/next', async (c) => {
+    requireCurator(c);
+    const body = await c.req
+      .json<{ confirmReplaceEdit?: boolean }>()
+      .catch(() => ({}) as { confirmReplaceEdit?: boolean });
+    const r = await nextSongLyrics(
+      getDatabase(),
+      { plugins: pluginRegistry, musicDir },
+      c.req.param('id'),
+      { confirmReplaceEdit: body.confirmReplaceEdit },
+    );
+    switch (r.kind) {
+      case 'customized':
+        return c.json(
+          { error: 'These lyrics were edited; confirm to replace them', code: 'lyrics-customized' },
+          409,
+        );
+      case 'song-not-found':
+        return c.json({ error: 'Song not found' }, 404);
+      case 'no-source':
+        return c.json({ error: 'No lyrics source enabled' }, 503);
+      case 'source-error':
+        return c.json({ error: 'Lyrics source unavailable' }, 502);
+      case 'no-match':
+        return c.json({
+          outcome: 'no-match',
+          lyrics: r.lyrics,
+          applied: null,
+        } satisfies LyricsNextDto);
+      default:
+        return c.json({
+          outcome: r.kind,
+          lyrics: r.lyrics,
+          applied: r.applied,
+        } satisfies LyricsNextDto);
     }
   });
 

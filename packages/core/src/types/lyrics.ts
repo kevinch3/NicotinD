@@ -54,6 +54,11 @@ export interface LyricsDto {
    * worse than no correction at all.
    */
   offsetMs: number;
+  /**
+   * Position of the stored words among the source candidates, when "Try another
+   * source" wrote the row (#1674). Null otherwise, and once a user edits them.
+   */
+  walk?: { index: number; total: number } | null;
 }
 
 /**
@@ -87,6 +92,48 @@ export interface LyricsChoice {
   /** A forced re-fetch, as opposed to a first fetch. */
   forced: boolean;
   at: number;
+  /**
+   * Set when the row was written by "Try another source" (#1674); absent on
+   * rows from a plain fetch. `index` is 1-based over the de-duplicated list of
+   * candidates the walk could apply, `total` its length, and `duplicates` the
+   * copies of the same text folded into this one.
+   */
+  candidateKey?: string;
+  index?: number;
+  total?: number;
+  duplicates?: number;
+  via?: 'next';
+  /** Better-ranked candidates the walk had already passed, at most 5. */
+  passedOver?: LyricsPassedOver[];
+}
+
+export interface LyricsPassedOver {
+  source: string;
+  candidateKey: string;
+  timed: boolean;
+  durationDeltaSec: number | null;
+}
+
+/** What "Try another source" applied: the source line's "n of m" (#1674). */
+export interface LyricsApplied {
+  source: string;
+  sourceTrackId: string | null;
+  candidateKey: string;
+  /** 1-based position in the list of distinct lyrics the walk may apply. */
+  index: number;
+  total: number;
+  timed: boolean;
+}
+
+/**
+ * `POST /songs/:id/lyrics/next`. `applied` is the next candidate now stored;
+ * `only-one` and `no-match` leave the row unchanged (`lyrics` is the stored row,
+ * or null when there is none).
+ */
+export interface LyricsNextDto {
+  outcome: 'applied' | 'only-one' | 'no-match';
+  lyrics: LyricsDto | null;
+  applied: LyricsApplied | null;
 }
 
 /** A user a lyrics row's human correction is attributed to. */

@@ -69,6 +69,9 @@ import {
   type CoverPalette,
 } from '../../lib/cover-colors';
 import { LyricsService } from '../../services/lyrics.service';
+import { ConfirmService } from '../../services/confirm.service';
+import { TranslateService } from '../../services/translate.service';
+import type { LyricsTryState } from './lyrics-options-sheet/lyrics-options-sheet.component';
 import { KaraokeBrowseMode } from '../../lib/karaoke-browse';
 import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
@@ -151,6 +154,8 @@ export class NowPlayingComponent {
   // not stay here. These are the service's own signals under the names the
   // template, the child bindings and the specs have always used.
   private readonly lyricsSvc = inject(LyricsService);
+  private readonly confirm = inject(ConfirmService);
+  private readonly i18n = inject(TranslateService);
   readonly lyrics = this.lyricsSvc.lyrics;
   /** Precomputed waveform artifact for the current track (issue #643); null
    *  until fetched or when the server has none (404 → plain seek bar). */
@@ -172,6 +177,16 @@ export class NowPlayingComponent {
   /** The offset is shared library state, so it follows the same gate as every
    *  other lyrics write. Non-curators see no control rather than a dead one. */
   readonly canSyncLyrics = computed(() => this.auth.canCurate());
+  /** "Try another source" for the options sheet (#1674); curators only, like Sync. */
+  readonly lyricsTry = computed<LyricsTryState | null>(() =>
+    this.auth.canCurate()
+      ? {
+          walk: this.lyrics()?.walk ?? null,
+          busy: this.lyricsSvc.trying(),
+          result: this.lyricsSvc.tryResult(),
+        }
+      : null,
+  );
   /** Whether the current track has lyrics loaded (drives the tab-switcher dot).
    *  Gated on the service's `loadedForId` — the state is only reloaded while
    *  a lyrics surface is open, so after a track change with the panel closed
@@ -829,6 +844,17 @@ export class NowPlayingComponent {
    */
   fetchLyricsManually(): void {
     this.lyricsSvc.fetchManually(this.player.currentTrack()?.id);
+  }
+
+  tryAnotherLyricsSource(): void {
+    const id = this.player.currentTrack()?.id;
+    if (!id) return;
+    this.lyricsSvc.tryAnother(id, () =>
+      this.confirm.ask(this.i18n.t('trackInfo.lyricsRefetchReplacesEdit'), {
+        confirmLabel: this.i18n.t('trackInfo.lyricsRefetchReplacesEditConfirm'),
+        cancelLabel: this.i18n.t('trackInfo.lyricsRefetchKeepEdit'),
+      }),
+    );
   }
 
   nudgeLyricsOffset(stepMs: number): void {

@@ -114,6 +114,19 @@ export interface LyricsResult {
 export interface LyricsCapability {
   /** Returns lyrics for the query, or null when the source has none. */
   fetchLyrics(query: LyricsQuery): Promise<LyricsResult | null>;
+  /**
+   * Every record the source holds for the query, in the source's own order
+   * (#1674). Optional: the host wraps a source without it as a list of one.
+   * The host applies the duration gate, de-duplicates and ranks, so a source
+   * returns what it has rather than choosing.
+   */
+  fetchCandidates?(query: LyricsQuery): Promise<LyricsCandidate[]>;
+}
+
+/** One record a lyrics source can offer for a song (docs/lyrics-options.md §1). */
+export interface LyricsCandidate extends LyricsResult {
+  /** Stable within the source: its record id, else a hash of the text. */
+  candidateKey: string;
 }
 
 /**

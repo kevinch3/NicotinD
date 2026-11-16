@@ -1,6 +1,9 @@
 import { Component, ElementRef, input, output, signal, viewChild } from '@angular/core';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
-import { LyricsOptionsSheetComponent } from '../lyrics-options-sheet/lyrics-options-sheet.component';
+import {
+  LyricsOptionsSheetComponent,
+  type LyricsTryState,
+} from '../lyrics-options-sheet/lyrics-options-sheet.component';
 
 @Component({
   selector: 'app-now-playing-lyrics-panel',
@@ -26,9 +29,12 @@ export class NowPlayingLyricsPanelComponent {
   /** The stored row's source and whether someone edited it, for the options sheet. */
   readonly lyricsSource = input<string | null>(null);
   readonly lyricsEdited = input(false);
+  /** "Try another source" state for the options sheet; null hides it (#1674). */
+  readonly lyricsTry = input<LyricsTryState | null>(null);
   /** The options sheet; closed whenever the panel is shown again (#1656). */
   readonly optionsOpen = signal(false);
 
+  readonly tryAnotherSource = output<void>();
   readonly fullscreenRequested = output<void>();
   readonly fetchRequested = output<void>();
   /** Emits the delta in ms, not the new absolute value — the panel doesn't own the state. */

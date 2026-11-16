@@ -626,3 +626,83 @@ describe('lyrics provenance and export (#1676)', () => {
     expect((await makeApp('user').request('/songs/song-1/lyrics/export')).status).toBe(403);
   });
 });
+
+describe('POST /songs/:id/lyrics/next (#1674)', () => {
+  const post = (app: Hono<AuthEnv>, body: object = {}) =>
+    app.request('/songs/song-1/lyrics/next', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('is curator-only: it replaces the shared row for every listener', async () => {
+    seedSong(testDb, 'song-1');
+    const { registry, calls } = makeRegistry({ result: LYRICS });
+    const res = await post(makeApp('user', registry));
+    expect(res.status).toBe(403);
+    expect(calls()).toBe(0);
+    expect(getLyrics(testDb, 'song-1')).toBeNull();
+  });
+
+  it('applies a candidate and reports what was applied', async () => {
+    seedSong(testDb, 'song-1');
+    const { registry } = makeRegistry({ result: LYRICS });
+    const res = await post(makeApp('admin', registry));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.outcome).toBe('applied');
+    expect(body.applied).toMatchObject({ source: 'lrclib', index: 1, total: 1, timed: true });
+    expect(body.lyrics.synced).toBe(LYRICS.synced);
+    expect(getLyrics(testDb, 'song-1')?.walk).toEqual({ index: 1, total: 1 });
+  });
+
+  it('answers only-one, unchanged, when the stored words are the only candidate', async () => {
+    seedSong(testDb, 'song-1');
+    const { registry } = makeRegistry({ result: LYRICS });
+    const app = makeApp('admin', registry);
+    await post(app);
+    const before = getLyrics(testDb, 'song-1')!.updatedAt;
+    const body = await (await post(app)).json();
+    expect(body.outcome).toBe('only-one');
+    expect(getLyrics(testDb, 'song-1')!.updatedAt).toBe(before);
+  });
+
+  it('answers no-match with a null row when the source has nothing', async () => {
+    seedSong(testDb, 'song-1');
+    const { registry } = makeRegistry({ result: null });
+    const res = await post(makeApp('admin', registry));
+    expect(await res.json()).toEqual({ outcome: 'no-match', lyrics: null, applied: null });
+  });
+
+  it('answers 409 on a customized row until it is confirmed', async () => {
+    seedSong(testDb, 'song-1');
+    const { registry } = makeRegistry({ result: LYRICS });
+    const app = makeApp('admin', registry);
+    await app.request('/songs/song-1/lyrics', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ plain: 'my words' }),
+    });
+
+    const refused = await post(app);
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).code).toBe('lyrics-customized');
+    expect(getLyrics(testDb, 'song-1')?.plain).toBe('my words');
+
+    const confirmed = await post(app, { confirmReplaceEdit: true });
+    expect((await confirmed.json()).outcome).toBe('applied');
+    expect(getLyrics(testDb, 'song-1')?.customized).toBe(false);
+  });
+
+  it('maps a missing song, no source and a source error to 404, 503 and 502', async () => {
+    const { registry } = makeRegistry({ result: LYRICS });
+    expect((await post(makeApp('admin', registry))).status).toBe(404);
+    seedSong(testDb, 'song-1');
+    expect((await post(makeApp('admin', makeRegistry({ enabled: false }).registry))).status).toBe(
+      503,
+    );
+    expect((await post(makeApp('admin', makeRegistry({ throws: true }).registry))).status).toBe(
+      502,
+    );
+  });
+});

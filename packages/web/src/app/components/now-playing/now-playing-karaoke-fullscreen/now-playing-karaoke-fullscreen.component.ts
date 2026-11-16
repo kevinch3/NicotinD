@@ -9,7 +9,10 @@ import { DEFAULT_PALETTE, type CoverPalette } from '../../../lib/cover-colors';
 import { formatTime } from '../../../lib/format-time';
 import type { WaveformData } from '../../../../types/core';
 import { OverflowRevealDirective } from '../../../directives/overflow-reveal.directive';
-import { LyricsOptionsSheetComponent } from '../lyrics-options-sheet/lyrics-options-sheet.component';
+import {
+  LyricsOptionsSheetComponent,
+  type LyricsTryState,
+} from '../lyrics-options-sheet/lyrics-options-sheet.component';
 
 @Component({
   selector: 'app-now-playing-karaoke-fullscreen',
@@ -66,9 +69,12 @@ export class NowPlayingKaraokeFullscreenComponent {
   /** The stored row's source and whether someone edited it, for the options sheet. */
   readonly lyricsSource = input<string | null>(null);
   readonly lyricsEdited = input(false);
+  /** "Try another source" state for the options sheet; null hides it (#1674). */
+  readonly lyricsTry = input<LyricsTryState | null>(null);
   /** The options sheet; a fresh overlay starts with it closed (#1656). */
   readonly optionsOpen = signal(false);
 
+  readonly tryAnotherSource = output<void>();
   readonly exit = output<void>();
   /** Emits the delta in ms — the overlay doesn't own the stored offset. */
   readonly offsetNudged = output<number>();

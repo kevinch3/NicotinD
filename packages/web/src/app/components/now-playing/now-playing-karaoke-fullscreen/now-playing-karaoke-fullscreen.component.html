@@ -272,6 +272,8 @@
       [source]="lyricsSource()"
       [timed]="lines().length > 0"
       [edited]="lyricsEdited()"
+      [tryState]="lyricsTry()"
+      (tryAnother)="tryAnotherSource.emit()"
       [offsetMs]="offsetMs()"
       (closed)="optionsOpen.set(false)"
       (nudged)="offsetNudged.emit($event)"
