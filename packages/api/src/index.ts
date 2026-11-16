@@ -812,7 +812,7 @@ export function createApp({
     }),
   );
   // MCP agent (issue #232): agent-token-authenticated (not JWT), refiner-capped.
-  app.route('/api/agent-tokens', agentTokensRoutes());
+  app.route('/api/agent-tokens', agentTokensRoutes({ musicDir: expandedMusicDir }));
   app.route('/api/subsonic-keys', subsonicKeysRoutes(getDatabase));
   // OpenSubsonic (docs/opensubsonic.md): outside /api because every Subsonic
   // client hard-codes /rest. It authenticates each call with an API key itself,

@@ -82,6 +82,12 @@ export const SONG_CARRY_TABLES: readonly SongCarryTable[] = [
     why: 'an open review flag; left behind it reports targetMissing and its question can no longer be answered (#1475)',
   },
   {
+    table: 'agent_run_writes',
+    column: 'target_id',
+    scope: `target_kind = 'song'`,
+    why: 'the before/after of an unattended write; left behind, the run can no longer be reverted for that song (#1516)',
+  },
+  {
     table: 'curation_flag_reports',
     column: 'target_id',
     scope: `target_kind = 'song'`,

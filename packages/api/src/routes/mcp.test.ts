@@ -7,6 +7,7 @@ import { ADDON_PROTOCOL_VERSION, type AddonManifest } from '@nicotind/core';
 import type { Lidarr } from '../lidarr/index.js';
 import { applySchema } from '../db.js';
 import { mintAgentToken } from '../services/agent-tokens.js';
+import { RUN_IDLE_MS, getAgentRun, listAgentRuns, revertAgentRun } from '../services/agent-runs.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { LibraryCurator } from '../services/library-curator.js';
 import { artistIdFor } from '../services/library-scanner.js';
@@ -2650,5 +2651,193 @@ describe('merge_artist re-buckets the merged names', () => {
       ['Ke Personaje', 'Ke Personajes', 'Ke Personajes Oficial'].sort(),
     );
     expect(runSync).not.toHaveBeenCalled();
+  });
+});
+
+describe('unattended runs: log, lock and revert (#1516 P2)', () => {
+  beforeEach(() => {
+    testDb.run('DELETE FROM agent_run_writes');
+    testDb.run('DELETE FROM agent_runs');
+    // The file shares one database, and these tests reuse song ids.
+    testDb.run(`DELETE FROM library_song_genres WHERE song_id IN ('r1', 'r2')`);
+    testDb.run(`DELETE FROM library_songs WHERE id IN ('r1', 'r2', 'f1', 'f2')`);
+    testDb.run('DELETE FROM curation_flags');
+    testDb.run('DELETE FROM library_genre_overrides');
+    vocabulary();
+  });
+
+  // A genre write recounts `library_genres` from the rows that exist, and this
+  // fixture has only the songs under test, so the vocabulary is put back before
+  // each write (an unattended token may only write a genre 3+ songs carry).
+  const vocabulary = () => {
+    testDb.run('DELETE FROM library_genres');
+    testDb.run(
+      `INSERT INTO library_genres (name, song_count, album_count, synced_at)
+       VALUES ('Tech House', 12, 3, 1), ('Afro House', 9, 2, 1)`,
+    );
+  };
+
+  const call = async (token: string, name: string, args: Record<string, unknown>) =>
+    (
+      (await (await rpc(token, 'tools/call', { name, arguments: args })).json()) as {
+        result: { content: Array<{ text: string }>; isError?: boolean };
+      }
+    ).result;
+  const token = (scope: 'refiner:auto' | 'refiner:curate', name = 'cron') =>
+    mintAgentToken(testDb, { userId: 'u1', name, scope }).token;
+  const catchAllSong = (id: string) => {
+    seedSong(id, `Song ${id}`, undefined, undefined, { genre: 'Electronic' });
+    testDb.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, 'Electronic', 0)`,
+      [id],
+    );
+  };
+  const genresOf = (id: string) =>
+    testDb
+      .query<{ genre: string }, [string]>(
+        'SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position',
+      )
+      .all(id)
+      .map((g) => g.genre);
+  const setGenre = (t: string, songId: string, genre: string) => {
+    vocabulary();
+    return call(t, 'set_song_genre', { songId, genre, mode: 'replace' });
+  };
+
+  it('opens a run on the first write and logs what each write replaced and left', async () => {
+    catchAllSong('r1');
+    catchAllSong('r2');
+    const t = token('refiner:auto');
+    await setGenre(t, 'r1', 'Tech House');
+    await setGenre(t, 'r2', 'Afro House');
+
+    const runs = listAgentRuns(testDb);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ writes: 2, reverted: 0, endedAt: null });
+    const log = getAgentRun(testDb, runs[0]!.id)!.log;
+    expect(log.map((w) => [w.tool, w.targetId])).toEqual([
+      ['set_song_genre', 'r1'],
+      ['set_song_genre', 'r2'],
+    ]);
+    expect(log[0]!.before).toMatchObject({ genres: ['Electronic'], override: null });
+    expect(log[0]!.after).toEqual({ genres: ['Tech House'] });
+  });
+
+  it('logs nothing for a refused write or a read, and nothing for an attended token', async () => {
+    catchAllSong('r1');
+    const auto = token('refiner:auto');
+    const refused = await setGenre(auto, 'r1', 'Not A Vocabulary Genre');
+    expect(refused.isError).toBe(true);
+    await call(auto, 'search_library', { query: 'Song' });
+    expect(testDb.query('SELECT COUNT(*) AS n FROM agent_run_writes').get()).toEqual({ n: 0 });
+
+    await setGenre(token('refiner:curate', 'human'), 'r1', 'Tech House');
+    expect(listAgentRuns(testDb).every((r) => r.writes === 0)).toBe(true);
+  });
+
+  it('refuses a second unattended token while a run is open, and lets it in once the run is idle', async () => {
+    catchAllSong('r1');
+    catchAllSong('r2');
+    await setGenre(token('refiner:auto', 'first'), 'r1', 'Tech House');
+    const second = token('refiner:auto', 'second');
+
+    const blocked = await setGenre(second, 'r2', 'Afro House');
+    expect(blocked.isError).toBe(true);
+    expect(blocked.content[0]!.text).toContain('Another unattended run is in progress');
+    expect(genresOf('r2')).toEqual(['Electronic']);
+
+    testDb.run('UPDATE agent_runs SET last_at = ?', [Date.now() - RUN_IDLE_MS - 1]);
+    const allowed = await setGenre(second, 'r2', 'Afro House');
+    expect(allowed.isError).toBeUndefined();
+    const runs = listAgentRuns(testDb);
+    expect(runs).toHaveLength(2);
+    expect(runs.filter((r) => r.endedAt === null)).toHaveLength(1);
+  });
+
+  it('reverts a run: the genre and the absence of an override come back', async () => {
+    catchAllSong('r1');
+    await setGenre(token('refiner:auto'), 'r1', 'Tech House');
+    expect(genresOf('r1')).toEqual(['Tech House']);
+    const runId = listAgentRuns(testDb)[0]!.id;
+
+    const result = await revertAgentRun(testDb, {}, runId, 'u1');
+    expect(result).toEqual({ reverted: 1, skipped: [] });
+    expect(genresOf('r1')).toEqual(['Electronic']);
+    expect(
+      testDb
+        .query(`SELECT 1 FROM library_genre_overrides WHERE scope = 'song' AND key = 'r1'`)
+        .get(),
+    ).toBeNull();
+    expect(getAgentRun(testDb, runId)).toMatchObject({ reverted: 1, revertedBy: 'u1' });
+    expect(getAgentRun(testDb, runId)!.endedAt).not.toBeNull();
+  });
+
+  it('never overwrites a later correction: a song a person changed since is skipped, with the reason', async () => {
+    catchAllSong('r1');
+    catchAllSong('r2');
+    const auto = token('refiner:auto');
+    await setGenre(auto, 'r1', 'Tech House');
+    await setGenre(auto, 'r2', 'Tech House');
+    // A curator corrects r2 after the run.
+    await setGenre(token('refiner:curate', 'human'), 'r2', 'Afro House');
+    const runId = listAgentRuns(testDb).find((r) => r.writes === 2)!.id;
+
+    const result = (await revertAgentRun(testDb, {}, runId, 'u1'))!;
+    expect(result.reverted).toBe(1);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0]).toMatchObject({ targetId: 'r2' });
+    expect(result.skipped[0]!.reason).toContain('changed after the run');
+    expect(genresOf('r1')).toEqual(['Electronic']);
+    expect(genresOf('r2')).toEqual(['Afro House']);
+    const log = getAgentRun(testDb, runId)!.log;
+    expect(log.find((w) => w.targetId === 'r2')!.revertNote).toContain('Afro House');
+  });
+
+  it('a second revert undoes nothing more, and skips a deleted song', async () => {
+    catchAllSong('r1');
+    catchAllSong('r2');
+    const auto = token('refiner:auto');
+    await setGenre(auto, 'r1', 'Tech House');
+    await setGenre(auto, 'r2', 'Tech House');
+    testDb.run(`DELETE FROM library_songs WHERE id = 'r2'`);
+    const runId = listAgentRuns(testDb)[0]!.id;
+
+    const first = (await revertAgentRun(testDb, {}, runId, 'u1'))!;
+    expect(first.reverted).toBe(1);
+    expect(first.skipped[0]!.reason).toContain('no longer exists');
+    const second = (await revertAgentRun(testDb, {}, runId, 'u1'))!;
+    expect(second.reverted).toBe(0);
+    expect(genresOf('r1')).toEqual(['Electronic']);
+  });
+
+  it('reverting closes the cards the run filed, and leaves one a person already resolved', async () => {
+    seedSong('f1', 'Flagged');
+    seedSong('f2', 'Flagged too');
+    const auto = token('refiner:auto');
+    const flag = (id: string) =>
+      call(auto, 'flag_for_review', { targetKind: 'song', targetId: id, reason: 'unsure' });
+    const a = JSON.parse((await flag('f1')).content[0]!.text) as { id: number };
+    const b = JSON.parse((await flag('f2')).content[0]!.text) as { id: number };
+    testDb.run('UPDATE curation_flags SET resolved_at = 5, resolved_by = ? WHERE id = ?', [
+      'human',
+      b.id,
+    ]);
+    const runId = listAgentRuns(testDb)[0]!.id;
+
+    const result = (await revertAgentRun(testDb, {}, runId, 'u1'))!;
+    expect(result.reverted).toBe(1);
+    expect(result.skipped).toHaveLength(1);
+    const rows = testDb
+      .query<{ id: number; resolved_by: string }, []>(
+        'SELECT id, resolved_by FROM curation_flags ORDER BY id',
+      )
+      .all();
+    expect(rows.find((r) => r.id === a.id)!.resolved_by).toBe('run-revert:u1');
+    expect(rows.find((r) => r.id === b.id)!.resolved_by).toBe('human');
+  });
+
+  it('answers null for a run that does not exist', async () => {
+    expect(await revertAgentRun(testDb, {}, 'nope', 'u1')).toBeNull();
+    expect(getAgentRun(testDb, 'nope')).toBeNull();
   });
 });

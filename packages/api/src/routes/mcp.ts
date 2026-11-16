@@ -8,6 +8,7 @@ import {
 } from '../services/agent-tokens.js';
 import { parseLrc, applyLyricsOffset, LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
 import { recordAudit } from '../services/audit-log.js';
+import { claimRun, recordRunWrite, snapshotSongGenre } from '../services/agent-runs.js';
 import { getLyrics, getLyricsProvenance, setLyricsOffset } from '../services/lyrics-store.js';
 import { fetchSongLyrics } from '../services/lyrics-fetch.js';
 import { deleteAlbum, deleteOne } from '../services/library-deletion.js';
@@ -1899,6 +1900,40 @@ export function unknownArgs(
   );
 }
 
+/** Log a landed unattended write to its run; a refused or failed one leaves no row. */
+function recordAutoWrite(
+  db: Database,
+  run: { id: string; before: unknown },
+  tool: string,
+  args: Record<string, unknown>,
+  resultText: string,
+): void {
+  let result: { ok?: boolean; genres?: string[]; id?: number };
+  try {
+    result = JSON.parse(resultText) as typeof result;
+  } catch {
+    return;
+  }
+  if (result.ok !== true) return;
+  if (tool === 'set_song_genre') {
+    recordRunWrite(db, run.id, {
+      tool,
+      targetKind: 'song',
+      targetId: str(args.songId),
+      before: run.before,
+      after: { genres: result.genres ?? [] },
+    });
+  } else if (tool === 'flag_for_review') {
+    recordRunWrite(db, run.id, {
+      tool,
+      targetKind: str(args.targetKind),
+      targetId: str(args.targetId),
+      before: null,
+      after: { flagId: result.id },
+    });
+  }
+}
+
 /**
  * Run one tool call under an agent identity: resolve the tool, apply
  * `checkToolAccess`, `missingRequiredArgs` and `htmlEntityArgs` — plus, for a
@@ -1932,8 +1967,20 @@ export async function dispatchTool(
         : null);
     if (policy) return err(policy);
   }
+  // An unattended token's writes are grouped into a run, with what each one
+  // replaced, so the run can be reverted (#1516 P2, services/agent-runs.ts).
+  let run: { id: string; before: unknown } | null = null;
+  if (ctx.identity.scope === 'refiner:auto' && tool.access !== 'read') {
+    const claim = claimRun(ctx.db, ctx.identity);
+    if ('refusal' in claim) return err(claim.refusal);
+    run = {
+      id: claim.runId,
+      before: tool.name === 'set_song_genre' ? snapshotSongGenre(ctx.db, str(args.songId)) : null,
+    };
+  }
   try {
     const text = await tool.handler(ctx, args);
+    if (run) recordAutoWrite(ctx.db, run, tool.name, args, text);
     return { content: [{ type: 'text', text }] };
   } catch (e) {
     return err(`Tool error: ${e instanceof Error ? e.message : String(e)}`);
