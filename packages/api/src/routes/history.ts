@@ -2,7 +2,13 @@ import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { recentPlays, recordPlayEvents, type PlayEventInput } from '../services/play-history.js';
-import { STATS_PERIODS, listeningStats, type StatsPeriod } from '../services/listening-stats.js';
+import {
+  STATS_PERIODS,
+  TOP_LIMIT,
+  TOP_LIMITS,
+  listeningStats,
+  type StatsPeriod,
+} from '../services/listening-stats.js';
 import { historyCollectionState } from '../services/privacy.js';
 
 /**
@@ -49,7 +55,10 @@ export function historyRoutes(historyEnabled: () => boolean = () => true) {
     const period = (STATS_PERIODS as readonly string[]).includes(requested ?? '')
       ? (requested as StatsPeriod)
       : '30d';
-    return c.json(listeningStats(getDatabase(), user.sub, period, Date.now()));
+    // `limit` is one of the sizes "Show more" offers; anything else is the default.
+    const asked = Number(c.req.query('limit'));
+    const limit = (TOP_LIMITS as readonly number[]).includes(asked) ? asked : TOP_LIMIT;
+    return c.json(listeningStats(getDatabase(), user.sub, period, Date.now(), limit));
   });
 
   // GET /recent — the caller's recently listened tracks, newest first.

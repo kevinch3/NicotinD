@@ -21,8 +21,8 @@ export class HistoryApiService {
   }
 
   /** Aggregates over the caller's log for one period. */
-  getStats(period: StatsPeriod): Observable<ListeningStats> {
-    return this.http.get<ListeningStats>('/api/history/stats', { params: { period } });
+  getStats(period: StatsPeriod, limit = 10): Observable<ListeningStats> {
+    return this.http.get<ListeningStats>('/api/history/stats', { params: { period, limit } });
   }
 
   /** What this instance stores about the caller, and what they can change. */

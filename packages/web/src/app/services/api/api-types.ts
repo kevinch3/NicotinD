@@ -1204,15 +1204,52 @@ export interface StatsGenreShare {
   untagged: { plays: number; share: number };
 }
 
+/**
+ * The identity and artwork fields (#1669) are optional: a native app can talk
+ * to an older server, which sends names only, and such a row is plain text.
+ */
+export interface StatsTopSong {
+  songId: string;
+  title: string | null;
+  artist: string | null;
+  plays: number;
+  /** Still in the library, so it can be played. */
+  live?: boolean;
+  albumId?: string | null;
+  artistId?: string | null;
+  coverArt?: string | null;
+  coverRev?: number;
+}
+
+export interface StatsTopArtist {
+  artist: string;
+  plays: number;
+  artistId?: string | null;
+  coverArt?: string | null;
+  coverRev?: number;
+  /** Whether `coverArt` is the artist's portrait or an album cover standing in. */
+  coverKind?: 'artist' | 'album' | null;
+}
+
+export interface StatsTopAlbum {
+  album: string;
+  artist: string | null;
+  plays: number;
+  albumId?: string | null;
+  artistId?: string | null;
+  coverArt?: string | null;
+  coverRev?: number;
+}
+
 /** Aggregates over a user's listening log — see docs/listening-history.md. */
 export interface ListeningStats {
   period: StatsPeriod;
   from: number;
   to: number;
   totals: { plays: number; distinctSongs: number; distinctArtists: number; msPlayed: number };
-  topSongs: Array<{ songId: string; title: string | null; artist: string | null; plays: number }>;
-  topArtists: Array<{ artist: string; plays: number }>;
-  topAlbums: Array<{ album: string; artist: string | null; plays: number }>;
+  topSongs: StatsTopSong[];
+  topArtists: StatsTopArtist[];
+  topAlbums: StatsTopAlbum[];
   /** Overlapping per-genre counts (a 3-genre track counts 3 times) — never a share. */
   topGenres: Array<{ genre: string; plays: number }>;
   /**

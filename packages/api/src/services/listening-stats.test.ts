@@ -305,3 +305,141 @@ describe('listeningStats', () => {
     expect(stats.topArtists.length).toBeLessThanOrEqual(10);
   });
 });
+
+// #1669: the top lists carry identities and artwork, so a row can be a link.
+describe('listeningStats identities and artwork (#1669)', () => {
+  function seedArtist(id: string, name: string, coverArt: string | null = null): void {
+    db.run(
+      `INSERT INTO library_artists (id, name, album_count, cover_art, cover_rev, hidden, split_compound, synced_at)
+       VALUES (?, ?, 1, ?, 3, 0, 0, 1)`,
+      [id, name, coverArt],
+    );
+  }
+  const credit = (songId: string, artistId: string, role = 'primary') =>
+    db.run(
+      `INSERT INTO library_song_artists (song_id, artist_id, role, position) VALUES (?, ?, ?, 0)`,
+      [songId, artistId, role],
+    );
+  const plays = (...ids: string[]) =>
+    recordPlayEvents(
+      db,
+      'u1',
+      ids.map((id, i) => play(id, NOW - DAY - i * 1000)),
+    );
+  const stats = (limit?: number) => listeningStats(db, 'u1', '30d', NOW, limit);
+
+  it('a live song, album and artist come back with their ids and cover', () => {
+    seedArtist('art-Artist', 'Artist', 'portrait-1');
+    seedAlbum('al', 'Album', 'Artist');
+    db.run(`UPDATE library_albums SET cover_art = 'cover-al', cover_rev = 7 WHERE id = 'al'`);
+    seedSong('a', { artist: 'Artist', album: 'al' });
+    plays('a');
+
+    const s = stats();
+    expect(s.topSongs[0]).toMatchObject({
+      songId: 'a',
+      live: true,
+      albumId: 'al',
+      artistId: 'art-Artist',
+      coverArt: 'cover-al',
+      coverRev: 7,
+    });
+    expect(s.topAlbums[0]).toMatchObject({
+      albumId: 'al',
+      artistId: 'art-Artist',
+      coverArt: 'cover-al',
+      coverRev: 7,
+    });
+    expect(s.topArtists[0]).toMatchObject({
+      artist: 'Artist',
+      artistId: 'art-Artist',
+      coverArt: 'portrait-1',
+      coverRev: 3,
+      coverKind: 'artist',
+    });
+  });
+
+  it('a deleted song still counts, with no target to link to', () => {
+    seedSong('gone', { artist: 'Gone Artist', album: 'al' });
+    recordPlayEvents(db, 'u1', [play('gone', NOW - DAY, { artist: 'Gone Artist' })]);
+    db.run(`DELETE FROM library_songs WHERE id = 'gone'`);
+
+    const s = stats();
+    expect(s.topSongs[0]).toMatchObject({ songId: 'gone', live: false, albumId: null });
+    expect(s.topArtists[0]).toMatchObject({
+      artist: 'Gone Artist',
+      plays: 1,
+      artistId: null,
+      coverArt: null,
+      coverKind: null,
+    });
+    expect(s.topAlbums[0]).toMatchObject({ albumId: null, coverArt: null });
+  });
+
+  it('counts a play toward every credited artist, once each', () => {
+    seedArtist('art-main', 'Main');
+    seedArtist('art-feat', 'Featured');
+    seedSong('duet', { artist: 'Main feat. Featured', album: 'al' });
+    credit('duet', 'art-main');
+    credit('duet', 'art-feat', 'featuring');
+    // The same artist under a second role must not count twice.
+    credit('duet', 'art-main', 'producer');
+    seedSong('solo', { artist: 'Main', album: 'al' });
+    credit('solo', 'art-main');
+    plays('duet', 'duet', 'solo');
+
+    const byName = Object.fromEntries(stats().topArtists.map((a) => [a.artist, a.plays]));
+    expect(byName).toEqual({ Main: 3, Featured: 2 });
+  });
+
+  it('merges name variants of one artist by id, and keeps two artists with one name apart', () => {
+    seedArtist('art-x', 'Los Rodríguez');
+    seedSong('v1', { artist: 'Los Rodriguez', album: 'al' });
+    seedSong('v2', { artist: 'los rodrigues', album: 'al' });
+    credit('v1', 'art-x');
+    credit('v2', 'art-x');
+    seedArtist('art-n1', 'Nirvana');
+    seedArtist('art-n2', 'Nirvana');
+    seedSong('n1', { artist: 'Nirvana', album: 'al' });
+    seedSong('n2', { artist: 'Nirvana', album: 'al' });
+    credit('n1', 'art-n1');
+    credit('n2', 'art-n2');
+    plays('v1', 'v2', 'n1', 'n2');
+
+    const top = stats().topArtists;
+    expect(top.find((a) => a.artistId === 'art-x')).toMatchObject({
+      artist: 'Los Rodríguez',
+      plays: 2,
+    });
+    expect(
+      top
+        .filter((a) => a.artist === 'Nirvana')
+        .map((a) => a.artistId)
+        .sort(),
+    ).toEqual(['art-n1', 'art-n2']);
+  });
+
+  it("an artist with no portrait borrows its largest album's cover, and says so", () => {
+    seedArtist('art-Artist', 'Artist', null);
+    seedAlbum('al', 'Album', 'Artist');
+    db.run(`UPDATE library_albums SET cover_art = 'cover-al', cover_rev = 2 WHERE id = 'al'`);
+    seedSong('a', { artist: 'Artist', album: 'al' });
+    plays('a');
+    expect(stats().topArtists[0]).toMatchObject({
+      coverArt: 'cover-al',
+      coverRev: 2,
+      coverKind: 'album',
+    });
+  });
+
+  it('keeps the default of 10 rows and honours a larger limit', () => {
+    for (let i = 0; i < 14; i++) {
+      seedSong(`s${i}`, { artist: `Artist ${i}`, album: 'al', title: `Song ${i}` });
+    }
+    plays(...Array.from({ length: 14 }, (_, i) => `s${i}`));
+    expect(stats().topSongs).toHaveLength(10);
+    expect(stats().topArtists).toHaveLength(10);
+    expect(stats(25).topSongs).toHaveLength(14);
+    expect(stats(25).topArtists).toHaveLength(14);
+  });
+});
