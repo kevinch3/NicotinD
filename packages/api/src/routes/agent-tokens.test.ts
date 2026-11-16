@@ -196,6 +196,28 @@ describe('agent run routes (#1516 P2)', () => {
     return claim.runId;
   }
 
+  it("reports each unattended token's acceptance rate and the gate it is held to", async () => {
+    const options = JSON.stringify([
+      { id: 'genre-1', label: 'X', effect: { type: 'song-genre', songIds: [], genre: 'X' } },
+    ]);
+    testDb.run(
+      `INSERT INTO curation_flags
+         (target_kind, target_id, reason, created_by, created_at, resolved_at, resolved_by,
+          options_json, resolved_option)
+       VALUES ('album', 'a1', 'r', 'agent:tok-1', 1, 2, 'owner', ?, 'genre-1')`,
+      [options],
+    );
+    const res = await req('refiner', '/precision');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      gate: { minJudged: 20, minAccepted: 0.9 },
+      tokens: [
+        expect.objectContaining({ tokenId: 'tok-1', judged: 1, accepted: 1, autoApply: false }),
+      ],
+    });
+    expect((await req('listener', '/precision')).status).toBe(403);
+  });
+
   it('lists runs and shows one with its writes', async () => {
     const runId = seedRun();
     const list = (await (await req('refiner', '/runs')).json()) as {

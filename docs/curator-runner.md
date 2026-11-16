@@ -83,6 +83,31 @@ Stop conditions (`StopReason`):
 and the album then cools down for `CURATOR_COOLDOWN_DAYS` (30). A daily schedule does not re-ask
 about the same unresolvable album every day. A dry run records nothing.
 
+## Earning auto-apply
+
+`CURATOR_APPLY=auto` is a request, not a permission. The server lets an unattended token write a
+genre by itself only after people have accepted enough of what that token proposed (#1516 P6).
+
+- **What is measured.** Every genre card the token files, and what a person did with it: picked the
+  token's **first** option (accepted), picked another option (corrected), or closed the card with
+  no pick (dismissed). `precision = accepted / (accepted + corrected + dismissed)`. A dismissal
+  counts against the token. A card closed by an automated pass (a run revert) is not counted.
+- **The gate** (`AUTO_APPLY_GATE`): at least **20** judged cards and at least **90 %** accepted.
+  Below it, `set_song_genre` from the token is refused with the measured numbers.
+- **What the runner does then.** In `auto` mode it files a card for that album instead and carries
+  on, so the record builds from the same runs. The report says "auto-apply not earned yet, proposed
+  instead".
+- **It can be lost.** The rate is recomputed on every write; enough corrections take the token back
+  under the gate.
+- **Per token, not per model name.** The server identifies a token, not the model behind it. Use
+  one token per model, and mint a new token when you change model.
+- **Read it:** `GET /api/agent-tokens/precision` returns the gate and each token's counts, rate and
+  whether it may auto-apply. There is no page for it yet.
+
+The pick itself is stored on the flag (`curation_flags.resolved_option`) when a card is applied.
+Cards resolved before that column existed have no pick and count as dismissed, so a token's old
+cards can only lower its rate, never raise it.
+
 ## Configuration
 
 | Variable | Default | Meaning |
@@ -161,7 +186,6 @@ are:
 - run records with revert
 - deterministic no-model genre lanes
 - a self-hosted search adapter (SearXNG)
-- per-model precision measured from card choices, the evidence for switching a model to `auto`
 
 ## Tests
 

@@ -105,6 +105,29 @@ describe('runCuration', () => {
     expect(report.after.lowInformation).toBe(0);
   });
 
+  it('auto mode files a card instead when the server says the token has not earned auto-apply', async () => {
+    const mcp = new FakeMcp();
+    seed(mcp);
+    mcp.autoApplyEarned = false;
+    const report = await runCuration(
+      cfg({ apply: 'auto' }),
+      deps(mcp, new ScriptedModel([verdict('Tech House')])),
+      { dryRun: false },
+    );
+    // Refused on the first song: the second is not even tried.
+    expect(mcp.writes()).toEqual(['s1']);
+    expect(mcp.albums.get('al-mix')!.songs.map((x) => x.genres)).toEqual([
+      ['Electronic'],
+      ['Electronic'],
+      ['Electronic', 'Techno'],
+    ]);
+    expect(mcp.flags).toHaveLength(1);
+    expect(report.outcomes[0]).toMatchObject({ result: 'proposed' });
+    expect(report.outcomes[0]!.note).toContain('auto-apply not earned yet, proposed instead');
+    // Not a budget stop: the run goes on to the next album.
+    expect(report.stop).toBe('worklist-exhausted');
+  });
+
   it('auto mode still only proposes when the samples disagree or any is low confidence', async () => {
     for (const script of [
       [verdict('Tech House'), verdict('Techno'), verdict('Tech House')],
