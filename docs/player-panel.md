@@ -497,7 +497,7 @@ below as the record of what was weighed. D3 A's "three fixed snaps" became two b
   `player-panel-tabs.spec.ts` sweeps every registered body template for rules 1 and 2 and asserts
   its own denominator. The component spec registers a fake third tab and drives it through tab,
   notch, pull and Back with no gesture code. Storybook: `NowPlaying/Idle` (rest), `QueueFull`,
-  `Karaoke`. Differences from §4: the strip keeps `aria-pressed` buttons until #1668's shared
-  tab component exists; `full.body` is not generalised (Lyrics' full view is karaoke, wired in
+  `Karaoke`. Differences from §4: `full.body` is not generalised (Lyrics' full view is karaoke, wired in
   the shell); rule 4 is not yet met by Lyrics (`resolveLyricsScrollContainer` still crosses the
-  boundary).
+  boundary). The strip is #1668's `<app-icon-tabs variant="tabs">` (`tablist`, `aria-selected`),
+  as wide as its tabs so the row's empty space still starts the pull up.

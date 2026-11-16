@@ -12,8 +12,7 @@ const PENDING: Record<string, string> = {
   'pages/library/artist-detail.component.html': 'artist tabs, also untranslated (step e)',
 };
 
-// Two the patterns below do not see: the Now Playing panel tabs (a chip style,
-// pending, step d) and the TV browse tabs (10-foot text pills, exempt).
+// One the patterns below do not see: the TV browse tabs (10-foot text pills, exempt).
 
 /** Not tab bars, or tab bars the standard does not fit. */
 const EXCEPTIONS: Record<string, string> = {
@@ -86,7 +85,11 @@ describe('tab bars are <app-icon-tabs> or a recorded exception (#1668)', () => {
   });
 
   it('the migrated pages use the component', () => {
-    for (const page of ['pages/library/library.component.html', 'pages/get/get.component.html']) {
+    for (const page of [
+      'pages/library/library.component.html',
+      'pages/get/get.component.html',
+      'components/now-playing/now-playing-panel-tabs/now-playing-panel-tabs.component.html',
+    ]) {
       expect(readFileSync(join(APP, page), 'utf8'), page).toContain('<app-icon-tabs');
       expect(tabLikeTemplates()).not.toContain(page);
     }

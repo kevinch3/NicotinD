@@ -1108,6 +1108,7 @@
   "nowPlaying.next": "Next track",
   "nowPlaying.nextFrom": "Next from: {name}",
   "nowPlaying.nextUp": "Next up",
+  "nowPlaying.panelTabs": "Queue and lyrics",
   "nowPlaying.noLyricsAvailable": "No lyrics available",
   "nowPlaying.noLyricsAvailableHint": "Lyrics will appear here when synced lyrics are found",
   "nowPlaying.pause": "Pause",

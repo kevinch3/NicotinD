@@ -1,31 +1,9 @@
-<div class="flex items-center gap-2 px-4 md:px-8 mb-2" appTvNavGroup [axis]="'horizontal'">
-  @for (v of view(); track v.tab.id) {
-    <button
-      appTvNavItem
-      type="button"
-      (click)="select(v.tab.id)"
-      [attr.data-testid]="v.tab.testid"
-      [attr.aria-pressed]="v.active"
-      [class]="'relative flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ' +
-        (v.active ? 'bg-theme-accent/15 text-theme-accent-text' : 'text-theme-muted hover:text-theme-secondary')"
-    >
-      <span
-        class="relative w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
-        [class]="v.active ? 'bg-theme-accent/15 text-theme-accent-text' : 'bg-theme-surface-2 text-theme-muted'"
-        aria-hidden="true"
-      >
-        <app-icon [name]="v.tab.icon" [size]="14" />
-        @if (v.dot) {
-          <span
-            [attr.data-testid]="'now-playing-' + v.tab.id + '-dot'"
-            class="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-theme-accent"
-          ></span>
-        }
-      </span>
-      <span>{{ v.tab.labelKey | t }}</span>
-      @if (v.count !== null) {
-        <span class="text-xs opacity-70">{{ v.count }}</span>
-      }
-    </button>
-  }
+<div class="px-4 md:px-8 mb-2">
+  <app-icon-tabs
+    variant="tabs"
+    [fill]="false"
+    label="nowPlaying.panelTabs"
+    [items]="items()"
+    [active]="activePanel()"
+    (selected)="select($event)" />
 </div>

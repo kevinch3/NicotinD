@@ -4,7 +4,8 @@
   [attr.data-testid]="testid()"
   [navRole]="groupRole()"
   [attr.aria-label]="label() ? (label()! | t) : null"
-  class="flex w-full gap-0.5 rounded-xl bg-theme-surface-2 p-1 sm:w-fit"
+  class="flex gap-0.5 rounded-xl bg-theme-surface-2 p-1"
+  [class]="fill() ? 'w-full sm:w-fit' : 'w-fit max-w-full'"
 >
   @for (item of items(); track item.value) {
     @let isActive = active() === item.value;
@@ -35,7 +36,9 @@
         @if (!isActive && hasBadge(item)) {
           <span
             [attr.data-testid]="item.badgeTestid ?? 'icon-tab-badge'"
-            class="absolute -right-2 -top-1.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-theme-accent px-0.5 text-[9px] font-bold leading-none text-theme-on-accent"
+            [class]="item.badge === ''
+              ? 'absolute -right-1 -top-0.5 h-2 w-2 rounded-full bg-theme-accent'
+              : 'absolute -right-2 -top-1.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-theme-accent px-0.5 text-[9px] font-bold leading-none text-theme-on-accent'"
           >{{ item.badge }}</span>
         }
       </span>
@@ -43,7 +46,9 @@
       @if (isActive && hasBadge(item)) {
         <span
           [attr.data-testid]="item.badgeTestid ?? 'icon-tab-badge'"
-          class="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-theme-accent px-1 text-[10px] font-bold text-theme-on-accent"
+          [class]="item.badge === ''
+            ? 'h-2 w-2 shrink-0 rounded-full bg-theme-accent'
+            : 'inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-theme-accent px-1 text-[10px] font-bold text-theme-on-accent'"
         >{{ item.badge }}</span>
       }
     </button>

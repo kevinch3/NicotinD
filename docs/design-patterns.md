@@ -55,11 +55,13 @@ These are documented in full elsewhere; `CLAUDE.md` links straight to them.
   segmented-pill markup is the component, a pending migration, or an exception with its reason, and
   an entry that outlives its markup fails too. Exceptions today: the radio variety dial (two
   templates, #1660), the poll's rating scale, the artist-identity and copy pickers (lists of
-  choices), and the Stats period picker. Consumers: the Library tabs and the Get tabs (Add |
+  choices), and the Stats period picker. Consumers: the Library tabs; the Get tabs (Add |
   Activity, `current="page"` because each tab is a URL, with the activity count as the Activity
-  tab's `badge` under `badgeTestid`). Pending under #1668: the Shelves | Mosaic switch and the
-  artist tabs. Two that the patterns do not see are also recorded there in prose: the
-  Now Playing panel tabs (a chip style, pending) and the TV browse tabs (10-foot text pills, exempt).
+  tab's `badge` under `badgeTestid`); and the Now Playing panel tabs (`variant="tabs"`, the queue
+  count as a number and the lyrics dot as `''`, and `[fill]="false"` so the bar is only as wide as
+  its tabs: the empty space on that row is where a pull up to full height starts, #1679). Pending under #1668: the Shelves | Mosaic switch and the
+  artist tabs. One that the patterns do not see is also recorded there in prose: the TV browse tabs (10-foot
+  text pills, exempt).
   Because the web unit harness does not bind inputs to a nested component, the markup is pinned in
   `icon-tabs.component.spec.ts` and a page's spec asserts only what it hands the bar.
 

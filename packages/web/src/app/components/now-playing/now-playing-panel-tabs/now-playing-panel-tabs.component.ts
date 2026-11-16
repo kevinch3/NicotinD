@@ -1,19 +1,16 @@
 import { Component, computed, input, output } from '@angular/core';
-import { IconComponent } from '../../icon/icon.component';
-import { TranslatePipe } from '../../../pipes/translate.pipe';
-import { TvNavGroupDirective } from '../../../directives/tv-nav-group.directive';
-import { TvNavItemDirective } from '../../../directives/tv-nav-item.directive';
+import { IconTabsComponent, type IconTabItem } from '../../icon-tabs/icon-tabs.component';
 import { haptic } from '../../../lib/haptics';
 import { DEFAULT_PLAYER_PANEL_TABS, type PlayerPanelTab } from '../player-panel-tabs';
 
 /**
  * The Now Playing panel's tab strip, rendered from the tab registry
- * (`PLAYER_PANEL_TABS`, #1681): an icon-in-box per tab, its label, and the
- * tab's badge (the queue count after the label, the lyrics dot on the icon).
+ * (`PLAYER_PANEL_TABS`, #1681) as the shared tab bar (#1668): an icon per tab,
+ * a label on the shown one, and the tab's badge (the queue count, the lyrics dot).
  */
 @Component({
   selector: 'app-now-playing-panel-tabs',
-  imports: [IconComponent, TranslatePipe, TvNavGroupDirective, TvNavItemDirective],
+  imports: [IconTabsComponent],
   // `display: contents` so the host doesn't break the sheet's flex column —
   // the shell's flex container needs to see this component's own top-level
   // element as the flex item, and `contents` makes the host transparent.
@@ -41,6 +38,18 @@ export class NowPlayingPanelTabsComponent {
         dot: badge === true,
       };
     }),
+  );
+
+  /** The registry as the tab bar takes it: a count stays a number, a dot is `''`. */
+  readonly items = computed<IconTabItem[]>(() =>
+    this.view().map(({ tab, count, dot }) => ({
+      value: tab.id,
+      icon: tab.icon,
+      label: tab.labelKey,
+      testid: tab.testid,
+      badge: count ?? (dot ? '' : null),
+      badgeTestid: `now-playing-${tab.id}-${count !== null ? 'count' : 'dot'}`,
+    })),
   );
 
   /** Pressing the tab already shown changes the snap, not the tab: no `select` tick. */
