@@ -112,6 +112,38 @@ test.describe('mobile UX', () => {
     }
   });
 
+  // #1668: a tab is 36px tall and the bar pads it by 4px; the tab's hit area
+  // covers that padding, so the target is 44px tall. Width is what eight tabs
+  // leave on a phone, so only the WCAG 2.5.8 minimum (24px) is asserted for it.
+  test('every Library tab is a 44px-tall tap target at 375px', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/library');
+    const tabs = page.getByTestId('library-tabs').locator('button[data-mode]');
+    await expect(tabs.first()).toBeVisible();
+    const measured = await tabs.evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        const x = r.left + r.width / 2;
+        const hits = (y: number) => document.elementFromPoint(x, y)?.closest('button') === el;
+        return {
+          mode: el.getAttribute('data-mode'),
+          width: r.width,
+          above: hits(r.top - 3),
+          below: hits(r.bottom + 3),
+          tall: r.height + 8,
+        };
+      }),
+    );
+    expect(measured.length, 'tabs measured').toBe(8);
+    for (const m of measured) {
+      expect(m.above && m.below, `${m.mode}: the padding above and below is part of the tab`).toBe(
+        true,
+      );
+      expect(m.tall, `${m.mode}: target height`).toBeGreaterThanOrEqual(44);
+      expect(m.width, `${m.mode}: target width`).toBeGreaterThanOrEqual(24);
+    }
+  });
+
   test('scrolling a long page leaves the player and tab bar pinned to the bottom', async ({
     page,
   }) => {
