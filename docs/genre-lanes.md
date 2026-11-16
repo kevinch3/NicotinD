@@ -112,3 +112,25 @@ R&B, Soul), not only the two catch-alls an unattended token may replace.
 Read it at `get_library_health({ dimensions: ["genres"] })` → `genres.umbrellaReach`. "Reachable"
 means a suggestion exists. The hand-check above is how often such a suggestion was right.
 
+**Measured on prod, 2026-11-16** (33,996 songs):
+
+| Umbrella | Umbrella-only songs | Reachable |
+| --- | --- | --- |
+| Rock | 2,724 | 432 |
+| Pop | 2,530 | 247 |
+| Latin | 1,351 | 182 |
+| Singer-Songwriter | 290 | 0 |
+| Pop Rock | 242 | 39 |
+| Electronic | 167 | 1 |
+| World | 156 | 34 |
+| Funk | 63 | 5 |
+| Dance | 56 | 2 |
+| R&B | 42 | 0 |
+| Soul | 22 | 0 |
+| **All** | **7,643** (22 % of the library) | **942** (12 %), across 54 artists |
+
+So an artist's own catalogue has a suggestion for about one umbrella-only song in eight, and the
+whole of that sits with 54 artists. The other 88 % have no well-tagged sibling and need a lookup
+or stay as they are. The share of the library is close to what #1123 first measured (24 % of
+21,300 on 2026-09-12): the library grew by half and the proportion held.
+
