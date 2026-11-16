@@ -1,4 +1,4 @@
-import { DestroyRef, Directive, ElementRef, computed, inject } from '@angular/core';
+import { DestroyRef, Directive, ElementRef, Input, computed, inject, signal } from '@angular/core';
 import { TvNavGroupDirective } from './tv-nav-group.directive';
 
 /**
@@ -41,8 +41,15 @@ export class TvNavItemDirective {
    *  itself as a button (issue #432). */
   private readonly authoredRole = this.el.nativeElement.getAttribute('role');
 
+  /** A role chosen at runtime (`tab`, `radio`: #1668), which a static attribute
+   *  cannot express. A classic `@Input()` setter, like the group's `axis`. */
+  private readonly roleOverride = signal<string | null>(null);
+  @Input() set navRole(role: string | null) {
+    this.roleOverride.set(role);
+  }
+
   readonly itemRole = computed(() =>
-    this.group?.axis === 'grid' ? 'gridcell' : this.authoredRole,
+    this.group?.axis === 'grid' ? 'gridcell' : (this.roleOverride() ?? this.authoredRole),
   );
 
   constructor() {

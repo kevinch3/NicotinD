@@ -871,22 +871,14 @@ describe('LibraryComponent — tile menus (#1298)', () => {
 // only the active one shows its label, while inactive labels stay in the DOM
 // (sr-only) so each button keeps its accessible name for screen readers and
 // the e2e `getByRole('button', { name })` locators.
+// The bar's markup (icon always, label on the active tab) is `IconTabsComponent`'s,
+// pinned in its own spec (#1668). Here: what the Library hands it.
 describe('LibraryComponent — compact tab bar', () => {
-  function tabButtons(fixture: { nativeElement: HTMLElement }): HTMLButtonElement[] {
-    return Array.from(
-      fixture.nativeElement.querySelectorAll<HTMLButtonElement>(
-        '[data-testid="library-tabs"] button',
-      ),
-    );
-  }
-
   it('puts Songs first and opens on it on a fresh device', () => {
-    const { component, fixture } = setup();
-    expect(component.modes[0]?.value).toBe('songs');
+    const { component } = setup();
     expect(DEFAULT_LIBRARY_MODE).toBe('songs');
     expect(component.libraryMode()).toBe('songs');
-    fixture.detectChanges();
-    expect(tabButtons(fixture).map((b) => b.dataset['mode'])).toEqual([
+    expect(component.visibleModes().map((m) => m.value)).toEqual([
       'songs',
       'albums',
       'compilations',
@@ -903,44 +895,21 @@ describe('LibraryComponent — compact tab bar', () => {
     expect(component.libraryMode()).toBe('artists');
   });
 
-  it('labels only the active tab, keeping every name accessible', () => {
-    const { fixture } = setup();
-    fixture.detectChanges();
-    for (const btn of tabButtons(fixture)) {
-      const label = btn.querySelector<HTMLElement>('[data-testid="library-tab-label"]')!;
-      const key = `library.tab.${btn.dataset['mode']}`;
-      const active = btn.dataset['mode'] === 'songs';
-      // The label text is always there — it is the button's accessible name.
-      expect(label.textContent?.trim()).toBe(key);
-      expect(btn.getAttribute('title')).toBe(key);
-      expect(label.classList.contains('sr-only')).toBe(!active);
-      expect(btn.getAttribute('aria-current')).toBe(active ? 'true' : null);
-      expect(btn.querySelector('app-icon')).not.toBeNull();
+  it('gives every tab an icon and a translation key for its label', () => {
+    const { component } = setup();
+    for (const m of component.visibleModes()) {
+      expect(m.icon).toBeTruthy();
+      expect(m.label).toBe(`library.tab.${m.value}`);
     }
   });
 
-  it('moves the visible label with the active tab', () => {
-    const { component, fixture } = setup();
-    fixture.detectChanges();
-    component.setMode('stats');
-    fixture.detectChanges();
-    const visible = tabButtons(fixture).filter(
-      (b) => !b.querySelector('[data-testid="library-tab-label"]')!.classList.contains('sr-only'),
-    );
-    expect(visible.map((b) => b.dataset['mode'])).toEqual(['stats']);
-  });
-
-  it('lets inactive tabs share the row and the active one shrink to fit', () => {
+  it('renders the shared tab bar, under the selectors e2e uses', () => {
     const { fixture } = setup();
     fixture.detectChanges();
-    const [songs, albums] = tabButtons(fixture);
-    expect(albums!.classList).toContain('flex-1');
-    expect(albums!.classList).toContain('min-w-8');
-    expect(songs!.classList).toContain('flex-initial');
-    expect(songs!.classList).toContain('min-w-0');
-    // No horizontal scroller any more: the whole bar is one row.
-    const bar = fixture.nativeElement.querySelector('[data-testid="library-tabs"]') as HTMLElement;
-    expect(bar.classList).not.toContain('overflow-x-auto');
+    const bar = (fixture.nativeElement as HTMLElement).querySelector('app-icon-tabs');
+    expect(bar).not.toBeNull();
+    expect(bar!.getAttribute('testid')).toBe('library-tabs');
+    expect(bar!.getAttribute('labelTestid')).toBe('library-tab-label');
   });
 
   it('defers the albums fetch until the Albums tab is opened', async () => {

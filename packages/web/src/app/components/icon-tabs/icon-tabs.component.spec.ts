@@ -1,0 +1,151 @@
+import { TestBed } from '@angular/core/testing';
+import { setInputValue } from '../../../testing/signal-input';
+import { IconTabsComponent, type IconTabItem, type IconTabsVariant } from './icon-tabs.component';
+
+const ITEMS: IconTabItem[] = [
+  { value: 'songs', icon: 'music', label: 'library.tab.songs' },
+  { value: 'albums', icon: 'disc-album', label: 'library.tab.albums', testid: 'tab-albums' },
+  { value: 'stats', icon: 'chart', label: 'library.tab.stats', badge: 3 },
+];
+
+function make(
+  opts: {
+    active?: string;
+    variant?: IconTabsVariant;
+    items?: IconTabItem[];
+    label?: string;
+  } = {},
+) {
+  const fixture = TestBed.createComponent(IconTabsComponent);
+  const c = fixture.componentInstance;
+  setInputValue(c.items, opts.items ?? ITEMS);
+  setInputValue(c.active, opts.active ?? 'songs');
+  setInputValue(c.variant, opts.variant ?? 'nav');
+  setInputValue(c.testid, 'bar');
+  if (opts.label) setInputValue(c.label, opts.label);
+  fixture.detectChanges();
+  const el = fixture.nativeElement as HTMLElement;
+  const bar = el.querySelector<HTMLElement>('[data-testid="bar"]')!;
+  const buttons = Array.from(bar.querySelectorAll<HTMLButtonElement>('button'));
+  const label = (b: HTMLElement) => b.querySelector<HTMLElement>('[data-testid="icon-tab-label"]')!;
+  return { fixture, bar, buttons, label };
+}
+
+describe('IconTabsComponent (#1668)', () => {
+  it('shows an icon on every tab and a label only on the active one', () => {
+    const { buttons, label } = make({ active: 'albums' });
+    expect(buttons.map((b) => b.dataset['mode'])).toEqual(['songs', 'albums', 'stats']);
+    for (const b of buttons) {
+      const active = b.dataset['mode'] === 'albums';
+      expect(b.querySelector('app-icon')).not.toBeNull();
+      expect(label(b).classList.contains('sr-only')).toBe(!active);
+      expect(label(b).classList.contains('truncate')).toBe(active);
+    }
+  });
+
+  it('keeps every name accessible: the label text stays in the DOM and every tab has a title', () => {
+    const { buttons, label } = make();
+    for (const [i, b] of buttons.entries()) {
+      expect(label(b).textContent?.trim()).toBe(ITEMS[i]!.label);
+      expect(b.getAttribute('title')).toBe(ITEMS[i]!.label);
+    }
+  });
+
+  it('lets inactive tabs share the row and the active one take the room its label needs', () => {
+    const { bar, buttons } = make();
+    const [songs, albums] = buttons;
+    expect(albums!.classList).toContain('flex-1');
+    expect(albums!.classList).toContain('min-w-8');
+    expect(songs!.classList).toContain('flex-initial');
+    expect(songs!.classList).toContain('min-w-0');
+    expect(bar.classList).not.toContain('overflow-x-auto');
+  });
+
+  it('emits the value of the tab that was pressed', () => {
+    const { fixture, buttons } = make();
+    const seen: string[] = [];
+    fixture.componentInstance.selected.subscribe((v) => seen.push(v));
+    buttons[2]!.click();
+    buttons[0]!.click();
+    expect(seen).toEqual(['stats', 'songs']);
+  });
+
+  it('carries a per-tab testid and a per-bar label testid', () => {
+    const fixture = TestBed.createComponent(IconTabsComponent);
+    setInputValue(fixture.componentInstance.items, ITEMS);
+    setInputValue(fixture.componentInstance.active, 'songs');
+    setInputValue(fixture.componentInstance.labelTestid, 'library-tab-label');
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="tab-albums"]')?.getAttribute('data-mode')).toBe(
+      'albums',
+    );
+    expect(el.querySelectorAll('[data-testid="library-tab-label"]')).toHaveLength(3);
+  });
+
+  describe('roles per variant', () => {
+    it('nav: a toolbar of plain buttons with aria-current on the active one', () => {
+      const { bar, buttons } = make({ variant: 'nav' });
+      expect(bar.getAttribute('role')).toBe('toolbar');
+      expect(buttons.map((b) => b.getAttribute('role'))).toEqual([null, null, null]);
+      expect(buttons.map((b) => b.getAttribute('aria-current'))).toEqual(['true', null, null]);
+      expect(buttons.every((b) => !b.hasAttribute('aria-selected'))).toBe(true);
+    });
+
+    it('tabs: tablist / tab / aria-selected, and a name for the list', () => {
+      const { bar, buttons } = make({ variant: 'tabs', label: 'artist.tabs' });
+      expect(bar.getAttribute('role')).toBe('tablist');
+      expect(bar.getAttribute('aria-label')).toBe('artist.tabs');
+      expect(buttons.map((b) => b.getAttribute('role'))).toEqual(['tab', 'tab', 'tab']);
+      expect(buttons.map((b) => b.getAttribute('aria-selected'))).toEqual([
+        'true',
+        'false',
+        'false',
+      ]);
+      expect(buttons.every((b) => !b.hasAttribute('aria-current'))).toBe(true);
+    });
+
+    it('radio: radiogroup / radio / aria-checked', () => {
+      const { bar, buttons } = make({ variant: 'radio', active: 'stats' });
+      expect(bar.getAttribute('role')).toBe('radiogroup');
+      expect(buttons.map((b) => b.getAttribute('role'))).toEqual(['radio', 'radio', 'radio']);
+      expect(buttons.map((b) => b.getAttribute('aria-checked'))).toEqual([
+        'false',
+        'false',
+        'true',
+      ]);
+    });
+  });
+
+  describe('badges', () => {
+    const badge = (b: HTMLElement) =>
+      b.querySelector<HTMLElement>('[data-testid="icon-tab-badge"]');
+
+    it('rides the icon on an inactive tab, where the label is hidden', () => {
+      const stats = make({ active: 'songs' }).buttons[2]!;
+      expect(badge(stats)?.textContent?.trim()).toBe('3');
+      expect(badge(stats)!.classList).toContain('absolute');
+      expect(badge(stats)!.parentElement!.querySelector('app-icon')).not.toBeNull();
+    });
+
+    it('sits inline after the label on the active tab', () => {
+      const stats = make({ active: 'stats' }).buttons[2]!;
+      expect(stats.querySelectorAll('[data-testid="icon-tab-badge"]')).toHaveLength(1);
+      expect(badge(stats)!.classList).not.toContain('absolute');
+      expect(badge(stats)!.previousElementSibling?.getAttribute('data-testid')).toBe(
+        'icon-tab-label',
+      );
+    });
+
+    it('is absent for no badge, null and zero, and present for a dot', () => {
+      const items: IconTabItem[] = [
+        { value: 'a', icon: 'music', label: 'a' },
+        { value: 'b', icon: 'music', label: 'b', badge: null },
+        { value: 'c', icon: 'music', label: 'c', badge: 0 },
+        { value: 'd', icon: 'music', label: 'd', badge: '' },
+      ];
+      const { buttons } = make({ items, active: 'a' });
+      expect(buttons.map((b) => badge(b) !== null)).toEqual([false, false, false, true]);
+    });
+  });
+});

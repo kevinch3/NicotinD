@@ -25,6 +25,7 @@ import { ListControlsService, type SortOption } from '../../services/list-contro
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
 import { IconComponent, type IconName } from '../../components/icon/icon.component';
+import { IconTabsComponent } from '../../components/icon-tabs/icon-tabs.component';
 import { SearchFieldComponent } from '../../components/search-field/search-field.component';
 import {
   SortSelectComponent,
@@ -145,6 +146,7 @@ function writePersistedState(state: PersistedLibraryState): void {
     LibraryFindComponent,
     SkeletonComponent,
     IconComponent,
+    IconTabsComponent,
     SearchFieldComponent,
     SortSelectComponent,
     TranslatePipe,
