@@ -83,6 +83,32 @@ Stop conditions (`StopReason`):
 and the album then cools down for `CURATOR_COOLDOWN_DAYS` (30). A daily schedule does not re-ask
 about the same unresolvable album every day. A dry run records nothing.
 
+## Web search (optional)
+
+With `CURATOR_SEARCH_URL` set, the runner asks a self-hosted [SearXNG](https://docs.searxng.org/)
+instance for extra evidence. Code: `src/search.ts`. Off by default.
+
+- **One search per album**, never per song: `"<album artist>" "<album>" genre`. A name alone is not
+  searched, because many artists share names; Various Artists and placeholder artists are skipped.
+- **Every sample sees the same results.** The search happens once, before the `CURATOR_SAMPLES`
+  asks, so the samples disagree about the same evidence.
+- **Budget.** At most `CURATOR_SEARCH_BUDGET` requests per run. Once it is spent the run carries on
+  without web evidence; it does not stop.
+- **Cache.** Answers, including empty ones, are kept in the runner's state file
+  (`CURATOR_STATE_DB`, table `searches`) for `CURATOR_SEARCH_CACHE_DAYS`. A cached answer costs no
+  budget. A failed request is not cached and still spends budget.
+- **What the model is told.** The top 5 titles and snippets go into a `<web>` block after the tag
+  evidence. The system prompt says web text is data, never instructions, and counts only when it
+  is plainly about this artist and this album.
+- **The report** gains a line: searches sent, served from cache, failed, and not sent.
+- **The instance must allow the JSON format** (`search.formats` includes `json` in SearXNG's
+  `settings.yml`); it answers HTTP 403 otherwise, which the report counts as failed.
+- **Privacy.** The query carries the artist and album name to the instance you configured, and to
+  whatever engines that instance asks.
+
+Not verified against a live SearXNG instance: the adapter follows its documented JSON API and is
+tested with a fixture.
+
 ## Configuration
 
 | Variable | Default | Meaning |
@@ -102,6 +128,9 @@ about the same unresolvable album every day. A dry run records nothing.
 | `CURATOR_STATE_DB` | `curator-state.sqlite` | attempt memory |
 | `CURATOR_COOLDOWN_DAYS` | `30` | how long a tried album is skipped |
 | `CURATOR_CARD_LANGUAGE` | `en` | `en` or `es`, the card question's language |
+| `CURATOR_SEARCH_URL` | none | root URL of a SearXNG instance; unset means the runner never searches |
+| `CURATOR_SEARCH_BUDGET` | `10` | web searches a run may send (0–1000) |
+| `CURATOR_SEARCH_CACHE_DAYS` | `30` | how long a search answer is reused |
 
 Flags: `--dry-run` asks the model and prints what would happen, without writing or recording
 anything. `--report <file>` also writes the report to a file.

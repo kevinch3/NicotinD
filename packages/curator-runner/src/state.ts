@@ -32,6 +32,11 @@ export class AttemptStore {
     );
   }
 
+  /** The state file itself, for the runner's other memory: the search cache. */
+  get database(): Database {
+    return this.db;
+  }
+
   close(): void {
     this.db.close();
   }

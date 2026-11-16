@@ -377,6 +377,8 @@ services:
       CURATOR_MODEL_PROVIDER: ${CURATOR_MODEL_PROVIDER:-openai}
       CURATOR_MODEL_BASE_URL: ${CURATOR_MODEL_BASE_URL:-http://host.docker.internal:11434/v1}
       CURATOR_MODEL: ${CURATOR_MODEL:-}
+      # Optional web evidence from a self-hosted SearXNG; unset = never searches.
+      CURATOR_SEARCH_URL: ${CURATOR_SEARCH_URL:-}
       CURATOR_MODEL_API_KEY: ${CURATOR_MODEL_API_KEY:-}
       CURATOR_APPLY: ${CURATOR_APPLY:-propose}
       CURATOR_CARD_LANGUAGE: ${CURATOR_CARD_LANGUAGE:-en}

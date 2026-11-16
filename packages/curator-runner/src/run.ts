@@ -5,6 +5,7 @@ import { readJson, type McpLike } from './mcp-client.js';
 import type { GenreModel, Verdict } from './model.js';
 import { buildPrompt } from './prompt.js';
 import type { AttemptStore } from './state.js';
+import { searchQueryFor, type BudgetedSearch, type SearchUsage } from './search.js';
 
 export interface RunDeps {
   mcp: McpLike;
@@ -12,6 +13,8 @@ export interface RunDeps {
   store: AttemptStore;
   now: () => number;
   log: (line: string) => void;
+  /** Web search for extra evidence (#1516 P5); absent when none is configured. */
+  search?: BudgetedSearch;
 }
 
 export interface GenreMetrics {
@@ -53,6 +56,8 @@ export interface RunReport {
   iterations: number;
   outcomes: ClusterOutcome[];
   stop: StopReason;
+  /** Present only when a search instance was configured. */
+  search?: SearchUsage;
 }
 
 export class RunnerError extends Error {}
@@ -98,6 +103,7 @@ export async function runCuration(
     iterations: 0,
     outcomes: [],
     stop: 'worklist-exhausted',
+    ...(deps.search ? { search: deps.search.usage } : {}),
   };
   const finish = async (stop: StopReason) => {
     report.stop = stop;
@@ -137,7 +143,7 @@ export async function runCuration(
 
       let verdicts: Verdict[];
       try {
-        verdicts = await sample(deps.model, cluster, vocab, cfg.samples);
+        verdicts = await sample(deps.model, cluster, vocab, cfg.samples, deps.search);
         modelFailures = 0;
       } catch (e) {
         modelFailures++;
@@ -169,8 +175,13 @@ async function sample(
   cluster: Cluster,
   vocab: readonly string[],
   k: number,
+  search?: BudgetedSearch,
 ): Promise<Verdict[]> {
-  const prompt = buildPrompt(cluster, vocab);
+  // One search per album, shared by every sample: the samples must disagree
+  // about the same evidence, not about different search results.
+  const query = search ? searchQueryFor(cluster) : null;
+  const web = query ? ((await search!.lookup(query)) ?? []) : [];
+  const prompt = buildPrompt(cluster, vocab, web);
   const verdicts: Verdict[] = [];
   for (let i = 0; i < k; i++) verdicts.push(await model.classify(prompt));
   return verdicts;

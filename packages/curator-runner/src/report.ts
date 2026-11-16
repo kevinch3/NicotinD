@@ -34,6 +34,13 @@ export function renderReport(r: RunReport): string {
     '',
     `Albums: ${count('applied')} applied, ${count('proposed')} proposed as cards, ${count('skipped')} left untagged, ${count('dry-run')} dry-run, ${count('refused')} refused, ${count('error')} errors.`,
   ];
+  if (r.search) {
+    const s = r.search;
+    lines.push(
+      '',
+      `Web search: ${s.made} of ${s.budget} sent, ${s.cached} from cache, ${s.failed} failed, ${s.refused} not sent (budget spent).`,
+    );
+  }
   if (r.outcomes.length > 0) {
     lines.push('', '| Album | Songs | Result | Detail |', '| --- | --- | --- | --- |');
     for (const o of r.outcomes) {

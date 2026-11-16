@@ -27,6 +27,9 @@ const cfg = (over: Partial<RunnerConfig> = {}): RunnerConfig => ({
   stateDb: ':memory:',
   cooldownDays: 30,
   cardLanguage: 'en',
+  searchUrl: null,
+  searchBudget: 10,
+  searchCacheDays: 30,
   ...over,
 });
 
