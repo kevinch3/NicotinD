@@ -146,3 +146,40 @@ after the next scan; expected: 0 split-pending rows.
 
 **Left alone.** The `V.A. - Jazz Fusion of the 70s…` album holds unrelated tracks (Brazilian funk
 under a jazz title); regrouping it is the owner's call.
+
+## 2026-11-16: Los Nocheros, and a re-measure of song duplicates (#1123, #951)
+
+Scoped to two open issues. No acquisitions, no deletions.
+
+**Baseline** (`get_library_health`, 33,723 songs, 5,923 artists, 8,451 albums): genres `missing` 196,
+`lowInformation` 262; `duplicateSongs` 1,513 clusters, 1,649 redundant files, `sameReleaseFiles` 181.
+
+**Action.** Los Nocheros, *Clásicos: El pecado original* (2012): 8 tracks whose whole genre list was
+`[Latin]` set to `Folclore; Latin` with `set_song_genre(mode: replace)`.
+
+| Evidence | |
+| --- | --- |
+| Siblings | five other Los Nocheros albums carry `Folclore`, from different rips |
+| Titles | standard folclore repertoire: *El Arriero*, *Alfonsina y el Mar*, *Merceditas*, *Carnavalito del Duende* |
+| Safety | each track's full list was read first and held only `Latin`, so the replace dropped nothing |
+
+Read back through `get_album_tracks`: all 8 read `[Folclore, Latin]`.
+
+**Delta.**
+
+| Metric | Before | After |
+| --- | --- | --- |
+| `genres.lowInformation` | 262 | 262 |
+| `genres.missing` | 196 | 196 |
+
+The fix does not move `lowInformation`, because that dimension counts catch-alls such as `Dance` and
+`Electronic` and `Latin` is not one of them. The radio complaint behind #1123 (a bare-`Latin` seed
+pulling in unrelated artists) is what it addresses.
+
+**Duplicates.** #951 asked for a re-measure counting only same-release copies: 181 of 1,649 candidate
+files. The rest are the same song on another release. #951 is closed; deleting the 181 is the
+owner's call through the Admin finder.
+
+**Left alone.** Los Nocheros *Crónica* (`Pop`) and *Noche amiga mía* (`World`), not verified. The
+`lowInformation` worklist leads with David Guetta (35 songs, `Dance`), Black Coffee (25, `Dance`) and
+Nicolas Jaar (19, `Electronic`); each needs a subgenre judgement.
