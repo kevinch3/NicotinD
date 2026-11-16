@@ -72,7 +72,12 @@ import {
   decayVelocity,
   lockBreakPx,
   visiblePlacements,
+  clampZoom,
+  textLevel,
+  wheelZoom,
+  type TextLevel,
 } from '../../lib/mosaic-lens';
+import { createPinch } from '../../lib/pinch';
 
 /** Pointer travel, in px, above which a pointerup is a pan and not a tap. */
 const TAP_SLOP_PX = 6;
@@ -142,6 +147,8 @@ interface PoolRecord {
   el: HTMLElement;
   transform: string;
   opacity: string;
+  /** How much text the face shows at the current zoom (`textLevel`). */
+  text: TextLevel;
   stamp: number;
   /** Content key last written into the element; '' when freshly acquired. */
   content: string;
@@ -341,6 +348,49 @@ export class MosaicHomeComponent implements OnInit {
   private loadToken = 0;
   private lastConnectivity: string | null = null;
 
+  /** The field's zoom (#2020). Not remembered: every visit starts at 100%. */
+  private zoom = 1;
+  private pinchFrom = 1;
+  /** Two fingers zoom; one keeps panning. */
+  private readonly pinch = createPinch({
+    onStart: () => {
+      this.pinchFrom = this.zoom;
+      // The first finger was a pan until the second landed: end it without a
+      // coast, and without the tap its release would otherwise make.
+      this.drag.cancel();
+      this.dragging = false;
+      this.vx = 0;
+      this.vy = 0;
+      this.cancelPress();
+      this.suppressTap = true;
+      this.stageRef()?.nativeElement.classList.remove('cursor-grabbing');
+      if (this.lockHeld && this.anchor) this.glideTo(this.anchor.x, this.anchor.y, SPRING_BACK_MS);
+      this.lockHeld = false;
+    },
+    onChange: (ratio) => this.setZoom(this.pinchFrom * ratio),
+  });
+
+  /**
+   * Zoom the field about the stage centre. Text holds its size: the stage
+   * carries the inverse zoom, and each face's CSS clamps its type with it, so
+   * no face is re-rendered while the wheel turns.
+   */
+  setZoom(zoom: number): void {
+    const next = clampZoom(zoom);
+    if (next === this.zoom) return;
+    this.zoom = next;
+    const stage = this.stageRef()?.nativeElement;
+    if (stage) {
+      stage.style.setProperty('--mosaic-inv', (1 / next).toFixed(4));
+      stage.dataset['zoom'] = next.toFixed(2);
+      stage.classList.toggle('is-zoomed-in', next > 1);
+    }
+    // In motion until the loop finds the field at rest: styles.css redraws the
+    // tiles at their new size only then, not on every step of the wheel.
+    this.setMoving(true);
+    this.wake();
+  }
+
   readonly drag = createPointerDrag({
     onStart: (e) => {
       this.dragging = true;
@@ -375,13 +425,15 @@ export class MosaicHomeComponent implements OnInit {
         this.setMoving(true);
         this.blurFocus();
       }
+      // Zoomed in, a plane px is more screen px: the content still tracks the finger.
+      const gain = PAN_GAIN / this.zoom;
       if (this.lockHeld && this.anchor) {
         this.lockX += dx;
         this.lockY += dy;
         if (Math.hypot(this.lockX, this.lockY) < this.lockBreak) {
           // Held: the field gives a little under the finger, nothing more.
-          this.cx = this.anchor.x - this.lockX * PAN_GAIN * LOCK_GIVE;
-          this.cy = this.anchor.y - this.lockY * PAN_GAIN * LOCK_GIVE;
+          this.cx = this.anchor.x - this.lockX * gain * LOCK_GIVE;
+          this.cy = this.anchor.y - this.lockY * gain * LOCK_GIVE;
           this.vx = 0;
           this.vy = 0;
           this.wake();
@@ -391,10 +443,10 @@ export class MosaicHomeComponent implements OnInit {
         this.lockHeld = false;
         this.anchor = null;
       }
-      this.cx -= dx * PAN_GAIN;
-      this.cy -= dy * PAN_GAIN;
-      this.vx = -dx * PAN_GAIN;
-      this.vy = -dy * PAN_GAIN;
+      this.cx -= dx * gain;
+      this.cy -= dy * gain;
+      this.vx = -dx * gain;
+      this.vy = -dy * gain;
       this.wake();
     },
     onEnd: () => {
@@ -499,6 +551,13 @@ export class MosaicHomeComponent implements OnInit {
       // Right-click is the desktop door into a tile's menu (#1298).
       const onContextMenu = (e: MouseEvent): void => this.onStageContextMenu(e);
       stage.addEventListener('contextmenu', onContextMenu);
+      // The wheel zooms (#2020). Not passive: the page must not scroll or
+      // browser-zoom under a wheel that the field has taken.
+      const onWheel = (e: WheelEvent): void => {
+        e.preventDefault();
+        this.setZoom(wheelZoom(this.zoom, e));
+      };
+      stage.addEventListener('wheel', onWheel, { passive: false });
 
       start();
       onCleanup(() => {
@@ -508,6 +567,8 @@ export class MosaicHomeComponent implements OnInit {
         document.removeEventListener('visibilitychange', onVisibility);
         stage.removeEventListener('click', onClick);
         stage.removeEventListener('contextmenu', onContextMenu);
+        stage.removeEventListener('wheel', onWheel);
+        this.pinch.destroy();
       });
     });
 
@@ -978,6 +1039,8 @@ export class MosaicHomeComponent implements OnInit {
   /** The stage's pointerdown: a press on a face's ⋯ is the button's, not a pan or a hold. */
   onStagePointerDown(e: PointerEvent): void {
     if ((e.target as HTMLElement | null)?.closest('[data-more]')) return;
+    // A second finger makes a pinch; the finger a pinch leaves behind is spent.
+    if (this.pinch.down(e) || this.pinch.active()) return;
     this.drag.start(e);
   }
 
@@ -1124,22 +1187,24 @@ export class MosaicHomeComponent implements OnInit {
     const s = p.size;
     // Type and padding scale with the face: packed small under the fisheye,
     // fixed 12px padding and 13px titles clipped every small tile's label.
-    const titleSize = clampPx(s * 0.12, 9, 17);
-    const faceVars = `--face-pad:${clampPx(s * 0.08, 5, 12)}px;--face-sub:${clampPx(s * 0.085, 7, 12)}px;--face-more:${clampPx(s * 0.24, 20, 32)}px`;
+    // Title and subtitle carry their natural size; styles.css clamps each to
+    // its limits divided by the zoom, so the type holds its size while the
+    // field zooms and no face is re-rendered (#2020).
+    const faceVars = `--face-pad:${clampPx(s * 0.08, 5, 12)}px;--face-title:${(s * 0.12).toFixed(2)}px;--face-sub:${(s * 0.085).toFixed(2)}px;--face-more:${clampPx(s * 0.24, 20, 32)}px`;
     const title = escapeHtml(this.label(t));
     const subtitle = escapeHtml(t.subtitle);
 
     if (t.kind === 'vibe' || t.kind === 'downloads') {
       return `<div class="mosaic-face bg-gradient-to-br ${t.gradient} text-white" style="${faceVars}">
         <span style="font-size:${Math.round(s * 0.22)}px" aria-hidden="true">${t.emoji ?? ''}</span>
-        <div><b class="mosaic-name" data-overflow-reveal style="font-size:${titleSize}px">${title}</b><span class="mosaic-name" data-overflow-reveal>${subtitle}</span></div>
+        <div><b class="mosaic-name" data-overflow-reveal>${title}</b><span class="mosaic-name" data-overflow-reveal>${subtitle}</span></div>
       </div>`;
     }
 
     if (t.kind === 'genre') {
       return `<div class="mosaic-face bg-theme-surface-2 text-theme-secondary" style="${faceVars}">
         <span class="mosaic-dot"></span>
-        <div><b class="mosaic-name" data-overflow-reveal style="font-size:${titleSize}px">${title}</b><span class="mosaic-name" data-overflow-reveal>${subtitle}</span></div>
+        <div><b class="mosaic-name" data-overflow-reveal>${title}</b><span class="mosaic-name" data-overflow-reveal>${subtitle}</span></div>
         ${MORE_BUTTON}
       </div>`;
     }
@@ -1153,7 +1218,7 @@ export class MosaicHomeComponent implements OnInit {
       ? `background-image:${image};background-size:cover;background-position:center`
       : `background-image:${image}`;
     return `<div class="mosaic-face text-white" style="${faceVars};${bg}">
-      <div class="mosaic-scrim"><b class="mosaic-name" data-overflow-reveal style="font-size:${titleSize}px">${title}</b><span class="mosaic-name" data-overflow-reveal>${subtitle}</span></div>
+      <div class="mosaic-scrim"><b class="mosaic-name" data-overflow-reveal>${title}</b><span class="mosaic-name" data-overflow-reveal>${subtitle}</span></div>
       ${MORE_BUTTON}
     </div>`;
   }
@@ -1238,7 +1303,9 @@ export class MosaicHomeComponent implements OnInit {
     el.style.display = '';
     el.dataset['tileId'] = String(p.id);
     el.setAttribute('data-testid', 'mosaic-tile');
-    const rec: PoolRecord = { el, transform: '', opacity: '', stamp: 0, content: '' };
+    // A pooled element keeps the level of the tile it last was.
+    el.dataset['text'] = 'full';
+    const rec: PoolRecord = { el, transform: '', opacity: '', text: 'full', stamp: 0, content: '' };
     this.live.set(key, rec);
     return rec;
   }
@@ -1293,6 +1360,7 @@ export class MosaicHomeComponent implements OnInit {
       view,
       packing.W,
       this.lensRadius,
+      this.zoom,
     );
 
     this.stamp++;
@@ -1319,6 +1387,11 @@ export class MosaicHomeComponent implements OnInit {
       if (transform !== rec.transform) {
         rec.el.style.transform = transform;
         rec.transform = transform;
+      }
+      const text = textLevel(pl.packed.size, this.zoom);
+      if (text !== rec.text) {
+        rec.el.dataset['text'] = text;
+        rec.text = text;
       }
       const opacity = pl.opacity.toFixed(2);
       if (opacity !== rec.opacity) {

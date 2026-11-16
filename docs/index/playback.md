@@ -130,6 +130,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   field over every landing source; a tap brings a tile forward and only that tile starts its radio.
   Pure `mosaic-tiles`/`mosaic-packing`/`mosaic-lens`/`mosaic-focus` under a pooled rAF shell.
   `visiblePlacements`, `LANE_MIX`, `tapIntent`, `MosaicFocusComponent`. → [web-ui.md](../web-ui.md)
+- **Mosaic zoom**: the wheel and a two-finger pinch zoom the field; type holds its size and small
+  faces drop their text. `wheelZoom`, `clampZoom`, `textLevel`, `createPinch`.
+  → [web-ui.md](../web-ui.md)
 - **One tile, two tones**: `VibeTileComponent` renders the classic landing's vibe row and genre row
   so they cannot drift — `tone`/`wide` carry the whole difference, and the vibe gradients are fixed
   pairs, never `--theme-*`. → [web-ui.md](../web-ui.md)

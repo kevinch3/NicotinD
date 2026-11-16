@@ -296,4 +296,98 @@ test.describe('mosaic home on a touch phone (#1642)', () => {
     await expect(title).not.toHaveText(before ?? '', { timeout: 15_000 });
     await expect(page.getByTestId('mosaic-focus')).toHaveCount(0);
   });
+
+  // #2020: the wheel zooms the field; the type holds its size.
+  test.describe('zoom', () => {
+    /** On-screen title sizes, and tile widths, for every tile whose title is shown. */
+    const measure = (page: Page) =>
+      page.locator('[data-testid="mosaic-tile"]').evaluateAll((els) =>
+        els.flatMap((el) => {
+          const tile = el as HTMLElement;
+          if (tile.style.display === 'none' || Number(tile.style.opacity) < 1) return [];
+          const title = tile.querySelector<HTMLElement>('b.mosaic-name');
+          if (!title || getComputedStyle(title).display === 'none') return [];
+          // The lens draws rim tiles smaller, text included; undo that to read
+          // the size the limits are stated in.
+          const lens = tile.getBoundingClientRect().width / tile.offsetWidth;
+          return [
+            {
+              width: tile.getBoundingClientRect().width,
+              titlePx: parseFloat(getComputedStyle(title).fontSize) * lens,
+              lens,
+              text: tile.dataset['text'],
+            },
+          ];
+        }),
+      );
+    const zoomOf = (page: Page) => page.getByTestId('mosaic-stage').getAttribute('data-zoom');
+    const wheel = async (page: Page, deltaY: number, times: number) => {
+      const box = (await page.getByTestId('mosaic-stage').boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      for (let i = 0; i < times; i++) await page.mouse.wheel(0, deltaY);
+    };
+
+    test('the wheel zooms between 60% and 220%, and the page does not scroll', async ({ page }) => {
+      await page.goto('/');
+      await expect(page.locator('[data-testid="mosaic-tile"]').first()).toBeVisible({
+        timeout: 10_000,
+      });
+      const widest = async () => Math.max(...(await measure(page)).map((t) => t.width));
+      const at100 = await widest();
+
+      await wheel(page, -200, 12);
+      await expect.poll(() => zoomOf(page)).toBe('2.20');
+      // Not 2.2×: only the exact centre gets the whole zoom, and zooming in
+      // pushes every other tile further down the lens' falloff.
+      await expect.poll(widest).toBeGreaterThan(at100 * 1.3);
+
+      await wheel(page, 200, 30);
+      await expect.poll(() => zoomOf(page)).toBe('0.60');
+      await expect.poll(widest).toBeLessThan(at100 * 0.75);
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    });
+
+    test('a title stays between 9 and 17 px at every zoom, and small tiles drop their text', async ({
+      page,
+    }) => {
+      await page.goto('/');
+      await expect(page.locator('[data-testid="mosaic-tile"]').first()).toBeVisible({
+        timeout: 10_000,
+      });
+      // The size the limits are stated in is the one before the fisheye, which
+      // is the on-screen size divided by the lens' own scale at that tile.
+      const titleSizes = async (zoom: number) =>
+        (await measure(page)).map((t) => t.titlePx / (t.lens / zoom));
+
+      for (const [deltaY, times, zoom] of [
+        [-200, 12, 2.2],
+        [200, 30, 0.6],
+      ] as const) {
+        await wheel(page, deltaY, times);
+        await expect.poll(() => zoomOf(page)).toBe(zoom.toFixed(2));
+        const sizes = await titleSizes(zoom);
+        expect(sizes.length).toBeGreaterThan(0);
+        // Before the lens, a title is natural × zoom, held in 9–17 px.
+        for (const px of sizes) {
+          expect(px).toBeGreaterThanOrEqual(8.9);
+          expect(px).toBeLessThanOrEqual(17.1);
+        }
+      }
+      // Which faces drop their text is unit-tested (`textLevel`): the fixture
+      // library has no tile small enough to lose its words at 60%.
+      // And back at 100% every face has its text again.
+      await wheel(page, -200, 3);
+      await wheel(page, 200, 30);
+      await page.reload();
+      await expect(page.locator('[data-testid="mosaic-tile"]').first()).toBeVisible({
+        timeout: 10_000,
+      });
+      // Zoom is not remembered: a new visit starts at 100%.
+      expect(await zoomOf(page)).toBeNull();
+      const fresh = await page
+        .locator('[data-testid="mosaic-tile"]')
+        .evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset['text']));
+      expect(fresh.every((l) => l === 'full')).toBe(true);
+    });
+  });
 });

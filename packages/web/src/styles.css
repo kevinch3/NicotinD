@@ -614,6 +614,15 @@
   -webkit-user-select: none;
   user-select: none;
 }
+/* A tile on its own `will-change` layer is drawn once, at its packed size,
+   and scaled from that picture. Past 100% zoom (#2020) that picture is up to
+   four times too small and its text and cover go soft, so a zoomed-in field at
+   rest gives the hint up and the browser redraws each tile at the size it is
+   shown. Only at rest, and only zoomed in: while the field moves the layers
+   stay, and at 100% nothing changes from before. */
+.mosaic-stage-contain.is-zoomed-in:not(.is-moving) .mosaic-tile {
+  will-change: auto;
+}
 /* The hover ⋯ on a face (#1298): the same door every tile has, delegated.
    Sized with the face (`--face-more`): a fixed 32px covered most of a small
    tile. And it exists only where hover does — on touch it was invisible but
@@ -788,13 +797,27 @@
 [data-theme='eink'] .mosaic-veil {
   display: none;
 }
+/* Type holds its size while the field zooms (#2020). A face carries its
+   natural sizes (--face-title, --face-sub); the stage carries the inverse zoom
+   (--mosaic-inv), and the limits are divided by the zoom here because the lens
+   then scales the whole tile by it. At 100% this is the 9–17 and 7–12 px clamp
+   the faces used to bake in. */
 .mosaic-face b {
   font-weight: 500;
   display: block;
+  font-size: clamp(
+    calc(9px * var(--mosaic-inv, 1)),
+    var(--face-title, 13px),
+    calc(17px * var(--mosaic-inv, 1))
+  );
 }
 .mosaic-face span {
   display: block;
-  font-size: var(--face-sub, 12px);
+  font-size: clamp(
+    calc(7px * var(--mosaic-inv, 1)),
+    var(--face-sub, 12px),
+    calc(12px * var(--mosaic-inv, 1))
+  );
   margin-top: 3px;
   opacity: 0.75;
 }
@@ -805,6 +828,14 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* A face too small for readable text drops it rather than shrinking it: the
+   subtitle first, then the title and its scrim, leaving the cover (a vibe
+   keeps its emoji, a genre its dot). The component sets data-text per tile. */
+.mosaic-tile[data-text='title'] span.mosaic-name,
+.mosaic-tile[data-text='cover'] .mosaic-name,
+.mosaic-tile[data-text='cover'] .mosaic-scrim {
+  display: none;
 }
 /* Cover tiles put their text over artwork of unknown brightness, so the label
    sits on its own gradient scrim rather than trusting a drop-shadow. */

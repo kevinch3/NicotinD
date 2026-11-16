@@ -110,11 +110,14 @@ export function visiblePlacements(
   view: Viewport,
   W: number,
   lensRadius: number,
+  zoom = 1,
 ): Placement[] {
   const out: Placement[] = [];
   const halfW = view.w / 2;
   const halfH = view.h / 2;
-  const limit = lensRadius * THETA_MAX;
+  // Zoom changes how much of the plane the lens takes in, not the rim: the
+  // circle on screen stays, and zooming out fits more tiles inside it.
+  const limit = (lensRadius * THETA_MAX) / zoom;
   const rimRadius = lensRadius * Math.sin(THETA_MAX);
   const limitSq = limit * limit;
 
@@ -136,7 +139,7 @@ export function visiblePlacements(
         const r = Math.sqrt(rSq);
         const u = r / limit;
         const k = (u * LUT_SIZE) | 0;
-        const scale = SCALE_LUT[k];
+        const scale = SCALE_LUT[k] * zoom;
         // At r = 0 the tile is dead centre; ρ / r tends to the centre scale,
         // but the division is undefined, so place it at the centre explicitly.
         const f = r ? (rimRadius * RADIUS_LUT[k]) / r : 0;
@@ -161,6 +164,45 @@ export function visiblePlacements(
     }
   }
   return out;
+}
+
+/** How far the field zooms out and in (#2020). 1 is the packed size. */
+export const ZOOM_MIN = 0.6;
+export const ZOOM_MAX = 2.2;
+
+export function clampZoom(zoom: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
+}
+
+/**
+ * The zoom after one wheel event. Exponential, so the same turn of the wheel
+ * is the same ratio at any zoom. A trackpad pinch arrives as a wheel event
+ * with `ctrlKey` and small deltas, hence its larger gain; `deltaMode` 1 counts
+ * lines, not pixels.
+ */
+export function wheelZoom(
+  zoom: number,
+  e: { deltaY: number; deltaMode?: number; ctrlKey?: boolean },
+): number {
+  const px = e.deltaY * (e.deltaMode === 1 ? 16 : 1);
+  return clampZoom(zoom * Math.exp(-px * (e.ctrlKey ? 0.01 : 0.0015)));
+}
+
+/** A face's packed side times the zoom, below which its subtitle, then its title, is dropped. */
+export const SUBTITLE_MIN_SIDE_PX = 38;
+export const TITLE_MIN_SIDE_PX = 28;
+
+export type TextLevel = 'full' | 'title' | 'cover';
+
+/**
+ * How much text a face shows at this zoom. A tile too small for readable text
+ * drops it instead of shrinking it: text sizes are held within fixed limits
+ * while the field zooms, so past a point the words no longer fit the face.
+ */
+export function textLevel(packedSide: number, zoom: number): TextLevel {
+  const side = packedSide * zoom;
+  if (side < TITLE_MIN_SIDE_PX) return 'cover';
+  return side < SUBTITLE_MIN_SIDE_PX ? 'title' : 'full';
 }
 
 /**
