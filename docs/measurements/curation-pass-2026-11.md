@@ -183,3 +183,34 @@ owner's call through the Admin finder.
 **Left alone.** Los Nocheros *Crónica* (`Pop`) and *Noche amiga mía* (`World`), not verified. The
 `lowInformation` worklist leads with David Guetta (35 songs, `Dance`), Black Coffee (25, `Dance`) and
 Nicolas Jaar (19, `Electronic`); each needs a subgenre judgement.
+
+## 2026-11-16 (later the same day): umbrella-only genres, and what the no-model lanes found (#1123, #1516)
+
+No acquisitions, no deletions. An ingest was landing songs during the pass (33,757 → 33,867), so
+the totals moved under it.
+
+**Actions**, each with `set_song_genre(mode: replace)` after reading the song's full genre list:
+
+| Artist | Songs | From | To | Evidence |
+| --- | --- | --- | --- | --- |
+| Black Coffee | 25 | `[Dance]` | `House; Dance` | sibling albums, earlier in the day |
+| Purple Disco Machine, *Paradise* (2024) | 17 | `[Dance]` | `Nu Disco; Dance` | reviews and the label's own copy call the album nu-disco; store pages say only "Dance" |
+| Daft Punk, Marian (BR), Ramon Bedoya, Moderat | 4 | one catch-all each | House, Tech House, Tech House, Idm | two or more other albums by the artist agree |
+
+**Delta on `genres.lowInformation`:** 262 → 237 after Black Coffee, → 220 after Purple Disco Machine
+(read back: the artist left the worklist). After the last four the lanes' own count fell 24 → 20;
+`lowInformation` read 223 because new songs had landed meanwhile.
+
+**The no-model lanes, measured** (details in [genre-lanes.md](../genre-lanes.md)): 0 of 196
+genre-less songs; 24 catch-all-only songs, of which 4 to 5 were right when checked by hand. The
+writer for them is not being built.
+
+**Left alone, with the reason:**
+
+- Chet Faker (16, `Electronic`): his two later albums are tagged Soul; the 2012 and 2014 records
+  are electronic soul. Soul alone is a judgement call.
+- Nicolas Jaar (19, `Electronic`): his albums are tagged Downtempo, Ambient and Electro. No one
+  answer.
+- David Guetta (35, `Dance`): two decades across several styles; "Dance" is not wrong.
+- Tiësto (2, `Dance`): 2020s pop-dance singles. The lane suggested Trance, which is wrong.
+

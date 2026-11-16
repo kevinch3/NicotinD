@@ -60,7 +60,35 @@ genre-less residue is what every automated lane already failed on, so "all the a
 agree" has nothing to add there. That is why the candidates were widened to catch-all-only songs
 (237 on that date), which is the population #1123 is about.
 
-## Before this may write
+Second version (also catch-all-only songs), read the same day after the deploy:
+
+| | Songs |
+| --- | --- |
+| `title` | 0 |
+| `siblings` | 24, across 8 artists, every one a catch-all-only song |
+
+All 24 were checked by hand:
+
+| Verdict | Songs | Which |
+| --- | --- | --- |
+| Right | 4 | Daft Punk *WDPK 83.7 FM* → House; Marian (BR) → Tech House; Ramon Bedoya → Tech House; Moderat → Idm |
+| Right answer, wrong reason | 1 | *Sweet Love* by Luca M/JUST2, tagged from the albums of the DJ whose mix it sits on |
+| Doubtful | 16 | Chet Faker's 2012 and 2014 records → Soul, because his two later albums are tagged Soul |
+| Wrong | 3 | Tiësto's 2020s pop-dance singles → Trance (seven older albums agree); a David Guetta remix of a RAYE song → Pop |
+
+Four to five clearly right out of 24. The three wrong ones are the same failure: an artist's older
+albums agree on a style the newer song does not have, and "all the albums agree" cannot see a
+change of direction. The mix case shows a second gap: the lane reads the artist the *row* is filed
+under, which on a DJ mix is not the artist who made the track.
+
+**Decision: the task that applies the lanes is not built.** The title lane finds nothing in this
+library and the sibling lane is wrong too often to write without a person. The four right answers
+were written by hand through `set_song_genre(mode: replace)` and read back (the lane's count went
+from 24 to 20). The measurement stays in the health report as a worklist of suggestions a curator
+can accept or reject one by one.
+
+## If this is ever reconsidered
+
 
 1. Read the counts on prod.
 2. Check a sample by hand, per lane. The sibling lane is the one to distrust: an artist whose
