@@ -521,6 +521,21 @@ first.
 Read it with `get_library_health({ dimensions: ["audit"] })` → `audit.artistTagYield`. Nothing acts
 on it.
 
+**Measured on prod, 2026-11-16** (33,996 songs, 8,979 distinct column and value pairs):
+
+| | Distinct values | Songs |
+| --- | --- | --- |
+| Would change | 27 | 28 |
+| Would be dropped | 0 | 0 |
+
+What the 27 are, from the sample of 25: about fourteen differ only by a trailing space or an
+invisible U+FEFF (`Guasones` with a byte-order mark after it), about nine lose a featuring suffix
+(`Lali Ft. Dillom` → `Lali`), and one was a **defect in the sanitizer**: `&ME` → `ME` (#1994, fixed).
+
+So a scan-path sanitizer would re-mint ids for 28 songs out of 33,996. The change #864 was afraid
+to size is small, and most of what it would fix can be fixed by retagging those files instead,
+with no id churn at all.
+
 ## Prevention (so new patterns can't recur)
 - `sanitizeArtistTag` / `sanitizeAlbumTag` (`library-organizer.ts`) now reject
   `looksLikeSourceWatermark` values at ingest, so a watermark never mints an artist/album.
@@ -528,6 +543,9 @@ on it.
   bracketed (`[99] `, `(07) `), the way DJ-pool uploads number their tracks (#866,
   `stripTrackPrefix`). Round brackets take at most two digits, so `(500) Days of Summer` stays
   a name. A value that is only an index (`[99]`) is dropped (`isTrackNumberFragment`).
+- A leading `&` or `+` is stripped from an artist tag only when no name starts right after it
+  (`stripArtistLeadJunk`): `& Peter Tosh` is a truncated credit, `&ME` and `+44` are whole names
+  (#1994, found by the `artistTagYield` measurement).
 - `cleanDisplayTitle` (`services/title-clean.ts`, issue #722) strips YouTube junk —
   "(Official Video)", "(Audio Oficial)", "[Lyric Video]" — from the title and album tags in
   `readWithFallback` before landing, whole-segment conservative so "(Remix)"/"(En Vivo)" survive.
