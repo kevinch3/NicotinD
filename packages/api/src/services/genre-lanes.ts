@@ -95,6 +95,8 @@ export function titleDeclaredGenres(
 export function agreedSiblingGenre(
   albums: ReadonlyMap<string, ReadonlyMap<string, number>>,
   excludeAlbumId: string | null,
+  /** Genres that are no evidence either way; the catch-alls unless told otherwise. */
+  ignore: ReadonlySet<string> = LOW_INFORMATION_GENRES,
 ): { genreKey: string; albums: number } | null {
   let agreed: string | null = null;
   let counted = 0;
@@ -108,7 +110,7 @@ export function agreedSiblingGenre(
       if (n > topN) [top, topN] = [g, n];
     }
     if (!total || topN / total < GENRE_LANE_RULES.siblingAlbumShare) continue;
-    if (LOW_INFORMATION_GENRES.has(top)) continue;
+    if (ignore.has(top)) continue;
     if (agreed !== null && agreed !== top) return null;
     agreed = top;
     counted++;
@@ -221,4 +223,97 @@ export function genreLaneReport(db: Database, sample: number): GenreLaneReport {
   const titles = all.filter((c) => c.lane === 'title').slice(0, Math.ceil(sample / 2));
   const siblings = all.filter((c) => c.lane === 'siblings').slice(0, sample - titles.length);
   return { counts, byNeed, siblingArtists: artists.size, sample: [...titles, ...siblings] };
+}
+
+/**
+ * The umbrella genres #1123 measured: true of a song and no help in placing it.
+ * Wider than {@link LOW_INFORMATION_GENRES}, which is only the two an
+ * unattended token may replace.
+ */
+export const UMBRELLA_GENRES: ReadonlySet<string> = new Set([
+  'pop',
+  'rock',
+  'latin',
+  'electronic',
+  'dance',
+  'singer-songwriter',
+  'pop rock',
+  'world',
+  'funk',
+  'r&b',
+  'soul',
+]);
+
+export interface UmbrellaReach {
+  /** Songs whose whole genre list is one umbrella genre. */
+  umbrellaOnly: number;
+  /** Of those, songs whose artist has two or more other albums agreeing on a specific genre. */
+  reachable: number;
+  /** Distinct artists behind the reachable songs. */
+  reachableArtists: number;
+  byUmbrella: { genre: string; songs: number; reachable: number }[];
+}
+
+/**
+ * How much of the umbrella-only population an artist's own catalogue could
+ * resolve (#1123, step 2). Read-only. "Reachable" uses the sibling rule of the
+ * lanes, with every umbrella ignored as evidence; it says a suggestion exists,
+ * not that it is right (see docs/genre-lanes.md for how often it was).
+ */
+export function umbrellaReach(db: Database): UmbrellaReach {
+  const list = [...UMBRELLA_GENRES].map((g) => `'${g.replace(/'/g, "''")}'`).join(', ');
+  const songs = db
+    .query<{ artist_id: string; album_id: string | null; genre: string }, []>(
+      `SELECT s.artist_id, s.album_id, LOWER(TRIM(MIN(g.genre))) AS genre
+         FROM library_songs s
+         JOIN library_song_genres g ON g.song_id = s.id
+        GROUP BY s.id
+       HAVING COUNT(*) = 1 AND LOWER(TRIM(MIN(g.genre))) IN (${list})`,
+    )
+    .all();
+  const byArtist = new Map<string, Map<string, Map<string, number>>>();
+  for (const r of db
+    .query<{ artist_id: string; album_id: string; genre: string; n: number }, []>(
+      `SELECT s.artist_id, s.album_id, s.genre, COUNT(*) AS n
+         FROM library_songs s
+        WHERE s.album_id IS NOT NULL AND NOT ${unresolvedGenreSql('s.genre')}
+        GROUP BY s.artist_id, s.album_id, s.genre`,
+    )
+    .all()) {
+    const k = genreKey(r.genre);
+    if (!k) continue;
+    let albums = byArtist.get(r.artist_id);
+    if (!albums) byArtist.set(r.artist_id, (albums = new Map()));
+    let genres = albums.get(r.album_id);
+    if (!genres) albums.set(r.album_id, (genres = new Map()));
+    genres.set(k, (genres.get(k) ?? 0) + r.n);
+  }
+  const tally = new Map<string, { songs: number; reachable: number }>();
+  const artists = new Set<string>();
+  const answer = new Map<string, boolean>();
+  let reachable = 0;
+  for (const s of songs) {
+    const t = tally.get(s.genre) ?? { songs: 0, reachable: 0 };
+    tally.set(s.genre, t);
+    t.songs++;
+    const key = `${s.artist_id}\u0000${s.album_id ?? ''}`;
+    let ok = answer.get(key);
+    if (ok === undefined) {
+      const albums = byArtist.get(s.artist_id);
+      ok = !!albums && agreedSiblingGenre(albums, s.album_id, UMBRELLA_GENRES) !== null;
+      answer.set(key, ok);
+    }
+    if (!ok) continue;
+    t.reachable++;
+    reachable++;
+    artists.add(s.artist_id);
+  }
+  return {
+    umbrellaOnly: songs.length,
+    reachable,
+    reachableArtists: artists.size,
+    byUmbrella: [...tally.entries()]
+      .map(([genre, t]) => ({ genre, ...t }))
+      .sort((a, b) => b.songs - a.songs || a.genre.localeCompare(b.genre)),
+  };
 }

@@ -97,3 +97,18 @@ can accept or reject one by one.
 3. Only then add the enrichment task that applies them, off by default, writing through the same
    durable override `set_song_genre(mode: replace)` uses and logged as an agent run so it can be
    reverted (`agent-runs.ts`).
+
+## Umbrella-only songs, and what an artist's own catalogue could resolve (#1123)
+
+`umbrellaReach` answers the second step of #1123 with the wider umbrella list that issue measured
+(`UMBRELLA_GENRES`: Pop, Rock, Latin, Electronic, Dance, Singer-Songwriter, Pop Rock, World, Funk,
+R&B, Soul), not only the two catch-alls an unattended token may replace.
+
+- `umbrellaOnly`: songs whose whole genre list is one of those.
+- `reachable`: of them, songs whose artist has two or more **other** albums agreeing on a specific
+  genre, with every umbrella-dominated album ignored as evidence.
+- `byUmbrella`: both numbers per umbrella.
+
+Read it at `get_library_health({ dimensions: ["genres"] })` → `genres.umbrellaReach`. "Reachable"
+means a suggestion exists. The hand-check above is how often such a suggestion was right.
+

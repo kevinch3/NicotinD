@@ -6,6 +6,7 @@ import {
   genreLaneCandidates,
   genreLaneReport,
   titleDeclaredGenres,
+  umbrellaReach,
 } from './genre-lanes.js';
 
 const VOCAB = new Map([
@@ -213,5 +214,37 @@ describe('genreLaneCandidates', () => {
     expect(report.byNeed).toEqual({ missing: 6, 'catch-all': 0 });
     expect(report.siblingArtists).toBe(1);
     expect(report.sample.map((c) => c.lane)).toEqual(['title', 'siblings', 'siblings', 'siblings']);
+  });
+
+  // #1123 step 2: the wider umbrella list, and what the artist's own catalogue could resolve.
+  it('counts umbrella-only songs and how many have two agreeing albums behind them', () => {
+    const tag = (id: string, ...genres: string[]) =>
+      genres.forEach((g, i) =>
+        db.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, ?, ?)`, [
+          id,
+          g,
+          i,
+        ]),
+      );
+    artist('noch', 'Los Nocheros');
+    for (const al of ['n1', 'n2']) tag(song('noch', al, `f${al}`, 'Folclore'), 'Folclore');
+    // An album tagged only with an umbrella is not evidence against Folclore.
+    tag(song('noch', 'n4', 'pop one', 'Pop'), 'Pop');
+    tag(song('noch', 'n3', 'bare latin 1', 'Latin'), 'Latin');
+    tag(song('noch', 'n3', 'bare latin 2', 'Latin'), 'Latin');
+    // An umbrella beside a specific genre is not umbrella-only.
+    tag(song('noch', 'n3', 'both', 'Latin'), 'Latin', 'Chacarera');
+    artist('solo', 'One Album');
+    tag(song('solo', 's1', 'rock alone', 'Rock'), 'Rock');
+
+    const reach = umbrellaReach(db);
+    expect(reach.umbrellaOnly).toBe(4);
+    expect(reach.reachable).toBe(3);
+    expect(reach.reachableArtists).toBe(1);
+    expect(reach.byUmbrella).toEqual([
+      { genre: 'latin', songs: 2, reachable: 2 },
+      { genre: 'pop', songs: 1, reachable: 1 },
+      { genre: 'rock', songs: 1, reachable: 0 },
+    ]);
   });
 });

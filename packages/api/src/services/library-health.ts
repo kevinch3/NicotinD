@@ -16,7 +16,12 @@ import { folderArtBelongsToAlbum } from './album-folder.js';
 import { findFolderCoverName } from './cover-sources.js';
 import { losslessSuffixSql } from './library-track-select.js';
 import { lowInformationOnlyGenreSql, unresolvedGenreSql } from './genre-split.js';
-import { genreLaneReport, type GenreLaneReport } from './genre-lanes.js';
+import {
+  genreLaneReport,
+  umbrellaReach,
+  type GenreLaneReport,
+  type UmbrellaReach,
+} from './genre-lanes.js';
 import { artistTagYield, type ArtistTagYield } from './artist-tag-yield.js';
 import { countOpenCurationFlags } from './curation-flags.js';
 import { jointCreditFacts, type JointCreditFacts } from './joint-credits.js';
@@ -224,6 +229,8 @@ export interface LibraryHealthReport {
        * A measurement: nothing applies these yet.
        */
       deterministicLanes: GenreLaneReport;
+      /** Umbrella-only songs and how many an artist's own catalogue could resolve (#1123). */
+      umbrellaReach: UmbrellaReach;
       remediation: string;
     };
     years: {
@@ -874,6 +881,7 @@ export function libraryHealth(
           songs: r.songs,
         })),
         deterministicLanes: genreLaneReport(db, sample),
+        umbrellaReach: umbrellaReach(db),
         remediation:
           'genre → genre-discogs → genre-audio enrichment chain; residuals via set_song_genre. ' +
           'lowInformation is per-ARTIST work: one subgenre judgement for an artist whose subgenre ' +
