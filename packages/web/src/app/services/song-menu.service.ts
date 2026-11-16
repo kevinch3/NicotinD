@@ -20,7 +20,12 @@ import {
   addToPlaylistAction,
   type BaseSong,
 } from '../lib/track-utils';
+import { SearchService } from './search.service';
+import type { NotOwnedRelatedArtist } from './api/api-types';
 import type { TrackAction } from '../components/track-row/track-row.component';
+
+/** How many not-owned artists Similar artists ▸ lists. */
+export const SIMILAR_ARTISTS_SHOWN = 5;
 
 export interface SongContext {
   /** Suppress "Go to artist" (e.g. on the artist page — redundant there). */
@@ -47,6 +52,7 @@ export class SongMenuService {
   private readonly offline = inject(OfflineModeService).isOffline;
   private readonly auth = inject(AuthService);
   private readonly api = inject(LibraryApiService);
+  private readonly acquireSearch = inject(SearchService);
   private readonly transfers = inject(TransferService);
   private readonly trackInfo = inject(TrackInfoService);
   private readonly confirm = inject(ConfirmService);
@@ -200,24 +206,44 @@ export class SongMenuService {
     if (this.auth.canAcquire() && song.artistId && !ctx.hideGoToArtist && !this.offline()) {
       const primary = song.artists?.find((a) => a.role === 'primary');
       const artistName = primary?.name ?? song.artist;
+      const artistId = primary?.id ?? song.artistId;
       actions.push({
         label: 'Get more',
         labelKey: 'song.getMore',
         icon: 'download',
         group: 'role',
         action: () => {},
-        children: () => [
-          {
-            // The artist page opens on its discography, where the albums the
-            // library lacks are already marked.
-            label: 'More by this artist',
-            labelKey: 'song.moreByArtist',
-            labelParams: { artist: artistName },
-            icon: 'user',
-            action: () =>
-              void this.router.navigate(resolveArtistRoute(primary?.id ?? song.artistId)),
-          },
-        ],
+        children: async () => {
+          const similar = await this.similarNotOwned(artistId);
+          return [
+            {
+              // The artist page opens on its discography, where the albums the
+              // library lacks are already marked.
+              label: 'More by this artist',
+              labelKey: 'song.moreByArtist',
+              labelParams: { artist: artistName },
+              icon: 'user' as const,
+              action: () => void this.router.navigate(resolveArtistRoute(artistId)),
+            },
+            // Artists close to this one that the library does not have (#2015).
+            ...(similar.length > 0
+              ? [
+                  {
+                    label: 'Similar artists',
+                    labelKey: 'song.similarArtists',
+                    icon: 'radio' as const,
+                    action: () => {},
+                    children: () =>
+                      similar.map((artist) => ({
+                        label: artist.name,
+                        icon: 'search' as const,
+                        action: () => this.findOnGet(artist.name),
+                      })),
+                  },
+                ]
+              : []),
+          ];
+        },
       });
     }
 
@@ -284,6 +310,31 @@ export class SongMenuService {
     if (ctx.extraActions?.length) actions.push(...ctx.extraActions);
 
     return actions;
+  }
+
+  private readonly similar = new Map<string, Promise<NotOwnedRelatedArtist[]>>();
+  /**
+   * Up to `SIMILAR_ARTISTS_SHOWN` related artists the library lacks, asked
+   * once per artist. None when no source knows the artist, or on a failure:
+   * the menu then simply has no Similar artists item.
+   */
+  private similarNotOwned(artistId: string): Promise<NotOwnedRelatedArtist[]> {
+    let pending = this.similar.get(artistId);
+    if (!pending) {
+      pending = firstValueFrom(this.api.getRelatedArtists(artistId)).then(
+        (r) => (r.reason === 'no-signal' ? [] : (r.notOwned ?? []).slice(0, SIMILAR_ARTISTS_SHOWN)),
+        () => [],
+      );
+      this.similar.set(artistId, pending);
+    }
+    return pending;
+  }
+
+  /** Open Get → Add with the name in its search box, as the artist page's Find does (#1663). */
+  private findOnGet(name: string): void {
+    if (this.acquireSearch.query() !== name) this.acquireSearch.resetResults();
+    this.acquireSearch.setQuery(name);
+    void this.router.navigate(['/get'], { queryParams: { tab: 'add' } });
   }
 
   private identify?: Promise<boolean>;

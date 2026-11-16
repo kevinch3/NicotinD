@@ -43,6 +43,9 @@ hand-over Library Find uses (#1663); nothing is searched or fetched until the us
 The sample of 2026-11-09 had about 55 not-owned related artists per answered artist, so the cap is
 what keeps this a short row.
 
+The song menu lists the first five under **Get more ▸ Similar artists ▸** for the song's primary
+artist, with the same hand-off ([song-actions.md](song-actions.md), #2015).
+
 ## Stated relationships (MusicBrainz)
 
 Similarity says two artists share listeners. A relationship is a fact MusicBrainz records: this
