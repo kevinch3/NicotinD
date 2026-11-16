@@ -5,7 +5,7 @@
           @if (!dirs() && !loading()) {
             <button
               (click)="loadBrowse()"
-              class="px-2 py-0.5 rounded text-[11px] text-theme-secondary hover:text-theme-primary border border-theme transition">
+              class="px-2 py-0.5 rounded-lg text-[11px] text-theme-secondary hover:text-theme-primary border border-theme transition">
               Load full tree
             </button>
           }
@@ -49,7 +49,7 @@
           @if (dirs()) {
             @for (child of mobileChildren(); track child.fullPath) {
               <button (click)="selected.set(child.fullPath)"
-                class="w-full text-left flex items-center justify-between px-2 py-1.5 rounded text-xs text-theme-secondary hover:bg-theme-hover hover:text-theme-primary">
+                class="w-full text-left flex items-center justify-between px-2 py-1.5 rounded-lg text-xs text-theme-secondary hover:bg-theme-hover hover:text-theme-primary">
                 <span appOverflowReveal class="flex items-center gap-1.5 truncate">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" class="shrink-0 text-theme-muted">
                     <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
@@ -73,7 +73,7 @@
                   <button
                     (click)="downloadTrack.emit({ username: username(), file: { filename: file.filename, size: file.size } })"
                     [disabled]="fileBtnState(file).disabled"
-                    [class]="'px-1.5 py-0.5 rounded transition ' + btnClasses[fileBtnState(file).variant] + (fileBtnState(file).disabled ? ' cursor-default' : '')">
+                    [class]="'px-1.5 py-0.5 rounded-lg transition ' + btnClasses[fileBtnState(file).variant] + (fileBtnState(file).disabled ? ' cursor-default' : '')">
                     {{ fileBtnState(file).label }}
                   </button>
                 </div>
@@ -100,7 +100,7 @@
                 <button
                   (click)="loadBrowse()"
                   [disabled]="loading()"
-                  class="w-full px-2 py-1 rounded text-[11px] border border-theme text-theme-secondary hover:text-theme-primary transition disabled:opacity-50">
+                  class="w-full px-2 py-1 rounded-lg text-[11px] border border-theme text-theme-secondary hover:text-theme-primary transition disabled:opacity-50">
                   {{ loading() ? 'Loading…' : 'Load full tree' }}
                 </button>
               </div>
@@ -122,7 +122,7 @@
               <button
                 (click)="handleDownloadAll()"
                 [disabled]="folderBtnState().disabled || validDirectFiles().length === 0"
-                [class]="'px-2 py-0.5 rounded text-[11px] font-medium transition ' + btnClasses[folderBtnState().variant] + (folderBtnState().disabled ? ' cursor-default' : '')">
+                [class]="'px-2 py-0.5 rounded-lg text-[11px] font-medium transition ' + btnClasses[folderBtnState().variant] + (folderBtnState().disabled ? ' cursor-default' : '')">
                 {{ folderBtnDisplayLabel() }}
               </button>
             </div>
@@ -140,7 +140,7 @@
                     <button
                       (click)="downloadTrack.emit({ username: username(), file: { filename: file.filename, size: file.size } })"
                       [disabled]="fileBtnState(file).disabled"
-                      [class]="'px-1.5 py-0.5 rounded transition ' + btnClasses[fileBtnState(file).variant] + (fileBtnState(file).disabled ? ' cursor-default' : '')">
+                      [class]="'px-1.5 py-0.5 rounded-lg transition ' + btnClasses[fileBtnState(file).variant] + (fileBtnState(file).disabled ? ' cursor-default' : '')">
                       {{ fileBtnState(file).label }}
                     </button>
                   </div>

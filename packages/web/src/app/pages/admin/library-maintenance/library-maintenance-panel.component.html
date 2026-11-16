@@ -221,7 +221,7 @@
                           data-testid="fragments-merge-spelling"
                           [disabled]="fragmentsBusy()"
                           (click)="mergeDuplicateCluster(c, s.name)"
-                          class="px-1.5 py-0.5 rounded bg-theme-surface border border-theme text-[11px] text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
+                          class="px-1.5 py-0.5 rounded-lg bg-theme-surface border border-theme text-[11px] text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
                           [title]="'admin.fragmentsMergeIntoTooltip' | t: { name: s.name }"
                         >
                           {{ 'admin.fragmentsMergeInto' | t: { name: s.name } }}
@@ -267,7 +267,7 @@
                         data-testid="fragments-reclassify"
                         [disabled]="fragmentsBusy()"
                         (click)="reclassifyFragmentRow(h)"
-                        class="px-1.5 py-0.5 rounded bg-theme-surface border border-theme text-[11px] text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
+                        class="px-1.5 py-0.5 rounded-lg bg-theme-surface border border-theme text-[11px] text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
                       >
                         {{ 'admin.fragmentsReclassify' | t }}
                       </button>
@@ -277,7 +277,7 @@
                           data-testid="fragments-unhide"
                           [disabled]="fragmentsBusy()"
                           (click)="unhideFragmentRow(h)"
-                          class="px-1.5 py-0.5 rounded bg-theme-surface border border-theme text-[11px] text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
+                          class="px-1.5 py-0.5 rounded-lg bg-theme-surface border border-theme text-[11px] text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
                         >
                           {{ 'admin.fragmentsUnhide' | t }}
                         </button>
@@ -287,7 +287,7 @@
                         data-testid="fragments-delete"
                         [disabled]="fragmentsBusy()"
                         (click)="deleteFragmentRow(h)"
-                        class="px-1.5 py-0.5 rounded border border-theme text-[11px] transition disabled:opacity-40"
+                        class="px-1.5 py-0.5 rounded-lg border border-theme text-[11px] transition disabled:opacity-40"
                         [class]="
                           fragmentsDeleteArmed() === h.albumId
                             ? 'status-error'
@@ -321,7 +321,7 @@
                       data-testid="fragments-missplit-open"
                       [disabled]="fragmentsBusy()"
                       (click)="openMissplit(f)"
-                      class="ml-2 px-1.5 py-0.5 rounded bg-theme-surface border border-theme text-[11px] text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
+                      class="ml-2 px-1.5 py-0.5 rounded-lg bg-theme-surface border border-theme text-[11px] text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
                     >
                       {{ 'admin.missplitOpen' | t }}
                     </button>

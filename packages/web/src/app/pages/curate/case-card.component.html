@@ -22,7 +22,7 @@
             <div class="flex gap-2">
               <button
                 type="button"
-                class="rounded border border-red-900/50 px-3 py-2 text-status-error"
+                class="rounded-lg border border-red-900/50 px-3 py-2 text-status-error"
                 data-testid="case-confirm-yes"
                 [disabled]="busy()"
                 (click)="pick(o)"
@@ -31,7 +31,7 @@
               </button>
               <button
                 type="button"
-                class="rounded border border-theme px-3 py-2"
+                class="rounded-lg border border-theme px-3 py-2"
                 data-testid="case-confirm-no"
                 [disabled]="busy()"
                 (click)="cancelConfirm()"
@@ -43,7 +43,7 @@
         } @else {
           <button
             type="button"
-            class="rounded border px-3 py-2 text-left
+            class="rounded-lg border px-3 py-2 text-left
                    {{ o.destructive ? 'border-red-900/50 text-status-error' : isFallback(o) ? 'border-transparent text-theme-secondary' : 'border-theme' }}"
             data-testid="case-option"
             [attr.data-destructive]="o.destructive ? 'true' : null"
