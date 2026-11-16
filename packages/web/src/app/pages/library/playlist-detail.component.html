@@ -11,12 +11,12 @@
       <div class="min-w-0 flex-1">
         @if (isCurated()) {
           <p data-testid="curated-badge"
-            class="text-[11px] font-semibold uppercase tracking-wide text-theme-muted mb-1">
+            class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-1">
             Curated playlist
           </p>
         } @else if (isLiked()) {
           <p data-testid="liked-badge"
-            class="text-[11px] font-semibold uppercase tracking-wide text-rose-500 mb-1">
+            class="text-xs font-semibold uppercase tracking-wide text-rose-500 mb-1">
             Liked songs
           </p>
         }

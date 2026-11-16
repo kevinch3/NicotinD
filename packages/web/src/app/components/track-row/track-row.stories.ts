@@ -74,6 +74,11 @@ export const Offline: Story = {
   args: { offline: true, showLike: false },
 };
 
+/** No cover: the badge sits on the index cell instead (#1654). */
+export const OfflineWithoutCover: Story = {
+  args: { offline: true, showLike: false, showCover: false, indexLabel: 7 },
+};
+
 export const WithActions: Story = {
   args: {
     showRemove: true,

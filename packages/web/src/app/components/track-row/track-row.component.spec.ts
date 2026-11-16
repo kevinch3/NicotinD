@@ -324,3 +324,81 @@ describe('TrackRowComponent — entity menu doors', () => {
     });
   });
 });
+
+// Density decisions of #1654: the offline marker costs the title no width, and a
+// phone has no per-row play button.
+describe('TrackRowComponent — density (#1654)', () => {
+  function setup(showCover: boolean, offline: boolean) {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [TrackRowComponent],
+      providers: [
+        PlayerService,
+        provideRouter([{ path: '**', children: [] }]),
+        {
+          provide: AuthService,
+          useValue: { token: signal('test-token'), mediaToken: signal('test-token') },
+        },
+        { provide: ServerConfigService, useValue: { apiUrl: (u: string) => u } },
+        { provide: LikeService, useValue: { isLiked: () => false, toggle: () => {} } },
+      ],
+    });
+    const fixture = TestBed.createComponent(TrackRowComponent);
+    setInputValue(fixture.componentInstance.track, ROW_TRACK);
+    setInputValue(fixture.componentInstance.indexLabel, 3);
+    setInputValue(fixture.componentInstance.showCover, showCover);
+    setInputValue(fixture.componentInstance.offline, offline);
+    fixture.detectChanges();
+    const row = fixture.nativeElement.querySelector('[data-testid="track-row"]') as HTMLElement;
+    const badges = () => [
+      ...row.querySelectorAll<HTMLElement>('[data-testid="track-row-offline"]'),
+    ];
+    return { row, badges };
+  }
+
+  it('overlays the offline badge on the cover, outside the row flow', () => {
+    const { row, badges } = setup(true, true);
+    expect(badges()).toHaveLength(1);
+    const badge = badges()[0];
+    expect(badge.parentElement?.querySelector('app-cover-art')).not.toBeNull();
+    expect(badge.classList.contains('absolute')).toBe(true);
+    expect(badge.parentElement?.parentElement).toBe(row);
+    expect([...row.children]).not.toContain(badge);
+  });
+
+  it('overlays the badge on the index cell when the row has no cover', () => {
+    const { row, badges } = setup(false, true);
+    expect(badges()).toHaveLength(1);
+    expect(row.querySelector('app-cover-art')).toBeNull();
+    expect(badges()[0].classList.contains('absolute')).toBe(true);
+    expect(badges()[0].parentElement).toBe(row.firstElementChild);
+  });
+
+  it('names the badge for assistive tech and draws a glyph, not colour alone', () => {
+    const badge = setup(true, true).badges()[0];
+    expect(badge.getAttribute('role')).toBe('img');
+    expect(badge.getAttribute('aria-label')).toBeTruthy();
+    expect(badge.getAttribute('title')).toBe(badge.getAttribute('aria-label'));
+    expect(badge.querySelector('svg')).not.toBeNull();
+  });
+
+  it('renders no badge for a track that is not saved offline', () => {
+    expect(setup(true, false).badges()).toHaveLength(0);
+    expect(setup(false, false).badges()).toHaveLength(0);
+  });
+
+  it('hides the per-row play button below md and keeps it from md up', () => {
+    const play = setup(true, false).row.querySelector<HTMLElement>(
+      '[data-testid="track-row-play"]',
+    )!;
+    expect(play.classList.contains('hidden')).toBe(true);
+    expect(play.classList.contains('md:block')).toBe(true);
+  });
+
+  it('keeps title and subtitle at the 14px / 12px floor', () => {
+    TestBed.resetTestingModule();
+    const { row } = setup(true, false);
+    const title = row.querySelector('[data-testid="track-row-title"] p')!;
+    expect(title.classList.contains('text-sm')).toBe(true);
+  });
+});

@@ -12,7 +12,7 @@
       <p appOverflowReveal class="truncate text-sm text-theme-primary">{{ title() }}</p>
       @if (transcodeKbps()) {
         <span
-          class="shrink-0 text-[10px] uppercase tracking-wide text-status-done"
+          class="shrink-0 text-xs uppercase tracking-wide text-status-done"
           [title]="'acquire.losslessOpusTooltip' | t"
           data-testid="transcode-chip"
         >

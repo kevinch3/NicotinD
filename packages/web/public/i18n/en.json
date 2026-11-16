@@ -1256,6 +1256,7 @@
   "song.removeFromLibrary": "Remove from library",
   "song.removeFromPlaylist": "Remove from playlist",
   "song.saveOffline": "Save offline",
+  "song.savedOffline": "Saved offline",
   "song.savingOffline": "Saving…",
   "song.startRadio": "Start radio",
   "song.unlike": "Unlike",

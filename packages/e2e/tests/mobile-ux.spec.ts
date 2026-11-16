@@ -16,6 +16,8 @@ import {
  * Desktop Chrome.
  */
 const PHONE = { width: 412, height: 915 }; // Pixel 7
+/** Title width over row width. Measured 0.57 at 375px after #1654; the floor leaves headroom. */
+const TITLE_SHARE = 0.5;
 
 async function openAlbum(page: Page): Promise<void> {
   await page.goto('/library');
@@ -93,6 +95,23 @@ test.describe('mobile UX', () => {
   // stopped following the viewport bottom and floated mid-screen over the content).
   // The shell now scrolls inside <main>, so the document itself must never scroll
   // and the bottom chrome must stay pinned to the viewport bottom while it does.
+  // #1654: the title column is what a phone row is for. No per-row play button
+  // (the row tap plays), and the controls that remain leave the title its room.
+  test('a track row gives its title most of a 375px row', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await openAlbum(page);
+    const rows = page.getByTestId('track-row');
+    await expect(rows.first()).toBeVisible();
+    expect(await rows.count(), 'rows measured').toBe(FIXTURE.album.trackCount);
+    await expect(page.getByTestId('track-row-play').first()).toBeHidden();
+    await expect(page.getByTestId('track-row-menu-toggle').first()).toBeVisible();
+    for (const row of await rows.all()) {
+      const rowBox = (await row.boundingBox())!;
+      const titleBox = (await row.getByTestId('track-row-title').boundingBox())!;
+      expect(titleBox.width / rowBox.width, 'title share of the row').toBeGreaterThan(TITLE_SHARE);
+    }
+  });
+
   test('scrolling a long page leaves the player and tab bar pinned to the bottom', async ({
     page,
   }) => {
