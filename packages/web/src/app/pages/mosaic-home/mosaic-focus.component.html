@@ -15,7 +15,7 @@
       class="mosaic-focus-more"
       data-testid="mosaic-focus-more"
       [attr.aria-label]="'mosaic.focus.more' | t"
-      (click)="more.emit(moreButton)"
+      (click)="$event.stopPropagation(); more.emit(moreButton)"
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
         <circle cx="5" cy="12" r="2" />

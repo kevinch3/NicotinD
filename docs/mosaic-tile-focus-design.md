@@ -1,6 +1,6 @@
 # Mosaic tiles: tap to centre, then play, and zoom — design
 
-Status: **accepted, in progress** (2026-11-16): focus is #2019, zoom is #2020. Mock reviewed and
+Status: **focus shipped** (#2019); **zoom pending** (#2020). Mock reviewed and
 liked by the owner:
 <https://claude.ai/artifact/Sj9fHLNHuCoD9bLujQzruS> (private; placeholder music, no fisheye).
 

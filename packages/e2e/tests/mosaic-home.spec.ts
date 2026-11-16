@@ -1,9 +1,43 @@
+import type { Page } from '@playwright/test';
 import { test, expect, vibesPlayable } from '../helpers';
 
 /**
+ * The centre of a resting pooled tile of one kind that is fully on screen and
+ * whose centre hit-tests to it (the home-view switch overlays the stage's corner).
+ * `pick` chooses among the candidates: the first, or the smallest.
+ */
+async function restingTile(
+  page: Page,
+  kind: string,
+  pick: 'first' | 'smallest' = 'first',
+): Promise<{ x: number; y: number }> {
+  const tiles = page.locator(`[data-testid="mosaic-tile"][data-tile-kind="${kind}"]`);
+  await expect(tiles.first()).toBeVisible({ timeout: 10_000 });
+  const target = await tiles.evaluateAll((els, smallest) => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let best: { x: number; y: number; w: number } | null = null;
+    for (const el of els) {
+      const r = el.getBoundingClientRect();
+      if (r.x < 0 || r.y < 0 || r.right > vw || r.bottom > vh - 140) continue;
+      const cx = r.x + r.width / 2;
+      const cy = r.y + r.height / 2;
+      if (document.elementFromPoint(cx, cy)?.closest('[data-testid="mosaic-tile"]') !== el)
+        continue;
+      if (!best || (smallest && r.width < best.w)) best = { x: cx, y: cy, w: r.width };
+      if (!smallest) break;
+    }
+    return best;
+  }, pick === 'smallest');
+  expect(target, `a resting ${kind} tile on screen`).not.toBeNull();
+  return target!;
+}
+
+/**
  * The post-login landing (route '') is the mosaic: an infinite pannable field of
- * tiles drawn from every landing source, where every tile starts a radio. The
- * shelf-based landing it replaced lives on at /classic.
+ * tiles drawn from every landing source. A tap brings a tile forward; only the
+ * tile brought forward can start a radio (#2019). The shelf-based landing it
+ * replaced lives on at /classic.
  *
  * The pooled tiles inside the stage are created by the render loop, not by
  * Angular, and are recycled as they cross the lens — so anything order- or
@@ -110,6 +144,43 @@ test.describe('mosaic home', () => {
     await expect(rim).toHaveCSS('visibility', 'visible');
   });
 
+  test('a click brings a tile forward with its Play and ⋯, and Escape lets it go (#2019)', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const title = page.getByTestId('player-title');
+    const target = await restingTile(page, 'song');
+    const before = await title.textContent();
+    await page.mouse.click(target.x, target.y);
+
+    const focus = page.getByTestId('mosaic-focus');
+    await expect(focus).toBeVisible();
+    await expect(page.getByTestId('mosaic-focus-play')).toBeFocused();
+    await expect(page.getByTestId('mosaic-focus-more')).toBeVisible();
+    // A song lists nothing; only a playlist, genre or vibe says what it starts with.
+    await expect(page.getByTestId('mosaic-focus-preview')).toHaveCount(0);
+    expect(await title.textContent()).toBe(before);
+
+    await page.keyboard.press('Escape');
+    await expect(focus).toHaveCount(0);
+    expect(await title.textContent()).toBe(before);
+  });
+
+  test('a vibe brought forward says when nothing matches, and cannot be played (#2019)', async ({
+    page,
+  }) => {
+    // Offered (the probe is answered), yet the radio finds nothing — the notice
+    // now sits where the tracks would be, before anything is pressed.
+    await vibesPlayable(page);
+    await page.goto('/');
+    const target = await restingTile(page, 'vibe');
+    await page.mouse.click(target.x, target.y);
+
+    await expect(page.getByTestId('mosaic-focus-tag')).toBeVisible();
+    await expect(page.getByTestId('mosaic-focus-empty')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('mosaic-focus-play')).toBeDisabled();
+  });
+
   test('holding a song tile opens its menu instead of starting a radio, and Song info is in it', async ({
     page,
   }) => {
@@ -205,35 +276,24 @@ test.describe('mosaic home on a phone', () => {
 test.describe('mosaic home on a touch phone (#1642)', () => {
   test.use({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
 
-  test('a tap on even a small tile plays it — only a hold opens the menu', async ({ page }) => {
+  test('a tap on even a small tile brings it forward, and only its Play starts it (#2019)', async ({
+    page,
+  }) => {
     await page.goto('/');
-    const tiles = page.locator('[data-testid="mosaic-tile"][data-tile-kind="song"]');
-    await expect(tiles.first()).toBeVisible({ timeout: 10_000 });
-    const before = await page.getByTestId('player-title').textContent();
+    const title = page.getByTestId('player-title');
+    // The smallest tile on screen: the case where an invisible, fixed-size ⋯
+    // once covered most of the face and a tap opened the menu instead (#1642).
+    const target = await restingTile(page, 'song', 'smallest');
+    const before = await title.textContent();
+    await page.touchscreen.tap(target.x, target.y);
 
-    // The smallest fully on-screen song tile whose centre hit-tests to it: the
-    // case where an invisible, fixed-size ⋯ covered most of the face.
-    const target = await tiles.evaluateAll((els) => {
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      let best: { x: number; y: number; w: number } | null = null;
-      for (const el of els) {
-        const r = el.getBoundingClientRect();
-        if (r.x < 0 || r.y < 0 || r.right > vw || r.bottom > vh - 140) continue;
-        const cx = r.x + r.width / 2;
-        const cy = r.y + r.height / 2;
-        if (document.elementFromPoint(cx, cy)?.closest('[data-testid="mosaic-tile"]') !== el)
-          continue;
-        if (!best || r.width < best.w) best = { x: cx, y: cy, w: r.width };
-      }
-      return best;
-    });
-    expect(target).not.toBeNull();
-    await page.touchscreen.tap(target!.x, target!.y);
-
-    await expect(page.getByTestId('player-title')).not.toHaveText(before ?? '', {
-      timeout: 15_000,
-    });
+    await expect(page.getByTestId('mosaic-focus')).toBeVisible();
     await expect(page.getByTestId('entity-menu')).toHaveCount(0);
+    // Shared session: assert the playback did not CHANGE, never that it is empty.
+    expect(await title.textContent()).toBe(before);
+
+    await page.getByTestId('mosaic-focus-play').tap();
+    await expect(title).not.toHaveText(before ?? '', { timeout: 15_000 });
+    await expect(page.getByTestId('mosaic-focus')).toHaveCount(0);
   });
 });

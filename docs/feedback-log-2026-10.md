@@ -32,9 +32,8 @@ Observed second-hand: a person using the mosaic home for the first time.
 - **(Medium) A tap on a mosaic tile replaced the music when the person only wanted to look.** _Use:_
   they panned the mosaic and tapped a cover expecting more information, as a cover behaves in
   Spotify or Tidal; a radio started instead. _Cause:_ tap-to-play is the mosaic's rule, and the
-  look-first gestures (hold, right-click, hover ⋯) are undiscoverable. **◻️ Open:** design proposed
-  in [mosaic-tile-focus-design.md](mosaic-tile-focus-design.md) — a tap centres and grows the tile,
-  and only the centred tile offers Play.
+  look-first gestures (hold, right-click, hover ⋯) are undiscoverable. **✅ Fixed** (#2019): a tap centres and grows the tile, and only the centred tile offers Play
+  ([mosaic-tile-focus-design.md](mosaic-tile-focus-design.md)).
 
 ### 2026-10-23
 

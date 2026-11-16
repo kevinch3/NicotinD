@@ -1,7 +1,7 @@
 <div
   class="absolute inset-0 overflow-hidden"
   data-testid="mosaic-home"
-  [class.mosaic-holding]="holding()"
+  [class.mosaic-holding]="holding() || focused() !== null"
   [class.mosaic-covered]="covered()"
   [style.--mosaic-inset]="tileInsetPx"
 >
@@ -32,13 +32,35 @@
     #stage
     data-testid="mosaic-stage"
     role="group"
-    aria-label="Music mosaic — drag to explore, tap a tile to start a radio, press and hold a tile for more"
+    aria-label="Music mosaic — drag to explore, tap a tile to bring it forward, press and hold a tile for more"
     class="mosaic-stage-contain absolute inset-x-0 top-0 overflow-hidden touch-none select-none cursor-grab"
     [style.bottom.px]="chromeInset()"
     (pointerdown)="onStagePointerDown($event)"
   >
     <div class="mosaic-veil" aria-hidden="true"></div>
   </div>
+
+  <!-- The tile a tap brought forward (#2019): the only one that can start anything. -->
+  @for (f of focusedList(); track f.seq) {
+    <app-mosaic-focus
+      [style.top]="focusTop()"
+      [title]="f.title"
+      [subtitle]="f.subtitle"
+      [background]="f.background"
+      [gradientClass]="f.gradientClass"
+      [emoji]="f.emoji"
+      [tagKey]="f.tagKey"
+      [preview]="preview()"
+      [side]="focusSidePx()"
+      [from]="f.from"
+      [busy]="starting() !== null"
+      [hasMenu]="f.hasMenu"
+      (play)="playFocused()"
+      (shuffle)="shuffleFocused()"
+      (more)="openFocusedMenu($event)"
+      (dismiss)="blurFocus()"
+    />
+  }
 
   <!-- Depth toward the edges (#1638): one composited layer over the field,
        never a per-tile filter the loop would have to rewrite every frame. -->
