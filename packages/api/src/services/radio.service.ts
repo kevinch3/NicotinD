@@ -128,7 +128,9 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   genre: 18,
   // Origin/nationality axis (docs/artist-origin.md): can break the
   // culture-blind tie when genre is broad/missing, under genre so a right
-  // genre still leads. Starting point pending a dump-radio A/B.
+  // genre still leads. Graded against the v6 poll votes on 2026-11-16 (#597):
+  // agreement was 0.696/0.704 at 8, 0.652/0.704 at 4 and 0.609/0.690 at 0, so
+  // lowering it never helped. Small samples; see docs/radio.md.
   origin: 8,
   // bpm 8 -> 4 (formula v2, issue #583): in the first human poll data bpm
   // closeness was consistently *negative* within the served queue (the pool

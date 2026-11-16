@@ -1192,6 +1192,21 @@ used — the version is the human/grouping label, not the ground truth.
   that adds three axes must not pool its votes with any of them, so it takes
   the next free number instead of the one it reserved.
 
+- **Origin and key, graded (2026-11-16, issue #597).** No weight moved. The question was whether
+  `origin` (8) and `key` (6) should order a genre station at all. Replayed against the v6 poll
+  votes on prod with `eval-radio-poll.ts --weights` (pairwise agreement within a scenario; 0.5 is
+  chance; thumbs polls 23 pairs, star polls 71 pairs):
+
+  | Weights | Thumbs | Stars |
+  | --- | --- | --- |
+  | current (origin 8, key 6) | 0.696 | 0.704 |
+  | origin 4 | 0.652 | 0.704 |
+  | origin 0 | 0.609 | 0.690 |
+  | key 0 | 0.609 | 0.521 |
+  | origin 0 and key 0 | 0.478 | 0.479 |
+
+  Both stay. Limits: small samples, seed and station scenarios pooled, votes cast three formula
+  versions ago, and a poll only grades what its own formula served.
 - **v10** (2026-11-16, issue #1486): a **shared-listeners axis** at weight 4. A candidate whose
   artist shares listeners with the seed's artist (ListenBrainz, stored locally) scores on it; an
   artist the data does not name scores 0; a seed artist with no stored relations skips the axis.
