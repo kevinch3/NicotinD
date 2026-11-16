@@ -491,6 +491,8 @@ export interface DiscographyResult {
  */
 export interface RelatedArtistSignals {
   audio?: { cosine: number; members: number; coherence: number };
+  /** Shared listeners (#1486): 0–1 against the seed's strongest relation. */
+  cultural?: { score: number; source: string };
 }
 
 export interface RelatedArtist {

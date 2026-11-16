@@ -190,3 +190,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   through an in-memory index; sources merge into `RelatedSignals`, ranked once by `rankRelated`,
   visibility filtered at read time. `computeArtistCentroids`, `audioNeighbours`, `relatedArtists`,
   `RelatedArtistsComponent`. → [related-artists.md](../related-artists.md)
+- **Cultural artist relations**: ListenBrainz similar artists fetched per artist MBID by an opt-in
+  enrichment task and stored locally with a per-artist relative score; fills Related artists where
+  audio has nothing. `storeSimilarArtists`, `culturalNeighbours`, `artistMbidIndex`,
+  `getSimilarArtists`. → [artist-relations.md](../artist-relations.md)

@@ -1,4 +1,6 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
+import { normalizeArtistForGrouping } from '../album-grouping.js';
+import { DEFAULT_PROCESSING_SETTINGS } from '../processing-settings.js';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../../db.js';
 import type { LidarrArtist } from '../../lidarr/index.js';
@@ -102,6 +104,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     lookupGenreForRelease: null,
     resolveArtistIdentity: null,
     lookupPopularity: async () => new Map(),
+    lookupSimilarArtists: async () => null,
     lookupArtistOrigin: null,
     lookupArtistReleaseGroups: null,
     fileExists: () => true,
@@ -3051,6 +3054,7 @@ describe('registry', () => {
       'artist-info',
       'artist-list',
       'artist-origin',
+      'artist-relations',
       'audio-features',
       'bpm',
       'descriptors',
@@ -3216,5 +3220,77 @@ describe('Lidarr breaker gate', () => {
     const c = ctx({ ...configured, lidarr: withBreaker(true) });
     for (const id of ['bpm', 'key', 'energy'] as const)
       expect(getTask(id)!.available(c)).toBe(true);
+  });
+});
+
+describe('artist-relations task (#1486)', () => {
+  const task = getTask('artist-relations')!;
+  const seedArtist = (id: string, name: string, mbid: string) => {
+    db.run(
+      `INSERT INTO library_artists (id, name, album_count, hidden, split_compound, synced_at)
+       VALUES (?, ?, 1, 0, 0, 1)`,
+      [id, name],
+    );
+    db.run(
+      `INSERT INTO library_mbids (scope, key, mbid, source, confidence, checked_at)
+       VALUES ('artist', ?, ?, 'lidarr', 0.9, 1)`,
+      [normalizeArtistForGrouping(name), mbid],
+    );
+  };
+  const stored = () =>
+    db
+      .query<{ source_mbid: string; target_mbid: string }, []>(
+        'SELECT source_mbid, target_mbid FROM library_artist_relations ORDER BY source_mbid, target_mbid',
+      )
+      .all();
+
+  it('asks once per artist MBID, stores the answer, and stops asking', async () => {
+    seedArtist('a1', 'One', 'mb-1');
+    seedArtist('a2', 'Two', 'mb-2');
+    const asked: string[] = [];
+    const c = ctx({
+      lookupSimilarArtists: async (mbid) => {
+        asked.push(mbid);
+        return mbid === 'mb-1' ? [{ mbid: 'mb-9', name: 'Nine', score: 4 }] : [];
+      },
+    });
+    expect(task.countPending(db)).toBe(2);
+    const res = await task.run(db, c, 25);
+    expect(res.applied).toBe(2);
+    expect(res.failed).toBe(0);
+    expect(asked.sort()).toEqual(['mb-1', 'mb-2']);
+    expect(stored()).toEqual([{ source_mbid: 'mb-1', target_mbid: 'mb-9' }]);
+    // An empty answer is an answer: neither artist is pending any more.
+    expect(task.countPending(db)).toBe(0);
+    await task.run(db, c, 25);
+    expect(asked).toHaveLength(2);
+  });
+
+  it('records nothing for a failed request, so it is retried', async () => {
+    seedArtist('a1', 'One', 'mb-1');
+    const res = await task.run(db, ctx({ lookupSimilarArtists: async () => null }), 25);
+    expect(res.applied).toBe(0);
+    expect(res.failed).toBe(1);
+    expect(task.countPending(db)).toBe(1);
+  });
+
+  it('honours the limit, and does nothing for an album-scoped kick', async () => {
+    seedArtist('a1', 'One', 'mb-1');
+    seedArtist('a2', 'Two', 'mb-2');
+    let calls = 0;
+    const c = ctx({
+      lookupSimilarArtists: async () => {
+        calls++;
+        return [];
+      },
+    });
+    expect((await task.run(db, c, 25, 'some-album')).applied).toBe(0);
+    expect(calls).toBe(0);
+    await task.run(db, c, 1);
+    expect(calls).toBe(1);
+  });
+
+  it('is off by default: it makes outbound requests, so the owner opts in', () => {
+    expect(DEFAULT_PROCESSING_SETTINGS.tasks['artist-relations']).toBe(false);
   });
 });

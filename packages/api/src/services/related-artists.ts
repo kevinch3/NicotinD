@@ -11,6 +11,7 @@
 
 import type { Database } from 'bun:sqlite';
 import { audioNeighbours, MIN_RELATED_COSINE, type AudioNeighbour } from './artist-centroids.js';
+import { culturalNeighbours } from './artist-relations.js';
 
 export const RELATED_LIMIT_DEFAULT = 12;
 export const RELATED_LIMIT_MAX = 24;
@@ -21,6 +22,8 @@ const SOURCE_POOL = 60;
 /** Per-source evidence for one candidate; a source that has nothing to say is absent. */
 export interface RelatedSignals {
   audio?: Omit<AudioNeighbour, 'id'>;
+  /** Shared listeners (#1486): 0–1 against the seed's strongest relation. */
+  cultural?: { score: number; source: string };
 }
 
 export interface RelatedCandidate {
@@ -53,9 +56,20 @@ export function rankRelated(
     .map((c) => ({ id: c.id, score: c.signals.audio!.cosine }))
     .sort((a, b) => b.score - a.score);
   const best = scored[0]?.score ?? 0;
-  return scored
+  const byAudio = scored
     .filter((c) => c.score >= MIN_RELATED_COSINE && c.score >= best - RELATED_RELATIVE_CUT)
     .slice(0, limit);
+  if (byAudio.length >= limit) return byAudio;
+  // The two scales are not comparable (a cosine against a share of listeners)
+  // and nothing has calibrated one against the other, so they are not mixed:
+  // audio ranks first, as before, and shared listeners fill the places audio
+  // left empty. That is the long tail: an artist with too few analysed tracks.
+  const taken = new Set(byAudio.map((c) => c.id));
+  const byCulture = candidates
+    .filter((c) => c.signals.cultural && !taken.has(c.id))
+    .map((c) => ({ id: c.id, score: c.signals.cultural!.score }))
+    .sort((a, b) => b.score - a.score);
+  return [...byAudio, ...byCulture].slice(0, limit);
 }
 
 export interface RelatedArtist {
@@ -84,6 +98,17 @@ function gather(db: Database, artistId: string): Map<string, RelatedSignals> | n
     anySource = true;
     for (const { id, ...signal } of audio) {
       merged.set(id, { ...merged.get(id), audio: signal });
+    }
+  }
+  const cultural = culturalNeighbours(db, artistId, SOURCE_POOL);
+  if (cultural) {
+    anySource = true;
+    for (const n of cultural) {
+      if (!n.id) continue;
+      merged.set(n.id, {
+        ...merged.get(n.id),
+        cultural: { score: n.score, source: n.source },
+      });
     }
   }
   return anySource ? merged : null;

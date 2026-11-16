@@ -149,6 +149,7 @@ describe('GET /api/admin/review', () => {
           popularity: 0,
           'artist-origin': 0,
           'artist-list': 0,
+          'artist-relations': 0,
         },
         availability: {
           bpm: true as const,
@@ -167,6 +168,7 @@ describe('GET /api/admin/review', () => {
           popularity: true as const,
           'artist-origin': true as const,
           'artist-list': true as const,
+          'artist-relations': true as const,
         },
         startedAt: null,
         updatedAt: null,

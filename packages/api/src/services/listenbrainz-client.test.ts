@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import {
   ListenBrainzClient,
-  normalizePopularity,
   POPULARITY_REFERENCE,
+  SIMILAR_ARTISTS_ALGORITHM,
+  normalizePopularity,
 } from './listenbrainz-client.js';
 
 describe('normalizePopularity', () => {
@@ -141,5 +142,58 @@ describe('ListenBrainzClient', () => {
     const client = new ListenBrainzClient({ fetchFn, sleep: noSleep, now: frozenClock });
     await client.getListenCounts(['a', 'a', 'a']);
     expect(requested).toEqual(['a']);
+  });
+});
+
+describe('ListenBrainzClient.getSimilarArtists (#1486)', () => {
+  const noSleep = async () => {};
+  const clock = () => 0;
+  const answering = (status: number, body: unknown) => {
+    const urls: string[] = [];
+    const fetchFn = (async (u: string) => {
+      urls.push(u);
+      return { ok: status >= 200 && status < 300, status, json: async () => body };
+    }) as unknown as typeof fetch;
+    return { fetchFn, urls };
+  };
+
+  it('asks the labs API for one artist and returns the rows best first, without the artist itself', async () => {
+    const { fetchFn, urls } = answering(200, [
+      { artist_mbid: 'b', name: 'B', score: 5 },
+      { artist_mbid: 'seed', name: 'Seed', score: 99 },
+      { artist_mbid: 'a', name: 'A', score: 50 },
+      { artist_mbid: 'z', name: 'Zero', score: 0 },
+      { name: 'no id', score: 7 },
+    ]);
+    const client = new ListenBrainzClient({ fetchFn, sleep: noSleep, now: clock });
+    expect(await client.getSimilarArtists('seed')).toEqual([
+      { mbid: 'a', name: 'A', score: 50 },
+      { mbid: 'b', name: 'B', score: 5 },
+    ]);
+    expect(urls[0]).toContain('labs.api.listenbrainz.org/similar-artists/json?artist_mbids=seed');
+    expect(urls[0]).toContain(`algorithm=${SIMILAR_ARTISTS_ALGORITHM}`);
+  });
+
+  it('returns an empty list when the source knows nothing', async () => {
+    const { fetchFn } = answering(200, []);
+    const client = new ListenBrainzClient({ fetchFn, sleep: noSleep, now: clock });
+    expect(await client.getSimilarArtists('seed')).toEqual([]);
+  });
+
+  it('returns null, not an empty list, for a throttle, an error status, a bad body or a throw', async () => {
+    for (const [status, body] of [
+      [429, []],
+      [500, []],
+      [200, { not: 'an array' }],
+    ] as const) {
+      const { fetchFn } = answering(status, body);
+      const client = new ListenBrainzClient({ fetchFn, sleep: noSleep, now: clock });
+      expect(await client.getSimilarArtists('seed')).toBeNull();
+    }
+    const throwing = (async () => {
+      throw new Error('network');
+    }) as unknown as typeof fetch;
+    const client = new ListenBrainzClient({ fetchFn: throwing, sleep: noSleep, now: clock });
+    expect(await client.getSimilarArtists('seed')).toBeNull();
   });
 });

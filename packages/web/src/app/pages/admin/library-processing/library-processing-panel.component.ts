@@ -71,6 +71,7 @@ export class LibraryProcessingPanelComponent implements OnInit, OnDestroy {
     { id: 'popularity', labelKey: 'admin.taskPopularity' },
     { id: 'artist-origin', labelKey: 'admin.taskArtistOrigin' },
     { id: 'artist-list', labelKey: 'admin.taskArtistList' },
+    { id: 'artist-relations', labelKey: 'admin.taskArtistRelations' },
   ];
 
   ngOnInit(): void {

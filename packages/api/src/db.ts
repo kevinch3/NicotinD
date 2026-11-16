@@ -1937,6 +1937,41 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
     )
   `);
 
+  // Cultural artist relations (#1486): who listeners of an artist also listen
+  // to, fetched once per artist MBID and stored locally, never on a page
+  // request. Keyed by MBID on both sides because a relation may point at an
+  // artist the library does not hold; it resolves to a library artist at read
+  // time, when one exists. `score` is the source's raw score divided by that
+  // artist's top score, so it compares across artists (raw scores span about
+  // two orders of magnitude); `raw_score` keeps what the source said.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_artist_relations (
+      source_mbid TEXT NOT NULL,
+      target_mbid TEXT NOT NULL,
+      target_name TEXT NOT NULL,
+      kind        TEXT NOT NULL,   -- 'similar'
+      score       REAL NOT NULL,
+      raw_score   REAL,
+      source      TEXT NOT NULL,   -- 'listenbrainz'
+      fetched_at  INTEGER NOT NULL,
+      PRIMARY KEY (source_mbid, target_mbid, kind, source)
+    )
+  `);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_artist_relations_target ON library_artist_relations (target_mbid)`,
+  );
+  // One row per artist MBID asked, including an empty answer, so the long tail
+  // a source knows nothing about is not asked again every window.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_artist_relation_fetches (
+      mbid       TEXT NOT NULL,
+      source     TEXT NOT NULL,
+      fetched_at INTEGER NOT NULL,
+      results    INTEGER NOT NULL,
+      PRIMARY KEY (mbid, source)
+    )
+  `);
+
   // Non-MusicBrainz external ids, generalized (issue #194). library_mbids stays
   // MB-specific (heavily referenced); this holds provider-scoped ids so a
   // release match "locks in" once made — the whole benefit over A1, which re-runs
