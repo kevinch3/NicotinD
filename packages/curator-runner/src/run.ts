@@ -204,10 +204,25 @@ async function act(
         : `would propose ${decision.candidates.map((c) => c.genre).join(' / ')}`;
     return outcomeOf(cluster, 'dry-run', decision, { note: what });
   }
-  return decision.kind === 'apply'
-    ? applyGenre(cluster, decision, deps.mcp)
-    : proposeCard(cluster, decision, verdicts, cfg, deps.mcp);
+  if (decision.kind === 'propose') return proposeCard(cluster, decision, verdicts, cfg, deps.mcp);
+  const applied = await applyGenre(cluster, decision, deps.mcp);
+  if (applied.result !== 'refused' || !NOT_EARNED.test(applied.note ?? '')) return applied;
+  // The server has not seen enough accepted proposals from this token to let it
+  // write (#1516 P6). A card is how that record gets built, so file one.
+  const card = await proposeCard(
+    cluster,
+    { kind: 'propose', candidates: decision.candidates },
+    verdicts,
+    cfg,
+    deps.mcp,
+  );
+  return card.result === 'proposed'
+    ? { ...card, note: `auto-apply not earned yet, proposed instead: ${card.note ?? ''}` }
+    : card;
 }
+
+/** The server's refusal for a token that has not earned writing by itself. */
+const NOT_EARNED = /auto-apply not earned/i;
 
 async function applyGenre(
   cluster: Cluster,
@@ -226,7 +241,8 @@ async function applyGenre(
       written++;
       continue;
     }
-    if (/budget exhausted/i.test(res.text)) {
+    // Neither is about this song: the rest of the album would be refused too.
+    if (/budget exhausted/i.test(res.text) || NOT_EARNED.test(res.text)) {
       return outcomeOf(cluster, 'refused', decision, { written, note: res.text });
     }
     refusals.push(res.text);

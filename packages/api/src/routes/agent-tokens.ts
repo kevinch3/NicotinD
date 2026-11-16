@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { AUTO_APPLY_GATE, agentPrecision } from '../services/agent-precision.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import { requireCurator } from '../middleware/current-user.js';
 import { getDatabase } from '../db.js';
@@ -30,6 +31,13 @@ export function agentTokensRoutes(deps: { musicDir?: string } = {}) {
   app.get('/runs', (c) => {
     requireCurator(c);
     return c.json({ runs: listAgentRuns(getDatabase()) });
+  });
+
+  // How often people accept each unattended token's proposals (#1516 P6), and
+  // whether it has earned writing by itself.
+  app.get('/precision', (c) => {
+    requireCurator(c);
+    return c.json({ gate: AUTO_APPLY_GATE, tokens: agentPrecision(getDatabase()) });
   });
 
   // One run with every write and what it replaced.

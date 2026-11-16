@@ -132,7 +132,9 @@ export function curationRoutes(deps: CurationRouteDeps) {
     // race means the case was already handled: refuse rather than dispatch the
     // mutation (and write the audit row) a second time.
     if (flagId !== null) {
-      if (!resolveCurationFlag(db, flagId, user.username ?? user.sub)) {
+      // The pick is recorded with the resolution: it is what a model's
+      // proposals are measured against (#1516 P6).
+      if (!resolveCurationFlag(db, flagId, user.username ?? user.sub, Date.now(), option.id)) {
         return c.json({ error: 'This case was already handled' }, 409);
       }
     }

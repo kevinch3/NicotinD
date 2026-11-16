@@ -764,6 +764,10 @@ shared gates:
   (`AUTO_SCOPE_WRITE_TOOLS`). Every other write, and every destructive tool, is
   refused whatever `confirm` says. `tools/list` shows such a token only what it
   may call, and `initialize` states the rules.
+- **Auto-apply is earned** (`autoApplyRefusal`, `services/agent-precision.ts`). `set_song_genre` is
+  refused until people have accepted enough of the token's own genre cards: 20 judged, 90 %
+  picked as proposed (`AUTO_APPLY_GATE`). `flag_for_review` stays open, which is how the record
+  builds. See curator-runner.md "Earning auto-apply".
 - **Unknown keys refused** (`unknownArgs`). A curate token still ignores them.
   A small model that invents `force: true` must not read the silence as success.
 - **Genre invariant** (`autoGenreRefusal`):

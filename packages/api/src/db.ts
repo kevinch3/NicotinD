@@ -1673,6 +1673,9 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // card first in every round, and a curator who sees the same card three
   // days running stops opening the surface.
   addColumnIfMissing(db, 'curation_flags', 'snoozed_until', 'INTEGER');
+  // Which option a person picked when the card was applied (#1516 P6). NULL for
+  // a flag resolved without a pick, and for every flag resolved before this.
+  addColumnIfMissing(db, 'curation_flags', 'resolved_option', 'TEXT');
 
   // One row per (target, reporter) — issue #987. This *is* the rate limit, and a
   // structural one beats a time window: the abuse worth stopping is one person

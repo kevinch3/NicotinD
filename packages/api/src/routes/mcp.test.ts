@@ -2231,6 +2231,25 @@ describe('unknownArgs', () => {
   });
 });
 
+/**
+ * Give an unattended token the track record that earns auto-apply (#1516 P6):
+ * judged genre cards on which a person picked its first option.
+ */
+function earnAutoApply(tokenId: string, accepted = 20): void {
+  const options = JSON.stringify([
+    { id: 'genre-1', label: 'X', effect: { type: 'song-genre', songIds: [], genre: 'X' } },
+  ]);
+  for (let i = 0; i < accepted; i++) {
+    testDb.run(
+      `INSERT INTO curation_flags
+         (target_kind, target_id, reason, created_by, created_at, resolved_at, resolved_by,
+          options_json, resolved_option)
+       VALUES ('album', ?, 'earned', ?, 1, 2, 'owner', ?, 'genre-1')`,
+      [`earned-${tokenId}-${i}`, `agent:${tokenId}`, options],
+    );
+  }
+}
+
 describe('MCP refiner:auto token end to end (#1516)', () => {
   beforeEach(() => {
     testDb.run('DELETE FROM library_genres');
@@ -2246,8 +2265,11 @@ describe('MCP refiner:auto token end to end (#1516)', () => {
       }
     ).result;
 
-  const autoToken = () =>
-    mintAgentToken(testDb, { userId: 'u1', name: 'cron', scope: 'refiner:auto' }).token;
+  const autoToken = () => {
+    const minted = mintAgentToken(testDb, { userId: 'u1', name: 'cron', scope: 'refiner:auto' });
+    earnAutoApply(minted.id);
+    return minted.token;
+  };
 
   it('lists only the tools it may call, and says so in initialize', async () => {
     const token = autoToken();
@@ -2299,6 +2321,38 @@ describe('MCP refiner:auto token end to end (#1516)', () => {
       )
       .all('s1');
     expect(stored.map((g) => g.genre)).toEqual(['Tech House']);
+  });
+
+  it('refuses to write for a token that has not earned auto-apply, and writes nothing (P6)', async () => {
+    seedSong('s1', 'Song', undefined, undefined, { genre: 'Electronic' });
+    testDb.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s1', 'Electronic', 0)`,
+    );
+    const unearned = mintAgentToken(testDb, {
+      userId: 'u1',
+      name: 'new-model',
+      scope: 'refiner:auto',
+    }).token;
+    const res = await call(unearned, 'set_song_genre', {
+      songId: 's1',
+      genre: 'Tech House',
+      mode: 'replace',
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0]!.text).toContain('Auto-apply not earned: 0 of 0 judged proposals');
+    expect(
+      testDb
+        .query<{ genre: string }, [string]>(
+          'SELECT genre FROM library_song_genres WHERE song_id = ?',
+        )
+        .all('s1')
+        .map((g) => g.genre),
+    ).toEqual(['Electronic']);
+    // Proposing is still open to it: that is how the record gets built.
+    const tools = (await (await rpc(unearned, 'tools/list')).json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+    expect(tools.result.tools.map((t) => t.name)).toContain('flag_for_review');
   });
 
   it('refuses an invented genre, a song with a real genre, and an unknown key — writing nothing', async () => {
@@ -2683,8 +2737,11 @@ describe('unattended runs: log, lock and revert (#1516 P2)', () => {
         result: { content: Array<{ text: string }>; isError?: boolean };
       }
     ).result;
-  const token = (scope: 'refiner:auto' | 'refiner:curate', name = 'cron') =>
-    mintAgentToken(testDb, { userId: 'u1', name, scope }).token;
+  const token = (scope: 'refiner:auto' | 'refiner:curate', name = 'cron') => {
+    const minted = mintAgentToken(testDb, { userId: 'u1', name, scope });
+    if (scope === 'refiner:auto') earnAutoApply(minted.id);
+    return minted.token;
+  };
   const catchAllSong = (id: string) => {
     seedSong(id, `Song ${id}`, undefined, undefined, { genre: 'Electronic' });
     testDb.run(
