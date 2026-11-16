@@ -9,8 +9,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { startsGroup } from '../../../lib/menu-groups';
-import { MenuItemComponent } from '../../menu-item/menu-item.component';
+import { ActionListComponent } from '../../action-list/action-list.component';
 import { NgTemplateOutlet } from '@angular/common';
 import { HOLD_MS, HOLD_SLOP_PX } from '../../../directives/entity-actions.directive';
 import { haptic } from '../../../lib/haptics';
@@ -50,8 +49,7 @@ export function neighbourFade(coverMaxPx: number, viewportWidth: number): number
 @Component({
   selector: 'app-now-playing-cover-art',
   imports: [
-    MenuItemComponent,
-    NgTemplateOutlet,
+    ActionListComponent,
     OverflowRevealDirective,
     CoverArtComponent,
     ArtistLinksComponent,
@@ -67,8 +65,6 @@ export function neighbourFade(coverMaxPx: number, viewportWidth: number): number
   templateUrl: './now-playing-cover-art.component.html',
 })
 export class NowPlayingCoverArtComponent {
-  /** Whether a separator goes above a menu row (#2006). */
-  readonly startsGroup = startsGroup;
   readonly player = inject(PlayerService);
   readonly auth = inject(AuthService);
   readonly likes = inject(LikeService);

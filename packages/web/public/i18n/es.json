@@ -1293,6 +1293,8 @@
   "review.identifyUndecodable": "No se pudo leer este archivo: probablemente esté truncado o dañado",
   "review.sourcesDown": "No disponible: {list}",
   "song.addToPlaylist": "Añadir a una lista",
+  "song.playlistFind": "Buscar una playlist",
+  "song.playlistNewName": "Nombre de la nueva playlist",
   "song.addToQueue": "Añadir a la cola",
   "song.dontRecommend": "No recomendar esto",
   "song.goToAlbum": "Ir al álbum",

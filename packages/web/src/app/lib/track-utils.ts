@@ -1,4 +1,5 @@
 import type { Track } from '../services/player.service';
+import type { PlaylistSummary } from '../services/api/api-types';
 import type { PreserveService } from '../services/preserve.service';
 import type { PlaylistService } from '../services/playlist.service';
 import type { AlbumRef, TrackAction } from '../components/track-row/track-row.component';
@@ -90,6 +91,58 @@ export function addToPlaylistAction(playlists: PlaylistService, songId: string):
     labelKey: 'song.addToPlaylist',
     icon: 'list-music',
     group: 'keep',
+    // The dialog, for a caller that runs the action directly. A menu opens the
+    // submenu below instead (#2009).
     action: () => playlists.openPicker([songId]),
+    children: async () => {
+      if (!playlists.loaded()) await playlists.refresh();
+      return playlistSubmenu(playlists.playlists(), {
+        add: (playlistId) => void playlists.addSongs(playlistId, [songId]),
+        create: (name) => void playlists.create(name, [songId]),
+      });
+    },
   };
+}
+
+/** Playlists past this many get a filter field at the top of the submenu. */
+export const PLAYLIST_FILTER_FROM = 8;
+
+/**
+ * The rows of "Add to playlist ▸" (#2009): a filter once there are many, a
+ * field that creates a playlist from the typed name, then the user's own
+ * playlists, most recently changed first. Curated playlists and Liked Songs
+ * are left out: neither takes a song this way.
+ */
+export function playlistSubmenu(
+  playlists: readonly PlaylistSummary[],
+  ops: { add: (playlistId: string) => void; create: (name: string) => void },
+): TrackAction[] {
+  const own = playlists
+    .filter((p) => p.kind === 'user')
+    .sort((a, b) => b.modifiedAt - a.modifiedAt || a.name.localeCompare(b.name));
+  const rows: TrackAction[] = [];
+  if (own.length > PLAYLIST_FILTER_FROM) {
+    rows.push({
+      label: 'Find a playlist',
+      action: () => {},
+      field: { kind: 'filter', placeholderKey: 'song.playlistFind' },
+    });
+  }
+  rows.push({
+    label: 'New playlist',
+    action: () => {},
+    field: { kind: 'submit', placeholderKey: 'song.playlistNewName', submit: ops.create },
+  });
+  const seen = new Map<string, number>();
+  for (const p of own) {
+    // Two playlists may share a name; a row's label is also its key and test id.
+    const n = (seen.get(p.name) ?? 0) + 1;
+    seen.set(p.name, n);
+    rows.push({
+      label: n === 1 ? p.name : `${p.name} (${n})`,
+      icon: 'list-music',
+      action: () => ops.add(p.id),
+    });
+  }
+  return rows;
 }

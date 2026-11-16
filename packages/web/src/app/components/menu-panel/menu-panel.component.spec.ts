@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Component } from '@angular/core';
 import { By } from '@angular/platform-browser';
-import { MenuPanelComponent } from './menu-panel.component';
+import { MenuPanelComponent, naturalPanelHeight } from './menu-panel.component';
 import { BackButtonService } from '../../services/native/back-button.service';
 
 // The JIT harness can't drive `input()` or measure layout (jsdom), so the
@@ -143,5 +143,36 @@ describe('MenuPanelComponent D-pad support (issue #389)', () => {
     q('.a1').click();
     fixture.detectChanges();
     expect(document.activeElement).toBe(trig);
+  });
+});
+
+// #2009: a submenu flyout hangs outside the menu's body and must not make the
+// menu look taller than it is.
+describe('naturalPanelHeight', () => {
+  const el = (offsetHeight: number, scrollHeight = offsetHeight) => {
+    const d = document.createElement('div');
+    Object.defineProperty(d, 'offsetHeight', { value: offsetHeight });
+    Object.defineProperty(d, 'scrollHeight', { value: scrollHeight });
+    return d;
+  };
+
+  it('is the height of the projected body, not what overflows beside it', () => {
+    const panel = el(300, 620);
+    panel.appendChild(el(300));
+    expect(naturalPanelHeight(panel, 300)).toBe(300);
+  });
+
+  it("is the body's full height while a max-height caps the box", () => {
+    const panel = el(200, 480);
+    panel.appendChild(el(480));
+    expect(naturalPanelHeight(panel, 200)).toBe(480);
+  });
+
+  it('adds up several bodies, and falls back to the scroll height with none', () => {
+    const two = el(0);
+    two.appendChild(el(120));
+    two.appendChild(el(80));
+    expect(naturalPanelHeight(two, 0)).toBe(200);
+    expect(naturalPanelHeight(el(100, 240), 100)).toBe(240);
   });
 });

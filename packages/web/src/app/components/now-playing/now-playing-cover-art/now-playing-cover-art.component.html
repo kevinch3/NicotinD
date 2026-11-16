@@ -133,23 +133,19 @@
                 <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
               </svg>
             </button>
-            <div menuPanel class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"><ng-container *ngTemplateOutlet="menuItems" /></div>
+            <app-action-list
+              menuPanel
+              class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
+              [actions]="menuActions()"
+              [drillIn]="menu.presentation() === 'sheet' || isTv"
+              (picked)="menu.close(); $event.action()"
+            />
           </app-menu-panel>
         </div>
       }
     </div>
   </div>
 
-  <!-- The ⋯ menu's buttons are direct children of [menuPanel], so the phone
-       bottom sheet's 44px row rule applies to them (#1714). -->
-  <ng-template #menuItems>
-      @for (action of menuActions(); track action.label; let i = $index) {
-        @if (startsGroup(menuActions(), i)) {
-          <div role="separator" data-testid="menu-separator" class="my-1 border-t border-theme"></div>
-        }
-        <button [appMenuItem]="action" (click)="closeMenu(); action.action()"></button>
-      }
-  </ng-template>
 
   <!-- Track info -->
   <div class="text-center px-4 mb-4 md:px-8 no-callout" translate="no">
@@ -180,7 +176,13 @@
                 <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
               </svg>
             </button>
-            <div menuPanel class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"><ng-container *ngTemplateOutlet="menuItems" /></div>
+            <app-action-list
+              menuPanel
+              class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
+              [actions]="menuActions()"
+              [drillIn]="menu.presentation() === 'sheet' || isTv"
+              (picked)="menu.close(); $event.action()"
+            />
           </app-menu-panel>
         }
       } @else {
@@ -266,14 +268,13 @@
               <circle cx="12" cy="19" r="2" />
             </svg>
           </button>
-          <div menuPanel class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40">
-            @for (action of menuActions(); track action.label; let i = $index) {
-              @if (startsGroup(menuActions(), i)) {
-                <div role="separator" data-testid="menu-separator" class="my-1 border-t border-theme"></div>
-              }
-              <button [appMenuItem]="action" (click)="menu.close(); action.action()"></button>
-            }
-          </div>
+          <app-action-list
+            menuPanel
+            class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
+            [actions]="menuActions()"
+            [drillIn]="menu.presentation() === 'sheet' || isTv"
+            (picked)="menu.close(); $event.action()"
+          />
         </app-menu-panel>
       }
       }
