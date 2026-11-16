@@ -219,6 +219,22 @@ const { versionCode: currentVersionCode, versionName: currentVersionName } = and
           `whose APKs never arrived could be read into the repository.`,
       );
     }
+    // A pre-release would otherwise be the newest release, and the repository
+    // holds one version: every client would be offered the beta (#1671).
+    if (!/gh release list[^\n]*--exclude-pre-releases/.test(source)) {
+      errors.push(
+        `.github/workflows/pages.yml lists releases without \`--exclude-pre-releases\`, so a ` +
+          `pre-release would be published to the F-Droid repository as the only version.`,
+      );
+    }
+    const deployPath = join(repoRoot, '.github/workflows/deploy.yml');
+    if (existsSync(deployPath) && !/^\s*- '!v\*-\*'\s*$/m.test(readFileSync(deployPath, 'utf8'))) {
+      errors.push(
+        `.github/workflows/deploy.yml no longer excludes pre-release tags ('!v*-*'). Nothing in ` +
+          `it tells a beta from a stable release: \`promote\` would move \`:release\` to it and ` +
+          `the apps would be published as the newest release (#1671).`,
+      );
+    }
     if (source.includes("workflow_run.conclusion == 'success'")) {
       errors.push(
         `.github/workflows/pages.yml gates on \`conclusion == 'success'\` again. A tag build ` +
