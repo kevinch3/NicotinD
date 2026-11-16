@@ -1,6 +1,7 @@
-import { Component, inject, input } from '@angular/core';
+import { Component, inject, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import type { RelatedArtist } from '../../services/api/api-types';
+import type { NotOwnedRelatedArtist, RelatedArtist } from '../../services/api/api-types';
+import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { artistCover } from '../../lib/cover-url';
@@ -22,11 +23,16 @@ import { OverflowRevealDirective } from '../../directives/overflow-reveal.direct
     CoverArtComponent,
     TranslatePipe,
     TvNavGroupDirective,
+    TvNavItemDirective,
   ],
   templateUrl: './related-artists.component.html',
 })
 export class RelatedArtistsComponent {
   readonly artists = input<RelatedArtist[]>([]);
+  /** Related artists the library does not have: each is a way into the Get search (#1486). */
+  readonly notOwned = input<NotOwnedRelatedArtist[]>([]);
+  /** The name of a not-owned artist the user wants to look for. */
+  readonly find = output<string>();
   /** Auth token for the local `/api/cover/<hash>` URL. */
   readonly token = input<string | null>(null);
 

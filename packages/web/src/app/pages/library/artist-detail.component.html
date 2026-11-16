@@ -462,7 +462,12 @@
       }
     }
 
-    <app-related-artists [artists]="relatedArtists()" [token]="auth.mediaToken()" />
+    <app-related-artists
+      [artists]="relatedArtists()"
+      [notOwned]="relatedNotOwned()"
+      [token]="auth.mediaToken()"
+      (find)="findArtist($event)"
+    />
 
   }
 </div>
