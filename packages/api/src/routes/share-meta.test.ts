@@ -223,6 +223,49 @@ describe('resolveShareMeta', () => {
     expect(meta?.coverId).toBe(id);
   });
 
+  // #2004: a song's card is its title, its artist and its album's cover.
+  it('resolves a song with its artist, album and cover', () => {
+    seedPlaylist();
+    db.run(`UPDATE library_albums SET cover_rev = 3 WHERE id = 'alb-x'`);
+    const meta = resolveShareMeta(db, {
+      resource_type: 'song',
+      resource_id: 'song-1',
+      created_by: 'u1',
+      expires_at: null,
+    });
+    expect(meta).toEqual({
+      title: 'Track One',
+      description: 'Song • Artist X • Album X',
+      type: 'music.song',
+      coverId: 'cov-1',
+      coverRev: 3,
+      creatorSub: 'u1',
+    });
+  });
+
+  it("falls back to the album's cover for a song with none of its own", () => {
+    seedPlaylist();
+    db.run(`UPDATE library_songs SET cover_art = NULL WHERE id = 'song-1'`);
+    const meta = resolveShareMeta(db, {
+      resource_type: 'song',
+      resource_id: 'song-1',
+      created_by: 'u1',
+      expires_at: null,
+    });
+    expect(meta?.coverId).toBe('alb-x');
+  });
+
+  it('returns null for a missing song', () => {
+    expect(
+      resolveShareMeta(db, {
+        resource_type: 'song',
+        resource_id: 'gone',
+        created_by: 'u1',
+        expires_at: null,
+      }),
+    ).toBeNull();
+  });
+
   it('returns null for a missing resource', () => {
     expect(
       resolveShareMeta(db, {

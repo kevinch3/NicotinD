@@ -167,6 +167,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Shared menu row**: every action menu draws its rows through one attribute component on the
   button, which renders the icon, the label and the test id. `MenuItemComponent`, `TrackAction`.
   → [song-actions.md](../song-actions.md)
+- **Song page and Share**: `/library/songs/:id`, a share link to it, and the TV redirect to the
+  album. `SongDetailComponent`, `ShareLinkService`, `nativeShare`, `songToAlbumGuard`,
+  `mapSharedSong`, `SHARE_RESOURCE_TYPES`. → [song-actions.md](../song-actions.md)
 - **Bulk song menu**: with several songs selected, a selected row's menu and the selection bar's
   `⋯` act on all of them. `buildMany`, `forRow`, `songSelection`, `SongSelection`.
   → [song-actions.md](../song-actions.md)

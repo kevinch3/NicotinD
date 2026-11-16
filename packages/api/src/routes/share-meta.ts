@@ -24,7 +24,7 @@ import { coverRoutePath } from '../services/cover-rev.js';
  */
 
 interface ShareTokenRow {
-  resource_type: 'playlist' | 'album' | 'artist';
+  resource_type: 'playlist' | 'album' | 'artist' | 'song';
   resource_id: string;
   created_by: string;
   expires_at: number | null;
@@ -35,7 +35,7 @@ export interface ShareMeta {
   description: string;
   // OG has no `music.artist` — `profile` is the closest standard type for an
   // artist share (issue #229).
-  type: 'music.album' | 'music.playlist' | 'profile';
+  type: 'music.album' | 'music.playlist' | 'music.song' | 'profile';
   /** Cover/song/album/artist id for `/api/cover/<id>`, or null when there's no art. */
   coverId: string | null;
   /** The `cover_rev` of the entity that owns the cover, carried on `og:image` (#1666). */
@@ -173,6 +173,37 @@ export function resolveShareMeta(db: Database, row: ShareTokenRow): ShareMeta | 
       type: 'music.album',
       coverId: row.resource_id,
       coverRev: album.cover_rev,
+      creatorSub: row.created_by,
+    };
+  }
+
+  if (row.resource_type === 'song') {
+    // A song's cover resolves to its album's, so the album's rev is the one.
+    const song = db
+      .query<
+        {
+          title: string;
+          artist: string;
+          album: string | null;
+          cover: string | null;
+          rev: number | null;
+        },
+        [string]
+      >(
+        `SELECT s.title, s.artist, al.name AS album,
+                COALESCE(s.cover_art, s.album_id) AS cover, al.cover_rev AS rev
+           FROM library_songs s
+      LEFT JOIN library_albums al ON al.id = s.album_id
+          WHERE s.id = ?`,
+      )
+      .get(row.resource_id);
+    if (!song) return null;
+    return {
+      title: song.title,
+      description: song.album ? `Song • ${song.artist} • ${song.album}` : `Song • ${song.artist}`,
+      type: 'music.song',
+      coverId: song.cover,
+      coverRev: song.rev ?? 0,
       creatorSub: row.created_by,
     };
   }

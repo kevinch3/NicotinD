@@ -1,0 +1,99 @@
+<div class="mx-auto w-full max-w-3xl min-w-0 px-4 py-6" data-testid="song-page">
+  @switch (state()) {
+    @case ('loading') {
+      <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-end" data-testid="song-page-loading">
+        <app-skeleton class="block h-48 w-48 shrink-0 rounded-xl" />
+        <div class="w-full min-w-0 space-y-3">
+          <app-skeleton class="block h-7 w-2/3 rounded" />
+          <app-skeleton class="block h-4 w-1/3 rounded" />
+        </div>
+      </div>
+    }
+    @case ('not-found') {
+      <div class="py-16 text-center" data-testid="song-page-not-found">
+        <p class="text-theme-secondary">{{ 'songPage.notFound' | t }}</p>
+        <a
+          routerLink="/library"
+          class="mt-4 inline-block rounded-lg bg-theme-surface-2 px-4 py-2 text-sm text-theme-primary transition-colors hover:bg-theme-surface-3"
+        >
+          {{ 'songPage.backToLibrary' | t }}
+        </a>
+      </div>
+    }
+    @case ('ready') {
+      @if (song(); as s) {
+        <div class="flex min-w-0 flex-col items-center gap-5 sm:flex-row sm:items-end">
+          <div class="h-48 w-48 shrink-0">
+            <app-cover-art
+              [src]="coverSrc()"
+              [artist]="s.artist"
+              [album]="s.album"
+              [fill]="true"
+              [eager]="true"
+              rounded="rounded-xl"
+            />
+          </div>
+          <div class="w-full min-w-0 text-center sm:text-left">
+            <h1
+              appOverflowReveal
+              class="truncate text-2xl font-semibold text-theme-primary"
+              data-testid="song-page-title"
+            >
+              {{ s.title }}
+            </h1>
+            <p appOverflowReveal class="mt-1 truncate text-theme-secondary" data-testid="song-page-artists">
+              <app-artist-links
+                [artists]="s.artists"
+                [fallbackArtist]="s.artist"
+                [fallbackArtistId]="s.artistId"
+              />
+            </p>
+            <p appOverflowReveal class="mt-1 truncate text-sm text-theme-muted" data-testid="song-page-album">
+              <app-entity-link kind="album" [id]="s.albumId" [name]="s.album" />
+              @if (s.year) {
+                <span> · {{ s.year }}</span>
+              }
+              @if (duration(); as d) {
+                <span> · {{ d }}</span>
+              }
+            </p>
+            <div class="mt-4 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+              <button
+                type="button"
+                data-testid="song-page-play"
+                (click)="play()"
+                class="inline-flex min-h-11 items-center gap-2 rounded-lg bg-theme-accent px-5 py-2 text-sm font-medium text-theme-on-accent transition-opacity hover:opacity-90"
+              >
+                <app-icon name="play" [size]="16" />
+                {{ 'songPage.play' | t }}
+              </button>
+              <button
+                type="button"
+                data-testid="song-page-radio"
+                (click)="startRadio()"
+                class="inline-flex min-h-11 items-center gap-2 rounded-lg bg-theme-surface-2 px-4 py-2 text-sm text-theme-primary transition-colors hover:bg-theme-surface-3"
+              >
+                <app-icon name="radio" [size]="16" />
+                {{ 'song.startRadio' | t }}
+              </button>
+              <button
+                #more
+                type="button"
+                data-testid="song-page-menu"
+                (click)="openMenu(more)"
+                [attr.aria-label]="'songPage.more' | t"
+                [attr.title]="'songPage.more' | t"
+                aria-haspopup="menu"
+                class="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-theme-surface-2 text-theme-secondary transition-colors hover:bg-theme-surface-3"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+    }
+  }
+</div>

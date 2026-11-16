@@ -102,7 +102,11 @@ export function migrationBackupHook(
  * work (`CREATE ... IF NOT EXISTS`, `addColumnIfMissing`) is idempotent by
  * construction and deliberately re-runs every boot — see `applySchema`.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+
+/** What a share link may point at; the `share_tokens` CHECK, and `routes/share.ts`'s own list. */
+export const SHARE_RESOURCE_TYPES = ['playlist', 'album', 'artist', 'song'] as const;
+const SHARE_RESOURCE_TYPES_SQL = SHARE_RESOURCE_TYPES.map((t) => `'${t}'`).join(', ');
 
 /** SQLite's built-in schema marker; 0 on a database this has never stamped. */
 export function readSchemaVersion(db: Database): number {
@@ -791,7 +795,7 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS share_tokens (
       token             TEXT    PRIMARY KEY,
-      resource_type     TEXT    NOT NULL CHECK (resource_type IN ('playlist', 'album', 'artist')),
+      resource_type     TEXT    NOT NULL CHECK (resource_type IN (${SHARE_RESOURCE_TYPES_SQL})),
       resource_id       TEXT    NOT NULL,
       created_by        TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       created_at        INTEGER NOT NULL,
@@ -799,24 +803,26 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
       expires_at        INTEGER
     )
   `);
-  // Issue #229: 'artist' joined the shareable resource set. Legacy DBs carry the
-  // old two-value CHECK constraint which would reject an artist share row, so
-  // rebuild the table (same recreate-to-drop-a-CHECK pattern as acquire_jobs above).
+  // The shareable set grew twice: 'artist' (#229), then 'song' (#2004). A CHECK
+  // cannot be altered, so a database whose table predates either is rebuilt
+  // (same recreate-to-drop-a-CHECK pattern as acquire_jobs above). The 'artist'
+  // rebuild predates versioning and is gated on the legacy shape; the 'song'
+  // rebuild is version 2's one step, so it runs once and never again.
   const shareTokensSql = db
     .query<{ sql: string }, []>(
       `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'share_tokens'`,
     )
     .get();
   if (
-    mayCarryLegacyShape(fromVersion) &&
     shareTokensSql &&
-    !shareTokensSql.sql.includes("'artist'")
+    ((mayCarryLegacyShape(fromVersion) && !shareTokensSql.sql.includes("'artist'")) ||
+      (fromVersion < 2 && !shareTokensSql.sql.includes("'song'")))
   ) {
     db.run('ALTER TABLE share_tokens RENAME TO share_tokens_old');
     db.run(`
       CREATE TABLE share_tokens (
         token             TEXT    PRIMARY KEY,
-        resource_type     TEXT    NOT NULL CHECK (resource_type IN ('playlist', 'album', 'artist')),
+        resource_type     TEXT    NOT NULL CHECK (resource_type IN (${SHARE_RESOURCE_TYPES_SQL})),
         resource_id       TEXT    NOT NULL,
         created_by        TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         created_at        INTEGER NOT NULL,
