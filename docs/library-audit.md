@@ -502,6 +502,25 @@ Worth recording, because four separate things had to line up:
    finding, no flag, no metric. *A component that detects something and reports nothing
    is indistinguishable from no detector at all.*
 
+## How many artist tags a scan-path sanitizer would change (#864)
+
+The organizer cleans an artist tag before it files a song (`sanitizeArtistTag`, now in the leaf
+module `services/tag-sanitize.ts`). The **scanner** does not: it mints artist and album ids from the
+raw tag. Wiring the sanitizer into the scan path would give a new id to every row whose tag it
+alters, which is the orphaned-album hazard of #874. So the size of that change has to be known
+first.
+
+`artistTagYield` (`services/artist-tag-yield.ts`) is that count, read-only:
+
+- every distinct `artist` and `album_artist` value on `library_songs`, run through the same
+  `normalizeTagValue` + `sanitizeArtistTag` chain;
+- `wouldChange` (the value comes out different) and `wouldDrop` (the sanitizer discards it), each
+  as distinct values and as songs behind them;
+- a worst-first `sample` of raw value, cleaned value and songs.
+
+Read it with `get_library_health({ dimensions: ["audit"] })` → `audit.artistTagYield`. Nothing acts
+on it.
+
 ## Prevention (so new patterns can't recur)
 - `sanitizeArtistTag` / `sanitizeAlbumTag` (`library-organizer.ts`) now reject
   `looksLikeSourceWatermark` values at ingest, so a watermark never mints an artist/album.
