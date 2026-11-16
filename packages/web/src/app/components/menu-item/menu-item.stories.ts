@@ -1,28 +1,61 @@
 import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
+import { startsGroup } from '../../lib/menu-groups';
 import { MenuItemComponent } from './menu-item.component';
 import { storyProviders } from '../../../stories/support/story-providers';
 import type { TrackAction } from '../track-row/track-row.component';
 
 const noop = () => {};
 const SONG_MENU: TrackAction[] = [
-  { label: 'Like', labelKey: 'song.like', icon: 'heart', action: noop },
-  { label: 'Add to queue', labelKey: 'song.addToQueue', icon: 'queue', action: noop },
-  { label: 'Play next', labelKey: 'song.playNext', icon: 'play-next', action: noop },
-  { label: 'Start radio', labelKey: 'song.startRadio', icon: 'radio', action: noop },
-  { label: 'Go to artist', labelKey: 'song.goToArtist', icon: 'user', action: noop },
-  { label: 'Go to album', labelKey: 'song.goToAlbum', icon: 'disc-album', action: noop },
-  { label: 'Add to playlist', labelKey: 'song.addToPlaylist', icon: 'list-music', action: noop },
-  { label: 'Save offline', labelKey: 'song.saveOffline', icon: 'download', action: noop },
-  { label: 'Song info', labelKey: 'song.info', icon: 'info', action: noop },
+  { label: 'Like', group: 'play', labelKey: 'song.like', icon: 'heart', action: noop },
+  {
+    label: 'Add to queue',
+    group: 'play',
+    labelKey: 'song.addToQueue',
+    icon: 'queue',
+    action: noop,
+  },
+  { label: 'Play next', group: 'play', labelKey: 'song.playNext', icon: 'play-next', action: noop },
+  { label: 'Start radio', group: 'play', labelKey: 'song.startRadio', icon: 'radio', action: noop },
+  { label: 'Go to artist', group: 'goto', labelKey: 'song.goToArtist', icon: 'user', action: noop },
+  {
+    label: 'Go to album',
+    group: 'goto',
+    labelKey: 'song.goToAlbum',
+    icon: 'disc-album',
+    action: noop,
+  },
+  {
+    label: 'Add to playlist',
+    group: 'keep',
+    labelKey: 'song.addToPlaylist',
+    icon: 'list-music',
+    action: noop,
+  },
+  {
+    label: 'Save offline',
+    group: 'keep',
+    labelKey: 'song.saveOffline',
+    icon: 'download',
+    action: noop,
+  },
+  { label: 'Song info', group: 'info', labelKey: 'song.info', icon: 'info', action: noop },
   {
     label: "Don't recommend this",
+    group: 'feedback',
     labelKey: 'song.dontRecommend',
     icon: 'thumbs-down',
     action: noop,
   },
-  { label: 'Report this track', labelKey: 'report.menuItem', icon: 'flag', action: noop },
+  {
+    label: 'Report this track',
+    group: 'feedback',
+    labelKey: 'report.menuItem',
+    icon: 'flag',
+    action: noop,
+  },
   {
     label: 'Remove from library',
+    group: 'remove',
     labelKey: 'song.removeFromLibrary',
     icon: 'delete',
     destructive: true,
@@ -46,11 +79,14 @@ export default meta;
 type Story = StoryObj;
 
 const menu = (actions: TrackAction[], tall: boolean) => ({
-  props: { actions, tall },
+  props: { actions, tall, startsGroup },
   moduleMetadata: { imports: [MenuItemComponent] },
   template: `
     <div role="menu" aria-label="Song actions" class="w-64 rounded-xl border border-theme bg-theme-surface py-1 shadow-xl">
-      @for (a of actions; track a.label) {
+      @for (a of actions; track a.label; let i = $index) {
+        @if (startsGroup(actions, i)) {
+          <div role="separator" class="my-1 border-t border-theme"></div>
+        }
         <button [appMenuItem]="a" [tall]="tall" role="menuitem"></button>
       }
     </div>`,

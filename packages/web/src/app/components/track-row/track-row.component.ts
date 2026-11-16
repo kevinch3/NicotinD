@@ -1,4 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
+import { startsGroup, type MenuGroup } from '../../lib/menu-groups';
 import { MenuItemComponent } from '../menu-item/menu-item.component';
 import type { IconName } from '../icon/icon.component';
 import { Component, computed, inject, input, output } from '@angular/core';
@@ -34,6 +35,8 @@ export interface TrackAction {
   labelKey?: string;
   /** Drawn before the label by the shared menu row (`MenuItemComponent`). */
   icon?: IconName;
+  /** Rows of one group sit together; a separator is drawn where it changes (#2006). */
+  group?: MenuGroup;
   action: () => void;
   destructive?: boolean;
 }
@@ -63,6 +66,8 @@ function formatDuration(seconds?: number): string {
   templateUrl: './track-row.component.html',
 })
 export class TrackRowComponent {
+  /** Whether a separator goes above a menu row (#2006). */
+  readonly startsGroup = startsGroup;
   /** Right-click and hold open the same ⋯ list (#1298). */
   readonly menuActions = (): TrackAction[] => this.actions();
   readonly auth = inject(AuthService);

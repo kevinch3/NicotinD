@@ -65,24 +65,28 @@ export class SongMenuService {
         label: this.likes.isLiked(song.id) ? 'Unlike' : 'Like',
         labelKey: this.likes.isLiked(song.id) ? 'song.unlike' : 'song.like',
         icon: this.likes.isLiked(song.id) ? 'heart-filled' : 'heart',
+        group: 'play',
         action: () => void this.likes.toggle(song.id),
       },
       {
         label: 'Add to queue',
         labelKey: 'song.addToQueue',
         icon: 'queue',
+        group: 'play',
         action: () => this.player.addToQueue(track),
       },
       {
         label: 'Play next',
         labelKey: 'song.playNext',
         icon: 'play-next',
+        group: 'play',
         action: () => this.player.queueNext(track),
       },
       {
         label: 'Start radio',
         labelKey: 'song.startRadio',
         icon: 'radio',
+        group: 'play',
         action: () => this.player.startRadio(track),
       },
     ];
@@ -92,6 +96,7 @@ export class SongMenuService {
         label: 'Go to artist',
         labelKey: 'song.goToArtist',
         icon: 'user',
+        group: 'goto',
         action: () => {
           const primary = song.artists?.find((a) => a.role === 'primary');
           // Offline the artist page needs the server: open the saved songs
@@ -107,6 +112,7 @@ export class SongMenuService {
         label: 'Go to album',
         labelKey: 'song.goToAlbum',
         icon: 'disc-album',
+        group: 'goto',
         action: () => {
           if (this.offline() && song.album)
             return void this.router.navigate(...offlineFind(song.album));
@@ -121,6 +127,7 @@ export class SongMenuService {
       label: 'Song info',
       labelKey: 'song.info',
       icon: 'info',
+      group: 'info',
       action: () =>
         this.trackInfo.open({
           songId: song.id,
@@ -141,12 +148,14 @@ export class SongMenuService {
             label: 'Recommend again',
             labelKey: 'song.recommendAgain',
             icon: 'thumbs-up',
+            group: 'feedback',
             action: () => void this.exclusions.restore(song.id),
           }
         : {
             label: "Don't recommend this",
             labelKey: 'song.dontRecommend',
             icon: 'thumbs-down',
+            group: 'feedback',
             action: () => void this.exclusions.exclude(song.id),
           },
     );
@@ -158,6 +167,7 @@ export class SongMenuService {
       label: 'Report this track',
       labelKey: 'report.menuItem',
       icon: 'flag',
+      group: 'feedback',
       action: () => this.report.open(song.id),
     });
 
@@ -166,6 +176,7 @@ export class SongMenuService {
         label: 'Remove from library',
         labelKey: 'song.removeFromLibrary',
         icon: 'delete',
+        group: 'remove',
         destructive: true,
         action: () => void this.removeFromLibrary(song.id, song.title),
       });
@@ -175,6 +186,7 @@ export class SongMenuService {
         label: 'Remove from playlist',
         labelKey: 'song.removeFromPlaylist',
         icon: 'close',
+        group: 'remove',
         destructive: true,
         action: ctx.onRemoveFromPlaylist,
       });

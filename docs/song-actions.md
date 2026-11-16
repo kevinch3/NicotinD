@@ -75,6 +75,27 @@ closing differs per menu. `[tall]="true"` gives the 44px row.
 
 `chevron-right` and `chevron-left` are in the set for the submenus that follow (#2009).
 
+## Groups and dividers (#2006)
+
+Each action has a `group`, and a separator is drawn wherever the group changes from one row to the
+next (`startsGroup` in `lib/menu-groups.ts`). The groups, in order (`MENU_GROUPS`):
+
+| Group | Actions |
+| --- | --- |
+| `play` | Like, Add to queue, Play next, Start radio |
+| `goto` | Go to artist, Go to album |
+| `keep` | Add to playlist, Save offline |
+| `info` | Song info |
+| `feedback` | Don't recommend this, Report this track |
+| `role` | reserved for the Get more and Curate submenus (#2013, #2017) |
+| `remove` | Remove from library, Remove from playlist |
+
+A page's `extraActions` that carry no group come last, behind a separator of their own.
+
+The separator is a `<div role="separator">` between the buttons, not a button, so the menu panel's
+focus and D-pad handling skip it. The song menus and the entity menu host draw them; entity and
+album actions carry no groups today, so those menus show none.
+
 ## Entity menus: albums, artists, genres, playlists (#1298)
 
 The same rule, one level up. `EntityMenuService.build(ref, ctx)` is the single source of a

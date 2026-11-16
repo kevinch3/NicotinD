@@ -114,7 +114,10 @@
             </svg>
           </button>
           <div menuPanel class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40">
-            @for (action of actions(); track action.label) {
+            @for (action of actions(); track action.label; let i = $index) {
+              @if (startsGroup(actions(), i)) {
+                <div role="separator" data-testid="menu-separator" class="my-1 border-t border-theme"></div>
+              }
               <button [appMenuItem]="action" (click)="menu.close(); runAction(action)"></button>
             }
           </div>

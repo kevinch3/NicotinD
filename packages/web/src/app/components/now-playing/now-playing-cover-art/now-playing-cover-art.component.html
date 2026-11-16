@@ -143,7 +143,10 @@
   <!-- The ⋯ menu's buttons are direct children of [menuPanel], so the phone
        bottom sheet's 44px row rule applies to them (#1714). -->
   <ng-template #menuItems>
-      @for (action of menuActions(); track action.label) {
+      @for (action of menuActions(); track action.label; let i = $index) {
+        @if (startsGroup(menuActions(), i)) {
+          <div role="separator" data-testid="menu-separator" class="my-1 border-t border-theme"></div>
+        }
         <button [appMenuItem]="action" (click)="closeMenu(); action.action()"></button>
       }
   </ng-template>
@@ -264,7 +267,10 @@
             </svg>
           </button>
           <div menuPanel class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40">
-            @for (action of menuActions(); track action.label) {
+            @for (action of menuActions(); track action.label; let i = $index) {
+              @if (startsGroup(menuActions(), i)) {
+                <div role="separator" data-testid="menu-separator" class="my-1 border-t border-theme"></div>
+              }
               <button [appMenuItem]="action" (click)="menu.close(); action.action()"></button>
             }
           </div>
