@@ -12,7 +12,12 @@
  * See docs/genre-lanes.md.
  */
 import type { Database } from 'bun:sqlite';
-import { genreKey, unresolvedGenreSql } from './genre-split.js';
+import {
+  genreKey,
+  LOW_INFORMATION_GENRES,
+  lowInformationOnlyGenreSql,
+  unresolvedGenreSql,
+} from './genre-split.js';
 import { autoGenreVocabulary } from './agent-policy.js';
 import { isVariousArtists } from './compilation-tagger.js';
 import { isPlaceholderArtistStrict } from './artwork-backfill.js';
@@ -29,8 +34,12 @@ export const GENRE_LANE_RULES = {
   siblingAlbumShare: 0.8,
 } as const;
 
+/** Why a song is a candidate: it has no usable genre, or only a catch-all one. */
+export type GenreLaneNeed = 'missing' | 'catch-all';
+
 export interface GenreLaneCandidate {
   lane: GenreLane;
+  need: GenreLaneNeed;
   songId: string;
   title: string;
   artist: string;
@@ -43,6 +52,8 @@ export interface GenreLaneCandidate {
 export interface GenreLaneReport {
   /** Songs each lane would tag. A song both lanes reach counts under `title` only. */
   counts: Record<GenreLane, number>;
+  /** The same songs by what they lack: no usable genre, or only a catch-all. */
+  byNeed: Record<GenreLaneNeed, number>;
   /** Distinct artists the sibling lane draws on. */
   siblingArtists: number;
   sample: GenreLaneCandidate[];
@@ -76,6 +87,10 @@ export function titleDeclaredGenres(
  * {@link GENRE_LANE_RULES.siblingAlbumShare} of them; at least
  * {@link GENRE_LANE_RULES.siblingMinAlbums} albums must count and all agree.
  * Albums, not songs, are the unit: one rip tags every track alike.
+ *
+ * An album whose dominant genre is a catch-all (Electronic, Dance) is not
+ * evidence either way: an umbrella tag neither names a style nor contradicts
+ * one, so it is skipped rather than counted as a disagreement.
  */
 export function agreedSiblingGenre(
   albums: ReadonlyMap<string, ReadonlyMap<string, number>>,
@@ -93,6 +108,7 @@ export function agreedSiblingGenre(
       if (n > topN) [top, topN] = [g, n];
     }
     if (!total || topN / total < GENRE_LANE_RULES.siblingAlbumShare) continue;
+    if (LOW_INFORMATION_GENRES.has(top)) continue;
     if (agreed !== null && agreed !== top) return null;
     agreed = top;
     counted++;
@@ -102,17 +118,29 @@ export function agreedSiblingGenre(
     : null;
 }
 
-/** Every genre-less song a lane has an answer for. Read-only. */
+/**
+ * Every song a lane has an answer for: one with no usable genre, or one whose
+ * only genre is a catch-all (the same two cases a `refiner:auto` token may
+ * replace). Read-only.
+ */
 export function genreLaneCandidates(db: Database): GenreLaneCandidate[] {
   const vocab = autoGenreVocabulary(db);
   const pending = db
     .query<
-      { id: string; title: string; artist: string; artist_id: string; album_id: string | null },
+      {
+        id: string;
+        title: string;
+        artist: string;
+        artist_id: string;
+        album_id: string | null;
+        missing: number;
+      },
       []
     >(
-      `SELECT s.id, s.title, s.artist, s.artist_id, s.album_id
+      `SELECT s.id, s.title, s.artist, s.artist_id, s.album_id,
+              ${unresolvedGenreSql('s.genre')} AS missing
          FROM library_songs s
-        WHERE ${unresolvedGenreSql('s.genre')}
+        WHERE ${unresolvedGenreSql('s.genre')} OR ${lowInformationOnlyGenreSql('s.id')}
         ORDER BY s.artist, s.title, s.id`,
     )
     .all();
@@ -149,6 +177,7 @@ export function genreLaneCandidates(db: Database): GenreLaneCandidate[] {
     if (declared) {
       out.push({
         lane: 'title',
+        need: s.missing ? 'missing' : 'catch-all',
         songId: s.id,
         title: s.title,
         artist: s.artist,
@@ -166,6 +195,7 @@ export function genreLaneCandidates(db: Database): GenreLaneCandidate[] {
     if (!agreed || !genre) continue;
     out.push({
       lane: 'siblings',
+      need: s.missing ? 'missing' : 'catch-all',
       songId: s.id,
       title: s.title,
       artist: s.artist,
@@ -180,13 +210,15 @@ export function genreLaneCandidates(db: Database): GenreLaneCandidate[] {
 export function genreLaneReport(db: Database, sample: number): GenreLaneReport {
   const all = genreLaneCandidates(db);
   const counts: Record<GenreLane, number> = { title: 0, siblings: 0 };
+  const byNeed: Record<GenreLaneNeed, number> = { missing: 0, 'catch-all': 0 };
   const artists = new Set<string>();
   for (const c of all) {
     counts[c.lane]++;
+    byNeed[c.need]++;
     if (c.lane === 'siblings') artists.add(c.artist);
   }
   // Both lanes in the sample, title first: it is the rarer one.
   const titles = all.filter((c) => c.lane === 'title').slice(0, Math.ceil(sample / 2));
   const siblings = all.filter((c) => c.lane === 'siblings').slice(0, sample - titles.length);
-  return { counts, siblingArtists: artists.size, sample: [...titles, ...siblings] };
+  return { counts, byNeed, siblingArtists: artists.size, sample: [...titles, ...siblings] };
 }

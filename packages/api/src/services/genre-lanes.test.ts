@@ -67,6 +67,20 @@ describe('agreedSiblingGenre', () => {
     expect(agreedSiblingGenre(albums, null)).toBeNull();
   });
 
+  it('skips an album dominated by a catch-all: it neither agrees nor disagrees', () => {
+    const albums = new Map([
+      ['a1', album({ techno: 9 })],
+      ['a2', album({ techno: 4 })],
+      ['umbrella', album({ electronic: 7 })],
+    ]);
+    expect(agreedSiblingGenre(albums, null)).toEqual({ genreKey: 'techno', albums: 2 });
+    const onlyUmbrellas = new Map([
+      ['u1', album({ dance: 3 })],
+      ['u2', album({ dance: 3 })],
+    ]);
+    expect(agreedSiblingGenre(onlyUmbrellas, null)).toBeNull();
+  });
+
   it('does not count an album with no dominant genre, nor the song own album', () => {
     const albums = new Map([
       ['a1', album({ techno: 9 })],
@@ -164,6 +178,28 @@ describe('genreLaneCandidates', () => {
     expect(genreLaneCandidates(db).map((c) => c.songId)).toContain(junk);
   });
 
+  it('also answers a song whose only genre is a catch-all, and says which need it was', () => {
+    vocabulary('Techno', 'Electronic');
+    artist('ar', 'Artist');
+    for (const al of ['a1', 'a2']) song('ar', al, `t${al}`, 'Techno');
+    const umbrella = song('ar', 'a3', 'Umbrella only', 'Electronic');
+    db.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, 'Electronic', 0)`,
+      [umbrella],
+    );
+    // A catch-all beside a real genre is not a candidate: a replace would drop the real one.
+    const both = song('ar', 'a3', 'Has a real one too', 'Electronic');
+    db.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, 'Electronic', 0), (?, 'House', 1)`,
+      [both, both],
+    );
+    const found = genreLaneCandidates(db);
+    expect(found.map((c) => [c.songId, c.need, c.genres])).toEqual([
+      [umbrella, 'catch-all', ['Techno']],
+    ]);
+    expect(genreLaneReport(db, 5).byNeed).toEqual({ missing: 0, 'catch-all': 1 });
+  });
+
   it('reports counts per lane, the artists drawn on, and a sample holding both lanes', () => {
     vocabulary('Techno', 'Downtempo', 'Folktronica');
     artist('ar', 'Artist');
@@ -174,6 +210,7 @@ describe('genreLaneCandidates', () => {
 
     const report = genreLaneReport(db, 4);
     expect(report.counts).toEqual({ title: 1, siblings: 5 });
+    expect(report.byNeed).toEqual({ missing: 6, 'catch-all': 0 });
     expect(report.siblingArtists).toBe(1);
     expect(report.sample.map((c) => c.lane)).toEqual(['title', 'siblings', 'siblings', 'siblings']);
   });
