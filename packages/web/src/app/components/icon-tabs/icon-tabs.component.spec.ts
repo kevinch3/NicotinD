@@ -61,6 +61,19 @@ describe('IconTabsComponent (#1668)', () => {
     expect(bar.classList).not.toContain('overflow-x-auto');
   });
 
+  it('fills the row on a phone by default, and stays as wide as its tabs when told not to', () => {
+    expect(make().bar.classList).toContain('w-full');
+    const fixture = TestBed.createComponent(IconTabsComponent);
+    setInputValue(fixture.componentInstance.items, ITEMS);
+    setInputValue(fixture.componentInstance.active, 'songs');
+    setInputValue(fixture.componentInstance.testid, 'bar');
+    setInputValue(fixture.componentInstance.fill, false);
+    fixture.detectChanges();
+    const bar = (fixture.nativeElement as HTMLElement).querySelector('[data-testid="bar"]')!;
+    expect(bar.classList).toContain('w-fit');
+    expect(bar.classList).not.toContain('w-full');
+  });
+
   it('emits the value of the tab that was pressed', () => {
     const { fixture, buttons } = make();
     const seen: string[] = [];
@@ -163,6 +176,17 @@ describe('IconTabsComponent (#1668)', () => {
       expect(badge(stats)!.previousElementSibling?.getAttribute('data-testid')).toBe(
         'icon-tab-label',
       );
+    });
+
+    it('draws a dot as a small circle with no text, not as an empty pill', () => {
+      const items: IconTabItem[] = [
+        { value: 'a', icon: 'music', label: 'a' },
+        { value: 'd', icon: 'music', label: 'd', badge: '' },
+      ];
+      const dot = badge(make({ items, active: 'a' }).buttons[1]!)!;
+      expect(dot.textContent?.trim()).toBe('');
+      expect(dot.classList).toContain('w-2');
+      expect(dot.classList).not.toContain('min-w-3.5');
     });
 
     it('is absent for no badge, null and zero, and present for a dot', () => {

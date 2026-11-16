@@ -45,6 +45,12 @@ export class IconTabsComponent {
   readonly testid = input<string | null>(null);
   /** `data-testid` every label carries. */
   readonly labelTestid = input('icon-tab-label');
+  /**
+   * Fill the row below `sm` (the default, so seven Library tabs share a phone's
+   * width). False keeps the bar as wide as its tabs, for a row whose empty space
+   * has a job: the Now Playing strip is pulled up by it (#1679).
+   */
+  readonly fill = input(true);
   /** What `aria-current` says on the active `nav` tab: `page` when each tab is a URL. */
   readonly current = input<'true' | 'page'>('true');
   /** i18n key naming the bar for assistive tech (`tabs` and `radio`). */

@@ -9,68 +9,72 @@ vi.mock('../../../lib/haptics', async (importOriginal) => ({
   haptic: vi.fn(),
 }));
 
+// The strip's markup is `IconTabsComponent`'s (#1668), pinned in its own spec.
+// Here: what the registry hands it, and what a press does.
 describe('NowPlayingPanelTabsComponent', () => {
-  it('shows the queue count on the queue tab', () => {
+  function make(opts: { queueCount?: number; hasLyrics?: boolean; activePanel?: string } = {}) {
     const fixture = TestBed.createComponent(NowPlayingPanelTabsComponent);
-    setInputValue(fixture.componentInstance.queueCount, 4);
+    const c = fixture.componentInstance;
+    if (opts.queueCount !== undefined) setInputValue(c.queueCount, opts.queueCount);
+    if (opts.hasLyrics !== undefined) setInputValue(c.hasLyrics, opts.hasLyrics);
+    if (opts.activePanel !== undefined) setInputValue(c.activePanel, opts.activePanel);
     fixture.detectChanges();
-    const tab = fixture.nativeElement.querySelector('[data-testid="now-playing-tab-queue"]');
-    expect(tab.textContent).toContain('4');
+    const item = (id: string) => c.items().find((i) => i.value === id)!;
+    return { fixture, c, item };
+  }
+
+  it('hands the bar one item per registered tab, under the testids e2e uses', () => {
+    const { c } = make();
+    expect(c.items().map((i) => [i.value, i.testid, i.icon, i.label])).toEqual([
+      ['queue', 'now-playing-tab-queue', 'queue', 'nowPlaying.nextUp'],
+      ['lyrics', 'now-playing-tab-lyrics', 'mic', 'nowPlaying.lyrics'],
+    ]);
+  });
+
+  it('shows the queue count on the queue tab, and nothing for an empty queue', () => {
+    expect(make({ queueCount: 4 }).item('queue')).toMatchObject({
+      badge: 4,
+      badgeTestid: 'now-playing-queue-count',
+    });
+    expect(make({ queueCount: 0 }).item('queue').badge).toBeNull();
   });
 
   it('shows a lyrics-availability dot when hasLyrics is true', () => {
-    const fixture = TestBed.createComponent(NowPlayingPanelTabsComponent);
-    setInputValue(fixture.componentInstance.hasLyrics, true);
-    fixture.detectChanges();
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="now-playing-lyrics-dot"]'),
-    ).toBeTruthy();
+    expect(make({ hasLyrics: true }).item('lyrics')).toMatchObject({
+      badge: '',
+      badgeTestid: 'now-playing-lyrics-dot',
+    });
   });
 
   it('hides the dot when hasLyrics is false', () => {
-    const fixture = TestBed.createComponent(NowPlayingPanelTabsComponent);
-    setInputValue(fixture.componentInstance.hasLyrics, false);
-    fixture.detectChanges();
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="now-playing-lyrics-dot"]'),
-    ).toBeNull();
-  });
-
-  it('emits panelSelected when the lyrics tab is clicked', () => {
-    const fixture = TestBed.createComponent(NowPlayingPanelTabsComponent);
-    fixture.detectChanges();
-    let selected: string | undefined;
-    fixture.componentInstance.panelSelected.subscribe((p: string) => (selected = p));
-    fixture.nativeElement.querySelector('[data-testid="now-playing-tab-lyrics"]').click();
-    expect(selected).toBe('lyrics');
-  });
-
-  it('marks the active tab aria-pressed', () => {
-    const fixture = TestBed.createComponent(NowPlayingPanelTabsComponent);
-    setInputValue(fixture.componentInstance.activePanel, 'lyrics');
-    fixture.detectChanges();
-    const lyricsTab = fixture.nativeElement.querySelector('[data-testid="now-playing-tab-lyrics"]');
-    expect(lyricsTab.getAttribute('aria-pressed')).toBe('true');
+    expect(make({ hasLyrics: false }).item('lyrics').badge).toBeNull();
   });
 
   it('hides the dot once the lyrics tab is already active', () => {
-    const fixture = TestBed.createComponent(NowPlayingPanelTabsComponent);
-    setInputValue(fixture.componentInstance.hasLyrics, true);
-    setInputValue(fixture.componentInstance.activePanel, 'lyrics');
-    fixture.detectChanges();
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="now-playing-lyrics-dot"]'),
-    ).toBeNull();
+    expect(make({ hasLyrics: true, activePanel: 'lyrics' }).item('lyrics').badge).toBeNull();
+  });
+
+  it('renders the shared tab bar as a tablist', () => {
+    const { fixture } = make();
+    const bar = (fixture.nativeElement as HTMLElement).querySelector('app-icon-tabs');
+    expect(bar?.getAttribute('variant')).toBe('tabs');
+  });
+
+  it('emits panelSelected for the pressed tab, the shown one included', () => {
+    const { c } = make({ activePanel: 'queue' });
+    const seen: string[] = [];
+    c.panelSelected.subscribe((p: string) => seen.push(p));
+    c.select('lyrics');
+    c.select('queue');
+    expect(seen).toEqual(['lyrics', 'queue']);
   });
 
   it('a tab switch ticks `select`; pressing the shown tab does not (#1659)', () => {
     vi.mocked(haptic).mockClear();
-    const fixture = TestBed.createComponent(NowPlayingPanelTabsComponent);
-    setInputValue(fixture.componentInstance.activePanel, 'queue');
-    fixture.detectChanges();
-    fixture.nativeElement.querySelector('[data-testid="now-playing-tab-queue"]').click();
+    const { c } = make({ activePanel: 'queue' });
+    c.select('queue');
     expect(haptic).not.toHaveBeenCalled();
-    fixture.nativeElement.querySelector('[data-testid="now-playing-tab-lyrics"]').click();
+    c.select('lyrics');
     expect(haptic).toHaveBeenCalledExactlyOnceWith('select');
   });
 });

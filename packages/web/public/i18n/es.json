@@ -1108,6 +1108,7 @@
   "nowPlaying.next": "Pista siguiente",
   "nowPlaying.nextFrom": "Siguiente de: {name}",
   "nowPlaying.nextUp": "A continuación",
+  "nowPlaying.panelTabs": "Cola y letra",
   "nowPlaying.noLyricsAvailable": "No hay letra disponible",
   "nowPlaying.noLyricsAvailableHint": "La letra aparecerá aquí cuando se encuentre sincronizada",
   "nowPlaying.pause": "Pausar",
