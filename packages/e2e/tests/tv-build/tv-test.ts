@@ -3,6 +3,7 @@
 // but its specs play audio too.
 import type { APIRequestContext } from '@playwright/test';
 import { test as base, bearer, expect, type Locator, type Page } from '../../helpers';
+import { pinFonts } from '../helpers/pinned-fonts';
 
 export { expect };
 
@@ -30,18 +31,7 @@ export const TV_VIEWPORT = { width: 960, height: 540 } as const;
 export const test = base.extend<{ pinnedFonts: void }>({
   pinnedFonts: [
     async ({ page }, use) => {
-      await page.addInitScript(() => {
-        const install = (): void => {
-          const style = document.createElement('style');
-          style.setAttribute('data-e2e-pinned-fonts', '');
-          style.textContent =
-            '*, *::before, *::after { font-family: "DejaVu Sans", "Noto Color Emoji", sans-serif !important; }' +
-            'code, pre, .font-mono { font-family: "DejaVu Sans Mono", monospace !important; }';
-          document.head.appendChild(style);
-        };
-        if (document.head) install();
-        else document.addEventListener('DOMContentLoaded', install);
-      });
+      await pinFonts(page);
       await use();
     },
     { auto: true },
