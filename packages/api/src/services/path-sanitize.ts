@@ -127,8 +127,12 @@ export function looksLikeFilenameTag(s: string): boolean {
 /**
  * Strip leading orphan punctuation from artist values — `"& Peter Tosh"`
  * (truncated `"X & Peter Tosh"`), `", Recondite"`, `"feat. Solomun"`.
+ *
+ * `&` and `+` are junk only when a name does not start right after them: a
+ * truncated credit has a space there, and `&ME` and `+44` are whole names
+ * (#1994).
  */
-const LEADING_JUNK = /^[\s&,;|/+]+|^(feat\.?|featuring|with|vs\.?|x)\s+/i;
+const LEADING_JUNK = /^[\s,;|/]+|^[&+]+(?![\p{L}\p{N}])|^(feat\.?|featuring|with|vs\.?|x)\s+/iu;
 export function stripArtistLeadJunk(s: string): string {
   let prev: string;
   let cur = s.trim();

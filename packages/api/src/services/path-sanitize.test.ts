@@ -173,6 +173,20 @@ describe('stripArtistLeadJunk', () => {
   it('leaves plain artist values alone', () => {
     expect(stripArtistLeadJunk('Plain Artist')).toBe('Plain Artist');
   });
+
+  // #1994: a name can start with the same character a truncated credit does.
+  it('keeps a name that starts with & or +', () => {
+    expect(stripArtistLeadJunk('&ME')).toBe('&ME');
+    expect(stripArtistLeadJunk('+44')).toBe('+44');
+    expect(stripArtistLeadJunk('&ÉA')).toBe('&ÉA');
+  });
+
+  it('still strips & and + that stand alone or lead other junk', () => {
+    expect(stripArtistLeadJunk('& Peter Tosh')).toBe('Peter Tosh');
+    expect(stripArtistLeadJunk('+ Guest')).toBe('Guest');
+    expect(stripArtistLeadJunk('&& , Recondite')).toBe('Recondite');
+    expect(stripArtistLeadJunk('&')).toBe('');
+  });
 });
 
 describe('stripFeaturingSuffix', () => {
