@@ -1363,6 +1363,13 @@ export interface LibraryHealthReport {
       metric: { songs: number; missing: number; lowInformation: number };
       worklist: { songId: string; title: string; artist: string }[];
       lowInformationWorklist: { artistId: string; artist: string; genre: string; songs: number }[];
+      /** Umbrella-only songs and how many the artist's own catalogue could resolve (#1123). */
+      umbrellaReach?: {
+        umbrellaOnly: number;
+        reachable: number;
+        reachableArtists: number;
+        byUmbrella: { genre: string; songs: number; reachable: number }[];
+      };
       /** Genre-less songs a deterministic lane has an answer for (#1516 P3); not applied. */
       deterministicLanes?: {
         counts: { title: number; siblings: number };
