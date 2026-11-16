@@ -1050,3 +1050,67 @@ describe('station affinity axis (filter radio, formula v3)', () => {
     expect(lo.axes.find((a) => a.axis === 'station')?.value).toBe(0);
   });
 });
+
+// #1486: shared listeners as a radio axis. Off by default; these pin that, and
+// what it does once a weight is given.
+describe('the cultural axis (#1486)', () => {
+  const related = (id: string) => (id === 'neighbour' ? 0.9 : null);
+
+  it('is off by default: a lookup changes nothing', () => {
+    expect(DEFAULT_WEIGHTS.cultural).toBe(0);
+    const c = makeCandidate({ artistId: 'neighbour' });
+    expect(scoreSimilarity(makeSeed(), c, DEFAULT_WEIGHTS, { culturalAffinity: related })).toBe(
+      scoreSimilarity(makeSeed(), c, DEFAULT_WEIGHTS),
+    );
+  });
+
+  it('with a weight, lifts an artist the seed shares listeners with above an equal stranger', () => {
+    const weights = { ...DEFAULT_WEIGHTS, cultural: 10 };
+    const ctx = { culturalAffinity: related };
+    const neighbour = scoreSimilarity(
+      makeSeed(),
+      makeCandidate({ artistId: 'neighbour' }),
+      weights,
+      ctx,
+    );
+    const stranger = scoreSimilarity(
+      makeSeed(),
+      makeCandidate({ artistId: 'stranger' }),
+      weights,
+      ctx,
+    );
+    expect(neighbour).toBeGreaterThan(stranger);
+  });
+
+  it('never ranks a weakly related artist below an equal stranger', () => {
+    const weights = { ...DEFAULT_WEIGHTS, cultural: 10 };
+    const ctx = { culturalAffinity: (id: string) => (id === 'weak' ? 0.05 : null) };
+    const weak = scoreSimilarity(makeSeed(), makeCandidate({ artistId: 'weak' }), weights, ctx);
+    const stranger = explainSimilarity(
+      makeSeed(),
+      makeCandidate({ artistId: 'stranger' }),
+      weights,
+      ctx,
+    );
+    expect(weak).toBeGreaterThan(stranger.score);
+    expect(stranger.floored).toContain('cultural');
+  });
+
+  it('skips the axis when the seed artist has no relations to consult', () => {
+    const weights = { ...DEFAULT_WEIGHTS, cultural: 10 };
+    const c = makeCandidate({ artistId: 'stranger' });
+    const ex = explainSimilarity(makeSeed(), c, weights);
+    expect(ex.skipped).toContain('cultural');
+    expect(ex.score).toBe(scoreSimilarity(makeSeed(), c, DEFAULT_WEIGHTS));
+  });
+
+  it('reports the axis in the explanation when it counted', () => {
+    const ex = explainSimilarity(
+      makeSeed(),
+      makeCandidate({ artistId: 'neighbour' }),
+      { ...DEFAULT_WEIGHTS, cultural: 10 },
+      { culturalAffinity: related },
+    );
+    expect(ex.axes.find((a) => a.axis === 'cultural')).toMatchObject({ value: 0.9, weight: 10 });
+  });
+});

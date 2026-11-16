@@ -192,8 +192,8 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `RelatedArtistsComponent`. → [related-artists.md](../related-artists.md)
 - **Cultural artist relations**: ListenBrainz similar artists fetched per artist MBID by an opt-in
   enrichment task and stored locally with a per-artist relative score; fills Related artists where
-  audio has nothing. `storeSimilarArtists`, `culturalNeighbours`, `artistMbidIndex`,
-  `getSimilarArtists`. → [artist-relations.md](../artist-relations.md)
+  audio has nothing; a radio axis, off by default. `storeSimilarArtists`, `culturalNeighbours`,
+  `culturalAffinityFor`, `getSimilarArtists`. → [artist-relations.md](../artist-relations.md)
 - **Deterministic genre lanes**: genres a genre-less song could take with no model, from a title's
   bracketed list or the artist's other albums agreeing; a read-only measurement in the health
   report. `genreLaneCandidates`, `titleDeclaredGenres`, `agreedSiblingGenre`.

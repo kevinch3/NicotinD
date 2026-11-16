@@ -19,6 +19,7 @@ import {
   storeSimilarArtists,
   storeArtistRelationships,
   relationshipNeighbours,
+  culturalAffinityFor,
 } from './artist-relations.js';
 import { normalizeArtistForGrouping } from './album-grouping.js';
 
@@ -339,6 +340,19 @@ describe('relatedArtists with cultural relations (#1486)', () => {
     ]);
     const ids = relatedArtists(db, 'seed').artists.map((a) => a.id);
     expect(ids).toEqual([...members.slice(0, RELATIONSHIP_SLOTS), 'listeners']);
+  });
+
+  it("gives radio a lookup of the seed artist's shared-listener scores, owned artists only", () => {
+    plainArtist('seed', 'Seed Artist', 'mb-seed');
+    plainArtist('owned', 'Owned Neighbour', 'mb-owned');
+    expect(culturalAffinityFor(db, 'seed')).toBeNull();
+    storeSimilarArtists(db, 'mb-seed', [
+      { mbid: 'mb-not-owned', name: 'Not Owned', score: 100 },
+      { mbid: 'mb-owned', name: 'Owned Neighbour', score: 60 },
+    ]);
+    const lookup = culturalAffinityFor(db, 'seed')!;
+    expect(lookup('owned')).toBe(0.6);
+    expect(lookup('someone-else')).toBeNull();
   });
 
   it('still says no-signal when neither source has been able to answer', () => {
