@@ -31,6 +31,10 @@ export class LyricsOptionsSheetComponent {
   /** "Try another source" state; null hides the button (the default, and TV). */
   readonly tryState = input<LyricsTryState | null>(null);
 
+  /** Offer "Edit timing" (#1675); curators only, never TV. */
+  readonly canEditTiming = input(false);
+
+  readonly editTiming = output<void>();
   readonly tryAnother = output<void>();
   readonly closed = output<void>();
   readonly nudged = output<number>();

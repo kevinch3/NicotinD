@@ -78,6 +78,18 @@
     </div>
   }
 
+  @if (canEditTiming()) {
+    <button
+      type="button"
+      data-testid="lyrics-edit-timing"
+      (click)="editTiming.emit()"
+      class="mb-3 inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium transition focus:outline-none focus-visible:ring-2"
+      [class]="tone() === 'overlay' ? 'bg-white/10 text-white hover:bg-white/20 focus-visible:ring-white' : 'bg-theme-surface-2 text-theme-secondary hover:text-theme-primary'"
+    >
+      {{ 'lyricsTiming.open' | t }}
+    </button>
+  }
+
   @if (timed()) {
     <app-lyrics-sync-tool
       [tone]="tone()"

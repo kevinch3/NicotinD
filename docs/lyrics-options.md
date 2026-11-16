@@ -290,6 +290,18 @@ so only the file's copy is missing until the next write to that field.
 
 ## 4. Timing editor (#1675)
 
+**Built** (`LyricsTimingEditorComponent`, `lib/lyrics-timing-draft.ts`, `serializeLrc`): the
+full-screen editor opened from "Edit timing" in the options group; STAMP at `pointerdown` from the
+element's own clock (`PlayerService.elementTime`), with Undo; the per-row stepper (±0.1 s, ±0.5 s,
+"Set to now", "Play from here", "Edit words"); a range selection by long press, by tapping another
+row while one is selected, or by "From here to the end", which the stepper then moves as one; Save,
+enabled only once every non-empty line is stamped, sending `PUT { plain, synced }` with absolute
+times so the stored offset returns to 0; and Preview. **Differences from the design below:**
+Preview highlights the playing line inside the editor's own list (the same "last stamp at or before
+the playhead" rule as `findActiveLine`) instead of switching to the karaoke panel; a stepper press
+does not repeat while held; and the editor is not reachable from the track-info sheet. Still not
+built: `previous_json` with "Undo last change", and `customized_kind`.
+
 For curators, on the phone first. It is reached from the options group ("Edit timing") and from
 the track-info sheet when the row is timed or plain.
 

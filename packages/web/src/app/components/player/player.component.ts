@@ -321,6 +321,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
 
   constructor() {
     this.noteOggFallback();
+    this.player.registerElementClock(
+      () => untracked(() => this.audioEl())?.nativeElement.currentTime ?? null,
+    );
     // <main> reserves the bar's real height (#1694): a transform slide never
     // changes the box, so the observer only fires on genuine size changes. It
     // watches the border box, the one measured: the default content box misses

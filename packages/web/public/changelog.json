@@ -1,5 +1,67 @@
 [
   {
+    "version": "0.8.131",
+    "date": "2026-11-15",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.130...v0.8.131",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**about:** list third-party licences from a release-generated manifest ([#1925](https://github.com/kevinch3/NicotinD/issues/1925)) ([e535853](https://github.com/kevinch3/NicotinD/commit/e535853908684cec78b9e8fa517bbad0b294fd09)), references [#1810](https://github.com/kevinch3/NicotinD/issues/1810)",
+          "**admin:** assign an email to an existing user ([#1902](https://github.com/kevinch3/NicotinD/issues/1902)) ([3d122a5](https://github.com/kevinch3/NicotinD/commit/3d122a599b107dda447e50f25b540e2d2761ecd8))",
+          "**catalog:** mark each catalog album with what the library holds ([#1903](https://github.com/kevinch3/NicotinD/issues/1903)) ([c742bfd](https://github.com/kevinch3/NicotinD/commit/c742bfd8f1edaa0e1d7b46514f2e7678aa8f4188)), references [#1885](https://github.com/kevinch3/NicotinD/issues/1885)",
+          "**downloads:** a partial album completes itself from another peer ([#1886](https://github.com/kevinch3/NicotinD/issues/1886)) ([957189a](https://github.com/kevinch3/NicotinD/commit/957189acdbafa8a39d616f9453ac2ed315d9fbed)), closes [#1879](https://github.com/kevinch3/NicotinD/issues/1879)",
+          "**downloads:** a track Get is a server job that finds its own copy ([#1911](https://github.com/kevinch3/NicotinD/issues/1911)) ([81359c0](https://github.com/kevinch3/NicotinD/commit/81359c02e05fe71e284790b028374fc3f057ee2f)), references [#1885](https://github.com/kevinch3/NicotinD/issues/1885)",
+          "**downloads:** a waiting Get says how many searches are ahead and roughly how long ([#1948](https://github.com/kevinch3/NicotinD/issues/1948)) ([ce9d188](https://github.com/kevinch3/NicotinD/commit/ce9d188ff35906c364c4bc39a1bc41abc1050419)), closes [#1938](https://github.com/kevinch3/NicotinD/issues/1938)",
+          "**library:** record which provider an artist portrait came from ([#1918](https://github.com/kevinch3/NicotinD/issues/1918)) ([6b49043](https://github.com/kevinch3/NicotinD/commit/6b490430d7d7dd065655d2ae49a1358d7b010037)), closes [#1860](https://github.com/kevinch3/NicotinD/issues/1860)",
+          "**mail:** add a Resend SMTP preset ([#1896](https://github.com/kevinch3/NicotinD/issues/1896)) ([6829361](https://github.com/kevinch3/NicotinD/commit/682936158e2a60202966d670fc1c631aa73239e3))",
+          "**mail:** branded emails in the recipient's language ([#1898](https://github.com/kevinch3/NicotinD/issues/1898)) ([28cd4cb](https://github.com/kevinch3/NicotinD/commit/28cd4cbf619d9f05852023e1a101a98174386f59))",
+          "**mcp:** split_album splits one album row holding several releases ([#1924](https://github.com/kevinch3/NicotinD/issues/1924)) ([7fc4092](https://github.com/kevinch3/NicotinD/commit/7fc40927e9ce2865976c79e5d361d42e1cadcf10)), closes [#1866](https://github.com/kevinch3/NicotinD/issues/1866)",
+          "**player:** karaoke is the Lyrics tab at full height ([#1932](https://github.com/kevinch3/NicotinD/issues/1932)) ([ff08d64](https://github.com/kevinch3/NicotinD/commit/ff08d64c22e2aa8e22f2ca70acc059a889a2b5bd)), references [#1679](https://github.com/kevinch3/NicotinD/issues/1679)",
+          "**player:** the Now Playing panel snaps between rest and full height ([#1931](https://github.com/kevinch3/NicotinD/issues/1931)) ([9f7a5ca](https://github.com/kevinch3/NicotinD/commit/9f7a5ca4d8a3eeb8d95ab3b686568f4502e05b11)), references [#1678](https://github.com/kevinch3/NicotinD/issues/1678)",
+          "**player:** the Now Playing panel's tabs are registered data ([#1933](https://github.com/kevinch3/NicotinD/issues/1933)) ([22ec2b5](https://github.com/kevinch3/NicotinD/commit/22ec2b5607b30bdf9a701d12e4880086e5e19643))",
+          "**web:** a Top result, fixed sections and scope chips on the Get page ([#1901](https://github.com/kevinch3/NicotinD/issues/1901)) ([bb80477](https://github.com/kevinch3/NicotinD/commit/bb80477acef9b72ac84ab338fc2af5f5240f8082)), references [#1885](https://github.com/kevinch3/NicotinD/issues/1885)",
+          "**web:** ask every metadata source in one request on the Get page ([#1909](https://github.com/kevinch3/NicotinD/issues/1909)) ([64af593](https://github.com/kevinch3/NicotinD/commit/64af5930a90e19446427d32e4be6dbef723d92ef)), references [#1885](https://github.com/kevinch3/NicotinD/issues/1885)",
+          "**web:** choose a copy of an album in one picker ([#1897](https://github.com/kevinch3/NicotinD/issues/1897)) ([ea8ed57](https://github.com/kevinch3/NicotinD/commit/ea8ed57f6065094c1216c52935618eac3cf2ee27)), references [#1885](https://github.com/kevinch3/NicotinD/issues/1885)",
+          "**web:** every network copy behind one All copies row, and no query rewrite ([#1900](https://github.com/kevinch3/NicotinD/issues/1900)) ([7078cf0](https://github.com/kevinch3/NicotinD/commit/7078cf0ebdebcd3816039deed7c9bb78181f2340)), references [#1885](https://github.com/kevinch3/NicotinD/issues/1885)",
+          "**web:** one album card on the Get page, with an explicit Get and an in-library state ([#1888](https://github.com/kevinch3/NicotinD/issues/1888)) ([b87fa27](https://github.com/kevinch3/NicotinD/commit/b87fa272a4c991bb634d234622a6e6e3380a741c)), references [#1885](https://github.com/kevinch3/NicotinD/issues/1885)",
+          "**web:** one notice column on the Get page, in theme colours ([#1889](https://github.com/kevinch3/NicotinD/issues/1889)) ([420d416](https://github.com/kevinch3/NicotinD/commit/420d4167bcdbbcc9f2b29ca11e7e17727645834d)), references [#1885](https://github.com/kevinch3/NicotinD/issues/1885)",
+          "**web:** one track row on the Get page, cancellable from the row ([#1890](https://github.com/kevinch3/NicotinD/issues/1890)) ([37a2def](https://github.com/kevinch3/NicotinD/commit/37a2def733ed15449eeaead53591d05fccb6af79)), references [#1885](https://github.com/kevinch3/NicotinD/issues/1885)",
+          "**web:** score an album's copies in the picker, and mark a failed Get ([#1899](https://github.com/kevinch3/NicotinD/issues/1899)) ([6fd4caf](https://github.com/kevinch3/NicotinD/commit/6fd4cafc272a11afe847ee36ca764db737415527)), references [#1885](https://github.com/kevinch3/NicotinD/issues/1885)"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**acquisition:** a script gives recent album jobs the standard edition's tracklist ([#1946](https://github.com/kevinch3/NicotinD/issues/1946)) ([655ac7c](https://github.com/kevinch3/NicotinD/commit/655ac7c74d88671402f2479bf23772052d7b7b0f)), references [#1936](https://github.com/kevinch3/NicotinD/issues/1936) [#1936](https://github.com/kevinch3/NicotinD/issues/1936)",
+          "**acquisition:** the standard edition is the album, not Lidarr's monitored box set ([#1941](https://github.com/kevinch3/NicotinD/issues/1941)) ([6cb7720](https://github.com/kevinch3/NicotinD/commit/6cb77201d78e855c502d9e65d7799734e7ae410a)), closes [#1936](https://github.com/kevinch3/NicotinD/issues/1936)",
+          "**build:** check shard file counts in the runner, not a second process ([#1910](https://github.com/kevinch3/NicotinD/issues/1910)) ([38534cc](https://github.com/kevinch3/NicotinD/commit/38534cc6f893509ce224ec32a8eaa699501289a8)), references [#1906](https://github.com/kevinch3/NicotinD/issues/1906)",
+          "**build:** fit verify inside a 3 GB memory budget ([#1907](https://github.com/kevinch3/NicotinD/issues/1907)) ([fd95d2a](https://github.com/kevinch3/NicotinD/commit/fd95d2abd12cfcd1001400493425328f5bdf01ca)), references [#1906](https://github.com/kevinch3/NicotinD/issues/1906)",
+          "**downloads:** a download that closes with tracks missing reads Partial, not Done ([#1949](https://github.com/kevinch3/NicotinD/issues/1949)) ([fa189d0](https://github.com/kevinch3/NicotinD/commit/fa189d0bd3b1ac18268b294a1f92f865f1cada72)), closes [#1939](https://github.com/kevinch3/NicotinD/issues/1939), references [#1936](https://github.com/kevinch3/NicotinD/issues/1936)",
+          "**downloads:** a resolving card no longer prints its whole tracklist as not offered ([#1940](https://github.com/kevinch3/NicotinD/issues/1940)) ([e17317a](https://github.com/kevinch3/NicotinD/commit/e17317a9caf5ea884af93282652c20faa057a55c)), closes [#1937](https://github.com/kevinch3/NicotinD/issues/1937)",
+          "**downloads:** an archive.org card shows each file as it downloads ([#1894](https://github.com/kevinch3/NicotinD/issues/1894)) ([4bd10d1](https://github.com/kevinch3/NicotinD/commit/4bd10d138c7cdf26e9da93584151b80826f29216)), closes [#1892](https://github.com/kevinch3/NicotinD/issues/1892)",
+          "**downloads:** an archive.org job lost to a restart fails instead of staying queued ([#1893](https://github.com/kevinch3/NicotinD/issues/1893)) ([8c695f0](https://github.com/kevinch3/NicotinD/commit/8c695f09539cfec9fd8eedeea1a06f331371e60c)), references [#1891](https://github.com/kevinch3/NicotinD/issues/1891)",
+          "**downloads:** every active job stays in the Activity feed ([#1943](https://github.com/kevinch3/NicotinD/issues/1943)) ([7ef9c82](https://github.com/kevinch3/NicotinD/commit/7ef9c82f452573c62ae3c6b29903dd3ec85f4cef)), closes [#1942](https://github.com/kevinch3/NicotinD/issues/1942)",
+          "**downloads:** re-source cancels the live replacement peer, not the long-gone first job ([#1880](https://github.com/kevinch3/NicotinD/issues/1880)) ([72a8d2d](https://github.com/kevinch3/NicotinD/commit/72a8d2dde8bcdbd9675401418a22780ed11747b4)), references [#1878](https://github.com/kevinch3/NicotinD/issues/1878)",
+          "**downloads:** waiting cards sort in run order, and every badge counts what the header counts ([#1944](https://github.com/kevinch3/NicotinD/issues/1944)) ([36bdc7c](https://github.com/kevinch3/NicotinD/commit/36bdc7c4d394396a7bcfe7a17b2a0844364bc1d6)), references [#1938](https://github.com/kevinch3/NicotinD/issues/1938)",
+          "**e2e:** start only the servers the selected projects use ([#1908](https://github.com/kevinch3/NicotinD/issues/1908)) ([f5107de](https://github.com/kevinch3/NicotinD/commit/f5107defc10c19ad3987c29fbe1b813c1178c023)), closes [#1906](https://github.com/kevinch3/NicotinD/issues/1906)",
+          "**hunt:** keep a tracklist title's leading number when matching peer files ([#1926](https://github.com/kevinch3/NicotinD/issues/1926)) ([fd9bbcd](https://github.com/kevinch3/NicotinD/commit/fd9bbcdf0af04dfe829dc58d8d88280d8989ff9c)), references [kevinch3/nicotind-slskd-addon#33](https://github.com/kevinch3/NicotinD/issues/33)",
+          "**hunt:** match a file that omits the title's bracketed subtitle ([#1927](https://github.com/kevinch3/NicotinD/issues/1927)) ([269e2f2](https://github.com/kevinch3/NicotinD/commit/269e2f2438867a99b46076460b701ac22a6be191)), references [kevinch3/nicotind-slskd-addon#34](https://github.com/kevinch3/NicotinD/issues/34)",
+          "**library:** count distinct track positions, so a duplicate never hides a missing track ([#1929](https://github.com/kevinch3/NicotinD/issues/1929)) ([88dd0eb](https://github.com/kevinch3/NicotinD/commit/88dd0eb950f0be2caa4f9dc0d69549d22315f424)), references [#758](https://github.com/kevinch3/NicotinD/issues/758)",
+          "**library:** keep a title's leading number when it is not the track ([#1921](https://github.com/kevinch3/NicotinD/issues/1921)) ([f1f3d50](https://github.com/kevinch3/NicotinD/commit/f1f3d50a4afe8a4b2cbb630f65a54f67d74eeed4)), references [#1876](https://github.com/kevinch3/NicotinD/issues/1876)",
+          "**mail:** Gmail-safe logo and server name, and preset switch replaces the username ([#1905](https://github.com/kevinch3/NicotinD/issues/1905)) ([accc6e9](https://github.com/kevinch3/NicotinD/commit/accc6e96be856ce203a86f9c4b146cce27659c9f))",
+          "**mcp:** the curator view lists credited albums and hides resolved compounds ([#1913](https://github.com/kevinch3/NicotinD/issues/1913)) ([ad7f433](https://github.com/kevinch3/NicotinD/commit/ad7f4339bd3dd583f712d00dc61c07629c51aa4d))",
+          "**search:** hide resolved compound and fragment artists from library search ([#1912](https://github.com/kevinch3/NicotinD/issues/1912)) ([cbd9e6a](https://github.com/kevinch3/NicotinD/commit/cbd9e6a3977e93b188dcbb8e5dd7ce7bfabffb7a))",
+          "**subsonic:** getTopSongs ranks as the artist page's Popular block ([#1917](https://github.com/kevinch3/NicotinD/issues/1917)) ([c5d88d2](https://github.com/kevinch3/NicotinD/commit/c5d88d2f1e4c924174b7bbf728e1005a47eef766)), closes [#1867](https://github.com/kevinch3/NicotinD/issues/1867)",
+          "**web:** a catalog card resolves on its own, and its watch star is a real button ([#1884](https://github.com/kevinch3/NicotinD/issues/1884)) ([528baca](https://github.com/kevinch3/NicotinD/commit/528bacaaf845fb51534c3ec16ac3777d81f92284)), references [#1883](https://github.com/kevinch3/NicotinD/issues/1883)",
+          "**web:** a menu focuses its first action once the panel is visible ([#1916](https://github.com/kevinch3/NicotinD/issues/1916)) ([41bc0d4](https://github.com/kevinch3/NicotinD/commit/41bc0d4ae18e47dc6ba2b5ac0f0b3d809f36b69f)), closes [#1862](https://github.com/kevinch3/NicotinD/issues/1862)",
+          "**web:** catalog album tiles fill their grid column ([#1882](https://github.com/kevinch3/NicotinD/issues/1882)) ([53cdc05](https://github.com/kevinch3/NicotinD/commit/53cdc05fa6296c07c1e0dacc1a72bb63ad2935f7)), references [#1847](https://github.com/kevinch3/NicotinD/issues/1847) [#1881](https://github.com/kevinch3/NicotinD/issues/1881)",
+          "**web:** the / shortcut's find-box poll stops when the service is destroyed ([#1915](https://github.com/kevinch3/NicotinD/issues/1915)) ([adce42a](https://github.com/kevinch3/NicotinD/commit/adce42aa7bd011055adf70f07950b00e6450533b)), closes [#1863](https://github.com/kevinch3/NicotinD/issues/1863)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.8.130",
     "date": "2026-11-13",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.129...v0.8.130",
@@ -891,26 +953,6 @@
         "title": "Performance",
         "items": [
           "**analysis:** run local key and tempo estimation on a worker thread ([#1395](https://github.com/kevinch3/NicotinD/issues/1395)) ([d364883](https://github.com/kevinch3/NicotinD/commit/d364883ca2b7b35022f18f547fce4362bc57810e)), closes [#1394](https://github.com/kevinch3/NicotinD/issues/1394)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.81",
-    "date": "2026-09-25",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.80...v0.8.81",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**mcp:** list songs by genre, with every song's full genre set ([#1388](https://github.com/kevinch3/NicotinD/issues/1388)) ([5f10e5e](https://github.com/kevinch3/NicotinD/commit/5f10e5e6b480026c34c3710dd47ced690f91bb81)), references [#1129](https://github.com/kevinch3/NicotinD/issues/1129)"
-        ]
-      },
-      {
-        "title": "Performance",
-        "items": [
-          "**backup:** bound the snapshot worker and measure the loop it frees ([#1389](https://github.com/kevinch3/NicotinD/issues/1389)) ([16710af](https://github.com/kevinch3/NicotinD/commit/16710af6c3067298b3c27117c33b0a8f0e0f5687)), references [#1342](https://github.com/kevinch3/NicotinD/issues/1342) [#1313](https://github.com/kevinch3/NicotinD/issues/1313) [#1313](https://github.com/kevinch3/NicotinD/issues/1313)",
-          "**scanner:** derive the genre alias canonicals once per alias table, not per call ([#1387](https://github.com/kevinch3/NicotinD/issues/1387)) ([749c185](https://github.com/kevinch3/NicotinD/commit/749c1858d7854e490cc673b02d1cb8a0ecac3eb9)), closes [#1386](https://github.com/kevinch3/NicotinD/issues/1386), references [#1386](https://github.com/kevinch3/NicotinD/issues/1386)"
         ]
       }
     ]

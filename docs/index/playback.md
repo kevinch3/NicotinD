@@ -92,9 +92,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   offset; the export bakes the offset into the LRC. `LyricsChoice`, `getLyricsProvenance`,
   `getLyricsExport`, `bakeLyricsOffset`.
   → [design-patterns.md](../design-patterns.md), [mcp-agent.md](../mcp-agent.md)
-- **Lyrics options**: fetch again by walking ranked candidates (built), one hidden karaoke options
-  group (built), and a phone timing editor that stamps lines at the playhead (design only); with
-  the end-to-end reproduction. `LyricsCapability`, `fetchSongLyrics`, `nextSongLyrics`.
+- **Lyrics options**: fetch again by walking ranked candidates, one hidden karaoke options group,
+  and a phone timing editor that stamps lines at the playhead; with the end-to-end reproduction.
+  `LyricsCapability`, `nextSongLyrics`, `LyricsTimingEditorComponent`, `serializeLrc`.
   → [lyrics-options.md](../lyrics-options.md)
 - **Now Playing waveform + karaoke VFX**: rendered from a precomputed artifact.
   → [audio-ml-enrichment.md](../audio-ml-enrichment.md)
