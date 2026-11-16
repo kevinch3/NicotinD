@@ -22,7 +22,7 @@
   @if (selection().size > 0) {
     <div class="flex shrink-0 items-center justify-between gap-2 bg-theme-surface-2 px-3 py-1.5 text-xs text-theme-secondary" data-testid="lyrics-timing-selection">
       <span>{{ 'lyricsTiming.selected' | t: { count: selection().size } }}</span>
-      <button type="button" data-testid="lyrics-timing-selection-clear" (click)="clearSelection()" class="rounded px-2 py-1 text-theme-primary hover:bg-theme-hover">
+      <button type="button" data-testid="lyrics-timing-selection-clear" (click)="clearSelection()" class="rounded-lg px-2 py-1 text-theme-primary hover:bg-theme-hover">
         {{ 'lyricsTiming.clearSelection' | t }}
       </button>
     </div>

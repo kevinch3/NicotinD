@@ -67,7 +67,7 @@
         @for (track of tracks(); track track.id; let i = $index) {
           <button
             (click)="playTrack(i)"
-            [class]="'w-full flex items-center gap-3 px-2 py-3 rounded text-left transition '
+            [class]="'w-full flex items-center gap-3 px-2 py-3 rounded-lg text-left transition '
               + (currentIndex() === i && isPlaying() ? 'bg-theme-surface-2 text-theme-primary' : 'hover:bg-theme-hover text-theme-secondary')">
             <span class="w-6 text-right text-xs text-theme-muted flex-shrink-0">
               @if (currentIndex() === i && isPlaying()) {

@@ -119,24 +119,24 @@
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <button type="button" data-testid="radio-polls-copy"
-                class="text-xs rounded border border-theme px-2.5 py-1.5 hover:bg-theme-hover transition"
+                class="text-xs rounded-lg border border-theme px-2.5 py-1.5 hover:bg-theme-hover transition"
                 (click)="copyLink(row.url)">
                 {{ 'admin.radioPollsCopyLink' | t }}
               </button>
               <button type="button" data-testid="radio-polls-results"
-                class="text-xs rounded border border-theme px-2.5 py-1.5 hover:bg-theme-hover transition"
+                class="text-xs rounded-lg border border-theme px-2.5 py-1.5 hover:bg-theme-hover transition"
                 (click)="toggleResults(row)">
                 {{ resultsLoadingId() === row.id ? '…' : ('admin.radioPollsResults' | t) }}
               </button>
               @if (status(row) === 'open') {
                 <button type="button" data-testid="radio-polls-close"
-                  class="text-xs rounded border border-theme px-2.5 py-1.5 hover:bg-theme-hover transition"
+                  class="text-xs rounded-lg border border-theme px-2.5 py-1.5 hover:bg-theme-hover transition"
                   (click)="close(row)">
                   {{ 'admin.radioPollsClose' | t }}
                 </button>
               }
               <button type="button" data-testid="radio-polls-delete"
-                class="text-xs rounded border border-theme px-2.5 py-1.5 text-status-error hover:bg-theme-hover transition"
+                class="text-xs rounded-lg border border-theme px-2.5 py-1.5 text-status-error hover:bg-theme-hover transition"
                 (click)="remove(row)">
                 {{ 'admin.radioPollsDelete' | t }}
               </button>
@@ -201,7 +201,7 @@
     <button
       type="button"
       data-testid="radio-polls-refresh"
-      class="text-sm rounded border border-theme px-3 py-1.5 hover:bg-theme-hover transition"
+      class="text-sm rounded-lg border border-theme px-3 py-1.5 hover:bg-theme-hover transition"
       (click)="reload()"
     >
       {{ 'admin.radioPollsRefresh' | t }}

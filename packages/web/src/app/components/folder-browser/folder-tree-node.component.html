@@ -2,7 +2,7 @@
     <div>
       <button
         (click)="toggle()"
-        [class]="'w-full text-left flex items-center gap-1 px-2 py-1 rounded text-xs transition ' +
+        [class]="'w-full text-left flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition ' +
           (selected() === node().fullPath
             ? 'bg-theme-surface-2 text-theme-primary'
             : 'text-theme-secondary hover:bg-theme-hover hover:text-theme-primary')">

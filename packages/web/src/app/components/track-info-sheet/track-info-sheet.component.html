@@ -120,7 +120,7 @@
           </p>
           @if (!editingTags()) {
             <button
-              class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-surface-3 text-xs"
+              class="px-2 py-0.5 rounded-lg bg-theme-surface-2 hover:bg-theme-surface-3 text-xs"
               (click)="startEditTags()"
               data-testid="edit-tags-button"
             >
@@ -135,7 +135,7 @@
               <label class="flex gap-2 items-center text-sm">
                 <span class="text-theme-muted w-20 flex-shrink-0">{{ field.labelKey | t }}</span>
                 <input
-                  class="flex-1 min-w-0 rounded bg-theme-surface-2 px-2 py-1 text-sm text-theme-primary outline-none focus:ring-1 focus:ring-theme-accent"
+                  class="flex-1 min-w-0 rounded-lg bg-theme-surface-2 px-2 py-1 text-sm text-theme-primary outline-none focus:ring-1 focus:ring-theme-accent"
                   [value]="tagDraft()[field.key]"
                   [disabled]="savingTags()"
                   (input)="setTagField(field.key, $any($event.target).value)"
@@ -147,7 +147,7 @@
               <span class="text-theme-muted w-20 flex-shrink-0">{{ 'trackInfo.tagYear' | t }}</span>
               <input
                 type="number"
-                class="w-24 rounded bg-theme-surface-2 px-2 py-1 text-sm text-theme-primary outline-none focus:ring-1 focus:ring-theme-accent"
+                class="w-24 rounded-lg bg-theme-surface-2 px-2 py-1 text-sm text-theme-primary outline-none focus:ring-1 focus:ring-theme-accent"
                 [value]="tagDraft().year"
                 [disabled]="savingTags()"
                 (input)="setTagField('year', $any($event.target).value)"
@@ -159,7 +159,7 @@
                  opinion and the candidate releases from the online sources. -->
             <div class="flex gap-2 items-center flex-wrap">
               <button
-                class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-surface-3 text-xs disabled:opacity-50"
+                class="px-2 py-0.5 rounded-lg bg-theme-surface-2 hover:bg-theme-surface-3 text-xs disabled:opacity-50"
                 [disabled]="loadingTagCandidates()"
                 (click)="findTagMatches()"
                 data-testid="find-tag-matches-button"
@@ -188,7 +188,7 @@
                     <li>
                       <button
                         type="button"
-                        class="w-full text-left px-2 py-1 rounded bg-theme-surface-2 hover:bg-theme-surface-3 text-xs"
+                        class="w-full text-left px-2 py-1 rounded-lg bg-theme-surface-2 hover:bg-theme-surface-3 text-xs"
                         (click)="useTagCandidate(candidate)"
                         data-testid="tag-candidate-row"
                       >
@@ -209,7 +209,7 @@
 
             <div class="flex gap-2 items-center">
               <button
-                class="px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
+                class="px-2 py-0.5 rounded-lg bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
                 [disabled]="savingTags() || !hasTagChanges()"
                 (click)="saveTags()"
                 data-testid="save-tags-button"
@@ -217,7 +217,7 @@
                 {{ savingTags() ? ('trackInfo.tagsSaving' | t) : ('trackInfo.saveTags' | t) }}
               </button>
               <button
-                class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-surface-3 text-xs"
+                class="px-2 py-0.5 rounded-lg bg-theme-surface-2 hover:bg-theme-surface-3 text-xs"
                 (click)="cancelEditTags()"
                 data-testid="cancel-tags-button"
               >
@@ -296,7 +296,7 @@
             <span class="text-theme-muted">Unknown</span>
           }
           <button
-            class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-surface-3 text-xs disabled:opacity-50"
+            class="ml-auto px-2 py-0.5 rounded-lg bg-theme-surface-2 hover:bg-theme-surface-3 text-xs disabled:opacity-50"
             [disabled]="analyzing()"
             (click)="analyze()"
             data-testid="analyze-bpm-button"
@@ -400,7 +400,7 @@
             }
           </span>
           <button
-            class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-surface-3 text-xs disabled:opacity-50 flex-shrink-0"
+            class="ml-auto px-2 py-0.5 rounded-lg bg-theme-surface-2 hover:bg-theme-surface-3 text-xs disabled:opacity-50 flex-shrink-0"
             [disabled]="verifyingGenre()"
             (click)="verifyGenreNow()"
             data-testid="verify-genre-button"
@@ -417,7 +417,7 @@
               <span class="text-theme-secondary">{{ g.suggested }}</span>
               @if (canCurate()) {
                 <button
-                  class="ml-auto px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
+                  class="ml-auto px-2 py-0.5 rounded-lg bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
                   [disabled]="applyingGenre()"
                   (click)="applySuggestedGenre(g.suggested!)"
                   data-testid="apply-genre-button"
@@ -437,7 +437,7 @@
             <span class="text-theme-muted w-16 flex-shrink-0">Tags</span>
             <span class="text-theme-secondary text-xs">Wrong or missing metadata?</span>
             <button
-              class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-surface-3 text-xs disabled:opacity-50"
+              class="ml-auto px-2 py-0.5 rounded-lg bg-theme-surface-2 hover:bg-theme-surface-3 text-xs disabled:opacity-50"
               [disabled]="identifying()"
               (click)="identifyNow()"
               data-testid="identify-song-button"
@@ -459,7 +459,7 @@
                 </span>
                 <span class="text-theme-muted text-xs">{{ (s.score * 100).toFixed(0) }}%</span>
                 <button
-                  class="ml-auto px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
+                  class="ml-auto px-2 py-0.5 rounded-lg bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
                   [disabled]="applyingIdentify()"
                   (click)="applyIdentifyNow()"
                   data-testid="apply-identify-button"
@@ -518,7 +518,7 @@
           <div class="flex gap-2">
             @if (canCurate()) {
               <button
-                class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-surface-3 text-xs"
+                class="px-2 py-0.5 rounded-lg bg-theme-surface-2 hover:bg-theme-surface-3 text-xs"
                 (click)="startEditLyrics()"
                 data-testid="edit-lyrics-button"
               >
@@ -526,7 +526,7 @@
               </button>
             }
             <button
-              class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-surface-3 text-xs disabled:opacity-50"
+              class="px-2 py-0.5 rounded-lg bg-theme-surface-2 hover:bg-theme-surface-3 text-xs disabled:opacity-50"
               [disabled]="fetchingLyrics()"
               (click)="fetchLyricsNow()"
               data-testid="fetch-lyrics-button"
@@ -539,14 +539,14 @@
 
       @if (editingLyrics()) {
         <textarea
-          class="w-full h-48 rounded bg-theme-surface-2 text-sm text-theme-primary p-2 resize-y focus:outline-none focus:ring-1 focus:ring-theme-accent"
+          class="w-full h-48 rounded-lg bg-theme-surface-2 text-sm text-theme-primary p-2 resize-y focus:outline-none focus:ring-1 focus:ring-theme-accent"
           [value]="lyricsDraft()"
           (input)="lyricsDraft.set($any($event.target).value)"
           data-testid="lyrics-editor"
         ></textarea>
         <div class="flex flex-wrap gap-2 mt-2">
           <button
-            class="px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
+            class="px-2 py-0.5 rounded-lg bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
             [disabled]="savingLyrics() || !lyricsDraft().trim()"
             (click)="saveLyricsNow()"
             data-testid="save-lyrics-button"
@@ -554,14 +554,14 @@
             {{ savingLyrics() ? 'Saving...' : 'Save' }}
           </button>
           <button
-            class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-surface-3 text-xs"
+            class="px-2 py-0.5 rounded-lg bg-theme-surface-2 hover:bg-theme-surface-3 text-xs"
             (click)="editingLyrics.set(false)"
           >
             Cancel
           </button>
           @if (lyrics()) {
             <button
-              class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 text-status-error hover:bg-theme-surface-3 text-xs"
+              class="ml-auto px-2 py-0.5 rounded-lg bg-theme-surface-2 text-status-error hover:bg-theme-surface-3 text-xs"
               (click)="resetLyrics()"
               data-testid="reset-lyrics-button"
             >

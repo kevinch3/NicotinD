@@ -29,7 +29,7 @@
         type="button"
         data-testid="artist-image-upload"
         (click)="triggerUpload()"
-        class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition"
+        class="text-left px-3 py-2 text-sm rounded-lg text-theme-secondary hover:bg-theme-surface-2 transition"
       >
         Upload image…
       </button>
@@ -37,7 +37,7 @@
         type="button"
         data-testid="artist-image-from-album"
         (click)="openAlbumPicker()"
-        class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition"
+        class="text-left px-3 py-2 text-sm rounded-lg text-theme-secondary hover:bg-theme-surface-2 transition"
       >
         Choose from album…
       </button>
@@ -51,7 +51,7 @@
             ? 'No artist-image source is enabled — configure Lidarr or enable the Spotify or Discogs extension'
             : ''
         "
-        class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+        class="text-left px-3 py-2 text-sm rounded-lg text-theme-secondary hover:bg-theme-surface-2 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
         Fetch automatically
       </button>
@@ -59,7 +59,7 @@
         type="button"
         data-testid="artist-image-reset"
         (click)="reset()"
-        class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition"
+        class="text-left px-3 py-2 text-sm rounded-lg text-theme-secondary hover:bg-theme-surface-2 transition"
       >
         Reset to default
       </button>

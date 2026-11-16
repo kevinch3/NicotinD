@@ -171,7 +171,7 @@
             (click)="retryCatalog()"
             [disabled]="retryingCatalog()"
             data-testid="retry-catalog"
-            class="shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80 disabled:opacity-50"
+            class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80 disabled:opacity-50"
           >
             {{ (retryingCatalog() ? 'acquire.catalogRetrying' : 'acquire.catalogRetry') | t }}
           </button>
@@ -183,7 +183,7 @@
             (click)="loadDiscography()"
             [disabled]="loadingDiscography()"
             data-testid="load-discography"
-            class="shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80 disabled:opacity-50"
+            class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80 disabled:opacity-50"
           >
             {{
               loadingDiscography()
@@ -265,7 +265,7 @@
                     (click)="retryLinkJob()"
                     [disabled]="linkSubmitting()"
                     data-testid="link-intent-retry"
-                    class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-theme-surface-2 hover:bg-theme-surface-3 text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                    class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 hover:bg-theme-surface-3 text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {{ 'acquire.catalogRetry' | t }}
                   </button>
@@ -276,7 +276,7 @@
                   (click)="retryLinkJob()"
                   [disabled]="linkSubmitting()"
                   data-testid="link-intent-retry"
-                  class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-theme-surface-2 hover:bg-theme-surface-3 text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                  class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 hover:bg-theme-surface-3 text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {{ 'acquire.catalogRetry' | t }}
                 </button>
@@ -303,7 +303,7 @@
               (click)="submitLinkIntent()"
               [disabled]="linkSubmitting()"
               data-testid="link-intent-get"
-              class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-theme-surface-2 hover:bg-theme-surface-3 text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 hover:bg-theme-surface-3 text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
               @if (linkSubmitting()) {
                 Starting…
@@ -676,7 +676,7 @@
               type="button"
               (click)="searchFallbackAlbum()"
               data-testid="raw-fallback-search"
-              class="px-2.5 py-1 rounded-md font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80"
+              class="px-2.5 py-1 rounded-lg font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80"
             >
               {{ 'getNotice.rawFallbackSearch' | t: { source: networkLabel() } }}
             </button>
@@ -686,7 +686,7 @@
                 (click)="browseFallbackDiscography()"
                 [disabled]="loadingDiscography()"
                 data-testid="raw-fallback-discography"
-                class="px-2.5 py-1 rounded-md font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80 disabled:opacity-50"
+                class="px-2.5 py-1 rounded-lg font-semibold bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-2/80 disabled:opacity-50"
               >
                 {{
                   loadingDiscography()

@@ -59,7 +59,7 @@
       [disabled]="offsetMs() === 0"
       [attr.data-testid]="testid() + '-reset'"
       [attr.aria-label]="'nowPlaying.syncReset' | t"
-      class="w-28 text-left underline underline-offset-2 transition rounded disabled:opacity-40 disabled:no-underline disabled:cursor-default focus:outline-none focus-visible:ring-2"
+      class="w-28 text-left underline underline-offset-2 transition rounded-lg disabled:opacity-40 disabled:no-underline disabled:cursor-default focus:outline-none focus-visible:ring-2"
       [class]="tone() === 'overlay' ? 'enabled:hover:text-white focus-visible:ring-white' : 'enabled:hover:text-theme-primary'"
     >
       {{ 'nowPlaying.syncReset' | t }}
