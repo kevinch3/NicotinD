@@ -69,6 +69,7 @@ export function offlineTrackAction(preserve: PreserveService, track: Track): Tra
         ? 'song.removeDownload'
         : 'song.saveOffline',
     icon: 'download',
+    group: 'keep',
     destructive: preserved,
     action: () => {
       if (inProgress) return;
@@ -88,6 +89,7 @@ export function addToPlaylistAction(playlists: PlaylistService, songId: string):
     label: 'Add to playlist',
     labelKey: 'song.addToPlaylist',
     icon: 'list-music',
+    group: 'keep',
     action: () => playlists.openPicker([songId]),
   };
 }

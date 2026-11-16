@@ -1,4 +1,5 @@
 import { TestBed, getTestBed } from '@angular/core/testing';
+import { startsGroup } from '../lib/menu-groups';
 import { Router } from '@angular/router';
 import { SongMenuService } from './song-menu.service';
 import { PlayerService } from './player.service';
@@ -82,6 +83,39 @@ describe('SongMenuService.build', () => {
       'Song info',
       "Don't recommend this",
       'Report this track',
+    ]);
+  });
+
+  // #2006: a separator is drawn wherever the group changes.
+  it('groups the menu Play, Go to, Keep, Info, Feedback, Remove, with a page extra last', () => {
+    const { svc } = setup('admin');
+    const actions = svc.build(song({ artistId: 'ar1', albumId: 'al1' }), {
+      removable: true,
+      extraActions: [{ label: 'Page extra', action: () => {} }],
+    });
+    expect(actions.map((a) => a.group ?? null)).toEqual([
+      'play',
+      'play',
+      'play',
+      'play',
+      'goto',
+      'goto',
+      'keep',
+      'keep',
+      'info',
+      'feedback',
+      'feedback',
+      'remove',
+      null,
+    ]);
+    const above = actions.filter((_, i) => startsGroup(actions, i)).map((a) => a.label);
+    expect(above).toEqual([
+      'Go to artist',
+      'Add to playlist',
+      'Song info',
+      "Don't recommend this",
+      'Remove from library',
+      'Page extra',
     ]);
   });
 

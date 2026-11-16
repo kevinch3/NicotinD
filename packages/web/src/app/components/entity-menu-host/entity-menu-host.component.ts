@@ -1,4 +1,5 @@
 import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
+import { startsGroup } from '../../lib/menu-groups';
 import { MenuItemComponent } from '../menu-item/menu-item.component';
 import { EntityMenuService } from '../../services/entity-menu.service';
 import { BackButtonService } from '../../services/native/back-button.service';
@@ -46,6 +47,8 @@ export type EntityMenuLayout =
   templateUrl: './entity-menu-host.component.html',
 })
 export class EntityMenuHostComponent {
+  /** Whether a separator goes above a menu row (#2006). */
+  readonly startsGroup = startsGroup;
   readonly menu = inject(EntityMenuService);
   private readonly back = inject(BackButtonService);
 
