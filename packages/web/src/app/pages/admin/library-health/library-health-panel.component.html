@@ -12,7 +12,7 @@
         (click)="load()"
         [disabled]="loading()"
         data-testid="library-health-refresh"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-3 transition disabled:opacity-50"
       >
         {{ (loading() ? 'admin.health.loading' : 'admin.health.refresh') | t }}
       </button>
@@ -67,7 +67,7 @@
                     (click)="runAction(card)"
                     [disabled]="actionsDisabled()"
                     [attr.data-testid]="'health-action-' + card.dimension"
-                    class="shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+                    class="shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-3 transition disabled:opacity-50"
                     [class.text-status-warn]="action.destructive"
                   >
                     {{ action.labelKey | t }}

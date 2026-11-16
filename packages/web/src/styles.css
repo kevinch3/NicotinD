@@ -354,6 +354,12 @@
      dark themes the text lightens and on light themes (daylight/warm-paper/eink)
      it darkens, instead of the old fixed `text-*-300` tints that vanished on
      light backgrounds. */
+  /* Hover on a raised control is `surface-3` (#1686). On E-Ink that level
+     equals `surface-2` by design, so the preset's own hover grey stands in. */
+  [data-theme="eink"] .hover\:bg-theme-surface-3:hover {
+    background-color: var(--theme-hover);
+  }
+
   /* A surface tinted by one of the eight theme hues (#1686, theme audit Q2):
      the element sets `--tone-hue` (lib/theme-hue.ts). 12% into the surface, 16%
      on hover: the chip tones' mix is the ceiling, because yellow at 22% drops

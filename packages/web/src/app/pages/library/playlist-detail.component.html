@@ -36,7 +36,7 @@
             </button>
             @if (!selection.active() && !readOnly()) {
               <button (click)="selection.enter()"
-                class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition">
+                class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-muted hover:bg-theme-surface-3 transition">
                 Select
               </button>
             }
@@ -48,7 +48,7 @@
                 [attr.title]="playlistDownloaded() ? 'Downloaded' : 'Download'"
                 [class]="'w-10 h-10 flex items-center justify-center rounded-lg transition ' + (playlistDownloaded()
                   ? 'status-done hover:opacity-80'
-                  : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
+                  : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-surface-3')">
                 <app-icon name="download" />
               </button>
             }
@@ -58,7 +58,7 @@
                 [attr.title]="shareCopied() ? 'Link copied!' : 'Share'"
                 [class]="'w-10 h-10 flex items-center justify-center rounded-lg transition ' + (shareCopied()
                   ? 'status-done'
-                  : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
+                  : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-surface-3')">
                 <app-icon name="share" />
               </button>
             }

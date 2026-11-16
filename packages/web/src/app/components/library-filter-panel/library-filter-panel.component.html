@@ -4,7 +4,7 @@
       [attr.aria-label]="'library.filters.title' | t"
       [title]="'library.filters.title' | t"
       (click)="panelOpened.emit()"
-      class="relative inline-flex size-9 shrink-0 cursor-pointer select-none items-center justify-center rounded-lg bg-theme-surface-2 text-theme-secondary transition hover:bg-theme-hover hover:text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
+      class="relative inline-flex size-9 shrink-0 cursor-pointer select-none items-center justify-center rounded-lg bg-theme-surface-2 text-theme-secondary transition hover:bg-theme-surface-3 hover:text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
       <app-icon name="sliders" [size]="18" />
       @if (badgeCount() > 0) {
         <span [attr.data-testid]="testIdPrefix() + '-filter-count'"
@@ -14,7 +14,7 @@
   } @else {
     <button menuTrigger type="button" [attr.data-testid]="testIdPrefix() + '-filters'"
       (click)="panelOpened.emit()"
-      class="cursor-pointer select-none px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-hover focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)] transition flex items-center gap-1.5">
+      class="cursor-pointer select-none px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-3 focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)] transition flex items-center gap-1.5">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <line x1="4" x2="4" y1="21" y2="14" /><line x1="4" x2="4" y1="10" y2="3" />
         <line x1="12" x2="12" y1="21" y2="12" /><line x1="12" x2="12" y1="8" y2="3" />

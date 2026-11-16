@@ -273,7 +273,7 @@
                   (click)="huntIndividualTracks()"
                   [disabled]="trackHuntState() === 'running'"
                   data-testid="hunt-tracks"
-                  class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-primary hover:bg-theme-hover transition disabled:opacity-50"
+                  class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-primary hover:bg-theme-surface-3 transition disabled:opacity-50"
                 >
                   {{
                     trackHuntState() === 'running'
@@ -396,7 +396,7 @@
           </p>
           <button
             (click)="close()"
-            class="mt-5 px-5 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-semibold hover:bg-theme-hover transition"
+            class="mt-5 px-5 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-semibold hover:bg-theme-surface-3 transition"
           >
             Done
           </button>
@@ -409,7 +409,7 @@
           <p class="text-theme-muted text-sm mt-2">Check the Downloads tab to see its progress.</p>
           <button
             (click)="close()"
-            class="mt-5 px-5 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-semibold hover:bg-theme-hover transition"
+            class="mt-5 px-5 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-semibold hover:bg-theme-surface-3 transition"
           >
             Done
           </button>
