@@ -11,7 +11,7 @@
         (click)="runBackup()"
         [disabled]="backingUp()"
         data-testid="backup-now"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-3 transition disabled:opacity-50"
       >
         {{ (backingUp() ? 'admin.backingUp' : 'admin.backupNow') | t }}
       </button>
@@ -52,7 +52,7 @@
         (click)="exportConfig()"
         [disabled]="configBusy()"
         data-testid="config-export"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-3 transition disabled:opacity-50"
       >
         {{ 'admin.exportConfiguration' | t }}
       </button>
@@ -66,7 +66,7 @@
         {{ 'admin.includeCredentials' | t }}
       </label>
       <label
-        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition cursor-pointer"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-3 transition cursor-pointer"
       >
         {{ 'admin.importConfiguration' | t }}
         <input

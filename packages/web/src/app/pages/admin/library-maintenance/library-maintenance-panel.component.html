@@ -11,7 +11,7 @@
         (click)="optimizeAllMetadata()"
         [disabled]="optimizeMetadataDisabled()"
         data-testid="optimize-all-metadata"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-3 transition disabled:opacity-50"
       >
         {{ (optimizeRunning() ? 'admin.optimizing' : 'admin.optimizeMetadata') | t }}
       </button>
@@ -19,7 +19,7 @@
         (click)="cancelMaintenance()"
         [disabled]="cancelMaintenanceDisabled()"
         data-testid="maintenance-cancel"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-3 transition disabled:opacity-50"
       >
         {{ 'admin.stop' | t }}
       </button>
@@ -80,7 +80,7 @@
         (click)="syncLibrary()"
         [disabled]="syncLibraryDisabled()"
         data-testid="sync-library"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-3 transition disabled:opacity-50"
       >
         {{ (syncing() ? 'admin.rescanning' : 'admin.syncLibrary') | t }}
       </button>
@@ -179,7 +179,7 @@
         (click)="loadFragments()"
         [disabled]="loadingFragments()"
         data-testid="fragments-check"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-3 transition disabled:opacity-50"
       >
         {{ (loadingFragments() ? 'admin.checking' : 'admin.checkFragmentation') | t }}
       </button>
@@ -497,7 +497,7 @@
         data-testid="incomplete-albums-check"
         (click)="loadIncompleteAlbums()"
         [disabled]="incompleteLoading()"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-3 transition disabled:opacity-50"
       >
         {{ (incompleteAlbums() === null ? 'admin.checkIncomplete' : 'admin.refresh') | t }}
       </button>
@@ -591,7 +591,7 @@
       </h2>
       <button
         (click)="reviewSvc.refresh()"
-        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition"
+        class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-3 transition"
       >
         {{ 'admin.refresh' | t }}
       </button>

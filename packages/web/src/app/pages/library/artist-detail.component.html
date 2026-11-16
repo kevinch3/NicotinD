@@ -102,7 +102,7 @@
             [attr.title]="shareCopied() ? 'Link copied!' : 'Share'"
             [class]="'w-10 h-10 flex items-center justify-center rounded-lg transition ' + (shareCopied()
               ? 'status-done'
-              : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')"
+              : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-surface-3')"
           >
             <app-icon name="share" />
           </button>
@@ -292,7 +292,7 @@
                 type="button"
                 data-testid="toggle-all-releases"
                 (click)="showAllReleases.set(!showAllReleases())"
-                class="px-3 py-1.5 text-xs rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition"
+                class="px-3 py-1.5 text-xs rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-surface-3 transition"
               >
                 {{
                   showAllReleases()
@@ -330,7 +330,7 @@
                 type="button"
                 data-testid="toggle-all-releases"
                 (click)="showAllReleases.set(!showAllReleases())"
-                class="px-3 py-1.5 text-xs rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition"
+                class="px-3 py-1.5 text-xs rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-surface-3 transition"
               >
                 {{
                   showAllReleases()
@@ -368,7 +368,7 @@
                 type="button"
                 data-testid="toggle-all-releases"
                 (click)="showAllReleases.set(!showAllReleases())"
-                class="px-3 py-1.5 text-xs rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition"
+                class="px-3 py-1.5 text-xs rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-surface-3 transition"
               >
                 {{
                   showAllReleases()
@@ -405,7 +405,7 @@
             @if (!selection.active() && visibleSongs().length > 0) {
               <button
                 (click)="selection.enter()"
-                class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition"
+                class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-surface-3 transition"
               >
                 Select
               </button>

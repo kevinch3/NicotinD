@@ -38,7 +38,7 @@ export interface ButtonState {
 }
 
 export const BUTTON_CLASSES: Record<ButtonVariant, string> = {
-  default: 'bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover',
+  default: 'bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-3',
   queued: 'bg-theme-surface-2 text-theme-muted opacity-75',
   progress: 'status-progress',
   done: 'status-done',

@@ -21,7 +21,7 @@
           <button
             (click)="deny()"
             data-testid="approve-deny"
-            class="rounded-lg bg-theme-surface-2 px-5 py-2 text-sm text-theme-muted hover:bg-theme-hover"
+            class="rounded-lg bg-theme-surface-2 px-5 py-2 text-sm text-theme-muted hover:bg-theme-surface-3"
           >
             {{ 'approve.deny' | t }}
           </button>
@@ -36,7 +36,7 @@
         </h1>
         <button
           (click)="goHome()"
-          class="mt-6 rounded-lg bg-theme-surface-2 px-5 py-2 text-sm text-theme-muted hover:bg-theme-hover"
+          class="mt-6 rounded-lg bg-theme-surface-2 px-5 py-2 text-sm text-theme-muted hover:bg-theme-surface-3"
         >
           {{ 'approve.goHome' | t }}
         </button>
@@ -45,7 +45,7 @@
         <p class="text-sm text-status-error" data-testid="approve-error">{{ error() }}</p>
         <button
           (click)="goHome()"
-          class="mt-6 rounded-lg bg-theme-surface-2 px-5 py-2 text-sm text-theme-muted hover:bg-theme-hover"
+          class="mt-6 rounded-lg bg-theme-surface-2 px-5 py-2 text-sm text-theme-muted hover:bg-theme-surface-3"
         >
           {{ 'approve.goHome' | t }}
         </button>
