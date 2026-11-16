@@ -95,6 +95,7 @@ function setup(opts: { role?: 'admin' | 'user'; deleteSongs?: ReturnType<typeof 
           token: signal('tok'),
           role: () => opts.role ?? 'user',
           canCurate: () => canCurateRole(asRole(opts.role ?? 'user')),
+          canAcquire: () => true,
         },
       },
       { provide: PlayerService, useValue: playerStub },

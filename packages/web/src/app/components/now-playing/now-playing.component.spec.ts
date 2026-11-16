@@ -134,7 +134,12 @@ function setup(extraProviders: Provider[] = []) {
       { provide: PlayerService, useValue: playerStub },
       {
         provide: AuthService,
-        useValue: { token: signal('tok'), mediaToken: signal('tok'), canCurate: () => true },
+        useValue: {
+          token: signal('tok'),
+          mediaToken: signal('tok'),
+          canCurate: () => true,
+          canAcquire: () => true,
+        },
       },
       { provide: LibraryApiService, useValue: libraryStub },
       { provide: RemotePlaybackService, useValue: remoteStub },

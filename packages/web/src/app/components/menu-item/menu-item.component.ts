@@ -27,7 +27,7 @@ import type { TrackAction } from '../track-row/track-row.component';
       }
     </span>
     <span appOverflowReveal class="min-w-0 flex-1 truncate">{{
-      action.labelKey ? (action.labelKey | t) : action.label
+      action.labelKey ? (action.labelKey | t: action.labelParams) : action.label
     }}</span>
     @if (action.children) {
       <app-icon

@@ -14,7 +14,12 @@ import { LikeService } from './like.service';
 import { RecommendationExclusionsService } from './recommendation-exclusions.service';
 import { ReportTrackService } from './report-track.service';
 import { OfflineModeService } from './offline-mode.service';
-import { asRole, canCurate as canCurateRole, type Role } from '../../types/core';
+import {
+  asRole,
+  canCurate as canCurateRole,
+  canAcquire as canAcquireRole,
+  type Role,
+} from '../../types/core';
 import type { BaseSong } from '../lib/track-utils';
 import EN from '../../../public/i18n/en.json';
 import ES from '../../../public/i18n/es.json';
@@ -26,9 +31,13 @@ const song = (over: Partial<BaseSong> = {}): BaseSong => ({
   ...over,
 });
 
-function setup(role: Role = 'user', excluded = false) {
+function setup(role: Role = 'user', excluded = false, acquisitionOn = true) {
   const router = { navigate: vi.fn() };
-  const auth = { role: () => role, canCurate: () => canCurateRole(asRole(role)) };
+  const auth = {
+    role: () => role,
+    canCurate: () => canCurateRole(asRole(role)),
+    canAcquire: () => acquisitionOn && canAcquireRole(asRole(role)),
+  };
   // Some tests call setup() twice within one `it` (comparing user vs admin) —
   // reset so the second TestBed.configureTestingModule doesn't error on an
   // already-instantiated module.
@@ -83,11 +92,60 @@ describe('SongMenuService.build', () => {
       'Song info',
       "Don't recommend this",
       'Report this track',
+      'Get more',
     ]);
   });
 
+  // #2013: acquirers get a path from a song to more by its artist.
+  describe('Get more', () => {
+    const s = () =>
+      song({ artistId: 'compound', artists: [{ id: 'one', name: 'One', role: 'primary' }] });
+    const getMore = (svc: SongMenuService) =>
+      svc.build(s(), {}).find((a) => a.label === 'Get more');
+
+    it('is offered to a user and to a refiner, not to a listener', () => {
+      expect(getMore(setup('user').svc)).toBeDefined();
+      expect(getMore(setup('refiner').svc)).toBeDefined();
+      expect(getMore(setup('listener').svc)).toBeUndefined();
+    });
+
+    it('is hidden when the server has acquisition switched off, whatever the role', () => {
+      expect(getMore(setup('admin', false, false).svc)).toBeUndefined();
+    });
+
+    it('is hidden offline and for a song with no artist to go to', () => {
+      const { svc } = setup('user');
+      expect(svc.build(song({ albumId: 'al1' }), {}).some((a) => a.label === 'Get more')).toBe(
+        false,
+      );
+      TestBed.inject(OfflineModeService).serverUnreachable.set(true);
+      expect(getMore(svc)).toBeUndefined();
+    });
+
+    it("is hidden on the artist's own page, where it would lead nowhere new", () => {
+      const { svc } = setup('user');
+      expect(svc.build(s(), { hideGoToArtist: true }).some((a) => a.label === 'Get more')).toBe(
+        false,
+      );
+    });
+
+    it('opens a submenu whose first entry goes to the artist, named in its label', async () => {
+      const { svc, router } = setup('user');
+      const parent = getMore(svc)!;
+      expect(parent.group).toBe('role');
+      const [more] = await parent.children!();
+      expect(more).toMatchObject({
+        label: 'More by this artist',
+        labelKey: 'song.moreByArtist',
+        labelParams: { artist: 'One' },
+      });
+      more!.action();
+      expect(router.navigate).toHaveBeenLastCalledWith(['/library', 'artists', 'one']);
+    });
+  });
+
   // #2006: a separator is drawn wherever the group changes.
-  it('groups the menu Play, Go to, Keep, Info, Feedback, Remove, with a page extra last', () => {
+  it('groups the menu Play, Go to, Keep, Info, Feedback, Role, Remove, with a page extra last', () => {
     const { svc } = setup('admin');
     const actions = svc.build(song({ artistId: 'ar1', albumId: 'al1' }), {
       removable: true,
@@ -105,6 +163,7 @@ describe('SongMenuService.build', () => {
       'info',
       'feedback',
       'feedback',
+      'role',
       'remove',
       null,
     ]);
@@ -114,6 +173,7 @@ describe('SongMenuService.build', () => {
       'Add to playlist',
       'Song info',
       "Don't recommend this",
+      'Get more',
       'Remove from library',
       'Page extra',
     ]);
@@ -127,7 +187,10 @@ describe('SongMenuService.build', () => {
         SongMenuService,
         PlayerService,
         { provide: Router, useValue: router },
-        { provide: AuthService, useValue: { role: () => 'user', canCurate: () => false } },
+        {
+          provide: AuthService,
+          useValue: { role: () => 'user', canCurate: () => false, canAcquire: () => false },
+        },
         { provide: PlaylistService, useValue: { openPicker: vi.fn() } },
         {
           provide: PreserveService,
