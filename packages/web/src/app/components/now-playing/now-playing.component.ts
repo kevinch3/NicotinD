@@ -78,6 +78,7 @@ import { KaraokeBrowseMode } from '../../lib/karaoke-browse';
 import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 import { HapticDirective } from '../../directives/haptic.directive';
+import { CoverWashDirective } from '../../directives/cover-wash.directive';
 import { NgComponentOutlet } from '@angular/common';
 import { PLAYER_PANEL_TABS } from './player-panel-tabs';
 
@@ -98,6 +99,7 @@ function isDesktopSheet(): boolean {
     NowPlayingPanelTabsComponent,
     NowPlayingQueuePanelComponent,
     NowPlayingLyricsPanelComponent,
+    CoverWashDirective,
     LyricsTimingEditorComponent,
     NowPlayingKaraokeFullscreenComponent,
     TranslatePipe,
@@ -806,6 +808,12 @@ export class NowPlayingComponent {
   }
 
   /** A track's cover, resolved, at its album's live cover rev (#1666). */
+  /** The cover the sheet is washed with (#1687): the playing track's, small. */
+  readonly washCover = computed(() => {
+    const track = this.player.currentTrack();
+    return track ? (this.coverSrc(track, 80) ?? null) : null;
+  });
+
   private coverSrc(track: Track, size: number): string | undefined {
     const url = this.coverRevisions.url(songCover(track), size, this.auth.mediaToken());
     return url ? this.server.apiUrl(url) : undefined;

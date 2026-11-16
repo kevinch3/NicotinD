@@ -38,6 +38,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   on the server's `localAlbumId`; the unowned non-studio tail collapses behind a toggle.
   `buildArtistAlbumTiles`, `albumCompleteness`, `partitionTiles`, `AlbumTileComponent`.
   → [web-ui.md](../web-ui.md)
+- **Cover wash**: Now Playing, the mini player and album and artist headers take a tint of their
+  artwork, with the alpha clamped so every text level keeps 4.5:1; none on E-Ink.
+  `CoverWashDirective`, `coverWash`, `washFor`. → [web-ui.md](../web-ui.md)
 - **Theme hues for things with no colour of their own**: coverless artwork and genre tiles take one
   of eight fixed hues by a stable hash, mixed into the preset's surface, with a per-preset contrast
   gate. `themeHue`, `placeholderGradient`, `placeholderInk`. → [web-ui.md](../web-ui.md)

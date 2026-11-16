@@ -354,6 +354,16 @@
      dark themes the text lightens and on light themes (daylight/warm-paper/eink)
      it darkens, instead of the old fixed `text-*-300` tints that vanished on
      light backgrounds. */
+  /* The cover wash (#1687): a flat layer of the artwork's colour over the
+     host's own background. `CoverWashDirective` sets the variable; without it
+     the layer is transparent. */
+  .cover-wash {
+    background-image: linear-gradient(
+      var(--theme-cover-wash, transparent),
+      var(--theme-cover-wash, transparent)
+    );
+  }
+
   /* Hover on a raised control is `surface-3` (#1686). On E-Ink that level
      equals `surface-2` by design, so the preset's own hover grey stands in. */
   [data-theme="eink"] .hover\:bg-theme-surface-3:hover {
@@ -922,6 +932,16 @@
     color-mix(in srgb, var(--theme-surface) 82%, var(--theme-bg))
   );
   box-shadow: var(--theme-elevation-up);
+}
+/* The mini player keeps its own gradient under the cover wash (#1687). */
+.player-chrome.cover-wash {
+  background-image:
+    linear-gradient(var(--theme-cover-wash, transparent), var(--theme-cover-wash, transparent)),
+    linear-gradient(
+      to bottom,
+      var(--theme-surface),
+      color-mix(in srgb, var(--theme-surface) 82%, var(--theme-bg))
+    );
 }
 
 /* The mini player's scrubbers are the slim kind: a 3px track with a fainter
