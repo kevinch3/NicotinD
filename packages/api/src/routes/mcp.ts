@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { autoApplyRefusal } from '../services/agent-precision.js';
 import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
 import {
@@ -1959,11 +1960,13 @@ export async function dispatchTool(
       unknownArgs(tool, args) ??
       autoBudgetRefusal(ctx.db, ctx.identity.tokenId, tool.name) ??
       (tool.name === 'set_song_genre'
-        ? autoGenreRefusal(ctx.db, {
+        ? (autoGenreRefusal(ctx.db, {
             songId: str(args.songId),
             genre: str(args.genre),
             mode: str(args.mode),
-          })
+          }) ??
+          // Writing without a person is earned from measured card picks (P6).
+          autoApplyRefusal(ctx.db, ctx.identity.tokenId))
         : null);
     if (policy) return err(policy);
   }

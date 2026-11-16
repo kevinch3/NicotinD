@@ -61,6 +61,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Unattended `refiner:auto` tokens**: a scheduled runner's scope, policed by the server, not the
   prompt — `AUTO_SCOPE_WRITE_TOOLS` allowlist, `unknownArgs`, `autoGenreRefusal` (fill-only, library
   vocabulary), `autoBudgetRefusal` daily caps. → [mcp-agent.md](../mcp-agent.md)
+- **Earned auto-apply**: an unattended token writes genres by itself only once people have accepted
+  enough of its cards; the pick is stored on the flag. `agentPrecision`, `autoApplyRefusal`,
+  `AUTO_APPLY_GATE`. → [curator-runner.md](../curator-runner.md)
 - **`identify_song` — identity from the audio**: `identifySongById` is fpcalc + AcoustID and nothing
   else, batchable where `lookup_song_metadata`'s fan-out is not; typed outcome, suggests only,
   carries no genre. → [mcp-agent.md](../mcp-agent.md)

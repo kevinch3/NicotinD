@@ -34,6 +34,8 @@ export class FakeMcp implements McpLike {
   lowInformationArtists: string[] = [];
   recentLandings: number[] = [];
   genreBudget = Infinity;
+  /** Whether the server lets this token write by itself (#1516 P6). */
+  autoApplyEarned = true;
   calls: Array<{ name: string; args: Record<string, unknown> }> = [];
   flags: Array<Record<string, unknown>> = [];
 
@@ -118,6 +120,12 @@ export class FakeMcp implements McpLike {
       case 'set_song_genre': {
         if (this.scope !== 'refiner:auto') return refuse('test fake only models the auto scope');
         if (this.genreBudget <= 0) return refuse('Daily budget exhausted: 200/200. Stop the run.');
+        if (!this.autoApplyEarned) {
+          return refuse(
+            'Auto-apply not earned: 0 of 0 judged proposals from this token were accepted. ' +
+              'It needs at least 20 judged and 90% accepted. Propose it as a card with flag_for_review instead.',
+          );
+        }
         if (args.mode !== 'replace') return refuse('must pass mode: "replace"');
         const song = this.songs().find((s) => s.id === args.songId);
         if (!song) return refuse('Song not found');

@@ -354,6 +354,14 @@ describe('POST /cases/:id/apply', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, detail: 'reviewed, no data change' });
     expect(listOpenCurationFlags(sharedDb)).toHaveLength(0);
+    // The pick is kept: it is what a model's proposals are measured against (#1516 P6).
+    expect(
+      sharedDb
+        .query<{ resolved_option: string | null }, [number]>(
+          'SELECT resolved_option FROM curation_flags WHERE id = ?',
+        )
+        .get(id),
+    ).toEqual({ resolved_option: 'resolve' });
   });
 
   it('audit-logs the applied case', async () => {

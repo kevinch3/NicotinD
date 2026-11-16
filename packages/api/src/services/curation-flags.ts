@@ -371,10 +371,13 @@ export function resolveCurationFlag(
   id: number,
   resolvedBy: string,
   now = Date.now(),
+  /** The card option the resolver picked, when resolving was a pick (#1516 P6). */
+  optionId: string | null = null,
 ): boolean {
   const res = db.run(
-    'UPDATE curation_flags SET resolved_at = ?, resolved_by = ? WHERE id = ? AND resolved_at IS NULL',
-    [now, resolvedBy, id],
+    `UPDATE curation_flags SET resolved_at = ?, resolved_by = ?, resolved_option = ?
+      WHERE id = ? AND resolved_at IS NULL`,
+    [now, resolvedBy, optionId, id],
   );
   return Number(res.changes ?? 0) > 0;
 }
