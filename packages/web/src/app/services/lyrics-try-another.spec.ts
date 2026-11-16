@@ -33,6 +33,7 @@ function setup(stored: LyricsDto | null = row({ plain: 'first' })) {
     getLyrics: vi.fn(() => of(stored)),
     fetchLyrics: vi.fn(() => of(null)),
     nextLyrics: vi.fn<(id: string, confirm?: boolean) => Observable<LyricsNextDto>>(),
+    undoLyrics: vi.fn<(id: string) => Observable<LyricsDto>>(),
   };
   TestBed.configureTestingModule({
     providers: [
@@ -130,5 +131,23 @@ describe('LyricsService.tryAnother (#1674)', () => {
     lyrics.ensureLoaded('s2');
     expect(lyrics.tryResult()).toBeNull();
     expect(lyrics.trying()).toBe(false);
+  });
+});
+
+describe('LyricsService.undo (#1960)', () => {
+  it('puts the previous version back into the entry', () => {
+    const { api, lyrics } = setup(row({ plain: 'second', canUndo: true }));
+    api.undoLyrics.mockReturnValue(of(row({ plain: 'first', canUndo: false })));
+    lyrics.undo('s1').subscribe();
+    expect(api.undoLyrics).toHaveBeenCalledWith('s1');
+    expect(lyrics.lyrics()?.plain).toBe('first');
+    expect(lyrics.lyrics()?.canUndo).toBe(false);
+  });
+
+  it('keeps the words when the server has nothing to undo', () => {
+    const { api, lyrics } = setup(row({ plain: 'second' }));
+    api.undoLyrics.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 409 })));
+    lyrics.undo('s1').subscribe({ error: () => undefined });
+    expect(lyrics.lyrics()?.plain).toBe('second');
   });
 });

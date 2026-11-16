@@ -59,7 +59,12 @@ export interface LyricsDto {
    * source" wrote the row (#1674). Null otherwise, and once a user edits them.
    */
   walk?: { index: number; total: number } | null;
+  /** One previous version is kept and "Undo last change" can restore it (#1960). */
+  canUndo?: boolean;
 }
+
+/** What a human edit changed on a customized row (#1960). */
+export type LyricsEditKind = 'text' | 'timing' | 'text+timing';
 
 /**
  * Why a stored row's words were chosen, recorded when they were written (#1676)
@@ -150,6 +155,8 @@ export interface LyricsProvenance {
   /** Null for rows written before #1676, or typed in from nothing. */
   choice: LyricsChoice | null;
   customized: boolean;
+  /** Null when not customized, and on rows edited before #1960. */
+  customizedKind: LyricsEditKind | null;
   customizedBy: LyricsActor | null;
   customizedAt: number | null;
   /** Last write of the sync offset; cleared with the offset when the text is replaced. */

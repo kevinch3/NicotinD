@@ -849,6 +849,11 @@ export class LibraryApiService {
     return this.http.get<WaveformData>(`/api/peaks/${id}`);
   }
 
+  /** "Undo last change" (curator, #1960); 409 when no previous version is kept. */
+  undoLyrics(id: string) {
+    return this.http.post<LyricsDto>(`/api/library/songs/${id}/lyrics/undo`, {});
+  }
+
   /**
    * "Try another source" (curator, #1674): apply the next candidate. Answers
    * 409 `lyrics-customized` on edited lyrics unless `confirmReplaceEdit`.

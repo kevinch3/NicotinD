@@ -3,12 +3,14 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { LYRICS_OFFSET_MAX_MS, type LyricsChoice } from '@nicotind/core';
 import {
+  deleteLyrics,
   getLyrics,
   getLyricsExport,
   getLyricsProvenance,
+  lyricsEditKind,
   setLyrics,
   setLyricsOffset,
-  deleteLyrics,
+  undoLyrics,
 } from './lyrics-store.js';
 import { libraryEvents, type StampedEvent } from './library-events.js';
 
@@ -368,5 +370,149 @@ describe('library_lyrics provenance migration (#1676)', () => {
       offsetAt: null,
     });
     old.close();
+  });
+});
+
+describe('lyrics-store one previous version (#1960)', () => {
+  const LRC_A = '[00:01.00]take a';
+  const LRC_B = '[00:02.00]take b';
+  const first = () =>
+    setLyrics(db, 'song-1', {
+      plain: 'take a',
+      synced: LRC_A,
+      source: 'lrclib',
+      customized: false,
+      matchedDurationSec: 200,
+      sourceTrackId: '7',
+    });
+  const replace = (snapshot?: boolean) =>
+    setLyrics(db, 'song-1', {
+      plain: 'take b',
+      synced: LRC_B,
+      source: 'other',
+      customized: false,
+      sourceTrackId: '8',
+      ...(snapshot === undefined ? {} : { snapshot }),
+    });
+
+  it('keeps nothing by default, so an ordinary write cannot be undone', () => {
+    first();
+    expect(replace().canUndo).toBe(false);
+    expect(getLyrics(db, 'song-1')!.canUndo).toBe(false);
+    expect(undoLyrics(db, 'song-1')).toBeNull();
+    expect(getLyrics(db, 'song-1')!.synced).toBe(LRC_B);
+  });
+
+  it('a snapshot write can be undone: words, timing, offset and source come back', () => {
+    first();
+    setLyricsOffset(db, 'song-1', -750, 'u1');
+    expect(replace(true).canUndo).toBe(true);
+    expect(getLyrics(db, 'song-1')!.offsetMs).toBe(0);
+
+    const restored = undoLyrics(db, 'song-1')!;
+    expect(restored).toMatchObject({
+      plain: 'take a',
+      synced: LRC_A,
+      source: 'lrclib',
+      sourceTrackId: '7',
+      matchedDurationSec: 200,
+      offsetMs: -750,
+      canUndo: false,
+    });
+    expect(getLyricsProvenance(db, 'song-1')!.offsetBy?.userId).toBe('u1');
+  });
+
+  it('is one level: a second undo is refused', () => {
+    first();
+    replace(true);
+    expect(undoLyrics(db, 'song-1')).not.toBeNull();
+    expect(undoLyrics(db, 'song-1')).toBeNull();
+    expect(getLyrics(db, 'song-1')!.synced).toBe(LRC_A);
+  });
+
+  it('a second snapshot write keeps the row it replaced, not the one before', () => {
+    first();
+    replace(true);
+    setLyrics(db, 'song-1', {
+      plain: 'take c',
+      synced: null,
+      source: 'x',
+      customized: false,
+      snapshot: true,
+    });
+    expect(undoLyrics(db, 'song-1')!.synced).toBe(LRC_B);
+    expect(undoLyrics(db, 'song-1')).toBeNull();
+  });
+
+  it('a later write without a snapshot ends the chance to undo the older one', () => {
+    first();
+    replace(true);
+    setLyrics(db, 'song-1', { plain: 'my edit', synced: null, source: 'user', customized: true });
+    expect(getLyrics(db, 'song-1')!.canUndo).toBe(false);
+    expect(undoLyrics(db, 'song-1')).toBeNull();
+  });
+
+  it('a snapshot with no row to replace keeps nothing', () => {
+    expect(replace(true).canUndo).toBe(false);
+  });
+
+  it('an offset change leaves the kept version alone', () => {
+    first();
+    replace(true);
+    setLyricsOffset(db, 'song-1', 500);
+    expect(getLyrics(db, 'song-1')!.canUndo).toBe(true);
+    expect(undoLyrics(db, 'song-1')!.synced).toBe(LRC_A);
+  });
+
+  it('announces the restore to open clients', () => {
+    first();
+    replace(true);
+    libraryEvents.flush();
+    const seen: StampedEvent[] = [];
+    const off = libraryEvents.on((e) => seen.push(e));
+    try {
+      undoLyrics(db, 'song-1');
+      libraryEvents.flush();
+    } finally {
+      off();
+    }
+    expect(seen.map((e) => e.event).filter((e) => e.type === 'lyrics.changed')).toHaveLength(1);
+  });
+});
+
+describe('lyricsEditKind (#1960)', () => {
+  const stored = (customized = false, customizedKind?: 'text' | 'timing' | 'text+timing') =>
+    setLyrics(db, 'song-1', {
+      plain: 'words',
+      synced: '[00:01.00]words',
+      source: customized ? 'user' : 'lrclib',
+      customized,
+      customizedKind,
+    });
+
+  it('names what the incoming body changes against the stored row', () => {
+    stored();
+    expect(lyricsEditKind(db, 'song-1', 'new words', '[00:01.00]words')).toBe('text');
+    expect(lyricsEditKind(db, 'song-1', 'words', '[00:02.00]words')).toBe('timing');
+    expect(lyricsEditKind(db, 'song-1', 'new words', null)).toBe('text+timing');
+    expect(lyricsEditKind(db, 'song-1', 'words\r\n', '[00:01.00]words\n')).toBe('text');
+  });
+
+  it('is text for words typed in from nothing', () => {
+    expect(lyricsEditKind(db, 'song-1', 'typed', null)).toBe('text');
+  });
+
+  it('keeps an earlier edit: words rewritten before and timing fixed now is both', () => {
+    stored(true, 'text');
+    expect(lyricsEditKind(db, 'song-1', 'words', '[00:02.00]words')).toBe('text+timing');
+    stored(true, 'timing');
+    expect(lyricsEditKind(db, 'song-1', 'words', '[00:02.00]words')).toBe('timing');
+  });
+
+  it('is recorded on a customized row and cleared when a source replaces it', () => {
+    stored(true, 'timing');
+    expect(getLyricsProvenance(db, 'song-1')!.customizedKind).toBe('timing');
+    stored(false, 'timing');
+    expect(getLyricsProvenance(db, 'song-1')!.customizedKind).toBeNull();
   });
 });

@@ -1733,6 +1733,12 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   addColumnIfMissing(db, 'library_lyrics', 'customized_at', 'INTEGER');
   addColumnIfMissing(db, 'library_lyrics', 'offset_by', 'TEXT');
   addColumnIfMissing(db, 'library_lyrics', 'offset_at', 'INTEGER');
+  // One previous version (#1960): the whole row as JSON, taken just before a
+  // "Try another source", a forced fetch or a timing save replaced it, and
+  // cleared by the undo or by any later whole-row write. And what a human edit
+  // changed: `text`, `timing` or `text+timing`. Nullable, so no row is rewritten.
+  addColumnIfMissing(db, 'library_lyrics', 'previous_json', 'TEXT');
+  addColumnIfMissing(db, 'library_lyrics', 'customized_kind', 'TEXT');
 
   // Native per-user playlists (re-added after the Navidrome removal). Playlists
   // reference songs by the scanner's stable songId; reads JOIN library_songs and

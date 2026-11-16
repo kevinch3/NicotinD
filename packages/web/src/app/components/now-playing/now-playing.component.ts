@@ -185,8 +185,9 @@ export class NowPlayingComponent {
     this.auth.canCurate()
       ? {
           walk: this.lyrics()?.walk ?? null,
-          busy: this.lyricsSvc.trying(),
+          busy: this.lyricsSvc.trying() || this.undoingLyrics(),
           result: this.lyricsSvc.tryResult(),
+          canUndo: !!this.lyrics()?.canUndo,
         }
       : null,
   );
@@ -883,6 +884,16 @@ export class NowPlayingComponent {
       },
       error: () => this.timingSaving.set(false),
     });
+  }
+
+  /** "Undo last change" (#1960): put back the one previous version. */
+  readonly undoingLyrics = signal(false);
+  undoLyricsChange(): void {
+    const id = this.player.currentTrack()?.id;
+    if (!id || this.undoingLyrics()) return;
+    this.undoingLyrics.set(true);
+    const done = () => this.undoingLyrics.set(false);
+    this.lyricsSvc.undo(id).subscribe({ next: done, error: done });
   }
 
   tryAnotherLyricsSource(): void {

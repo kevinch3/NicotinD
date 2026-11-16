@@ -496,6 +496,22 @@ export class LyricsService {
     );
   }
 
+  /** Put back the one previous version of `id`'s lyrics (#1960). */
+  undo(id: string): Observable<LyricsDto> {
+    const token = this.begin(id, { inFlight: 'write' });
+    return this.written(
+      id,
+      token,
+      this.api.undoLyrics(id).pipe(
+        tap((l) => {
+          this.settle(id, token, { dto: l, error: false, inFlight: null });
+          this.remember(id, l);
+        }),
+      ),
+      (l) => l,
+    );
+  }
+
   private readonly tryState = signal<{
     id: string;
     busy: boolean;

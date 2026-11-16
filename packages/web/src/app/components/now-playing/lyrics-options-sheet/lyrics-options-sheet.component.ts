@@ -36,6 +36,7 @@ export class LyricsOptionsSheetComponent {
 
   readonly editTiming = output<void>();
   readonly tryAnother = output<void>();
+  readonly undo = output<void>();
   readonly closed = output<void>();
   readonly nudged = output<number>();
   readonly reset = output<void>();
@@ -60,4 +61,6 @@ export interface LyricsTryState {
   walk: { index: number; total: number } | null;
   busy: boolean;
   result: LyricsTryResult | null;
+  /** One previous version is kept, so "Undo last change" is offered (#1960). */
+  canUndo?: boolean;
 }

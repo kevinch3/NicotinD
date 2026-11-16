@@ -28,11 +28,13 @@ import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
 import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags, type AudioTags } from '../services/audio-tags.js';
 import {
+  deleteLyrics,
   getLyrics,
   getLyricsExport,
+  lyricsEditKind,
   setLyrics,
   setLyricsOffset,
-  deleteLyrics,
+  undoLyrics,
 } from '../services/lyrics-store.js';
 import { fetchSongLyrics } from '../services/lyrics-fetch.js';
 import { nextSongLyrics } from '../services/lyrics-next.js';
@@ -2828,6 +2830,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       source: 'user',
       customized: true,
       actor: c.get('user')?.sub ?? null,
+      customizedKind: lyricsEditKind(db, id, plain, synced),
+      // A timing save keeps the row it replaced for "Undo last change" (#1960).
+      snapshot: synced !== null && getLyrics(db, id) !== null,
     });
     if (musicDir) {
       const abs = resolveSongPath(expandDir(musicDir), song.path);
@@ -2836,6 +2841,24 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       }
     }
     return c.json(saved);
+  });
+
+  // "Undo last change" (curator, #1960): put back the one previous version a
+  // "Try another source", a forced fetch or a timing save kept, and forget it.
+  // 409 `lyrics-nothing-to-undo` when none is kept.
+  app.post('/songs/:id/lyrics/undo', (c) => {
+    requireCurator(c);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const song = db
+      .query<{ id: string }, [string]>(`SELECT id FROM library_songs WHERE id = ?`)
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+    const restored = undoLyrics(db, id);
+    if (!restored) {
+      return c.json({ error: 'Nothing to undo', code: 'lyrics-nothing-to-undo' }, 409);
+    }
+    return c.json(restored);
   });
 
   // Sync correction (admin): shift the stored LRC's timings by a fixed offset,
