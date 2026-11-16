@@ -9,7 +9,6 @@ const APP = join(__dirname, '..', '..');
 /** Still hand-rolled; each is a migration step of #1668 and leaves this list with it. */
 const PENDING: Record<string, string> = {
   'pages/home/home-view-switch.component.html': 'Shelves | Mosaic switch (step b)',
-  'pages/get/get.component.html': 'Add | Downloads, with the activity badge (step c)',
   'pages/library/artist-detail.component.html': 'artist tabs, also untranslated (step e)',
 };
 
@@ -75,7 +74,7 @@ describe('tab bars are <app-icon-tabs> or a recorded exception (#1668)', () => {
 
   it('sweeps the whole app and still sees the bars it knows', () => {
     expect(templates(APP).length).toBeGreaterThan(100);
-    expect(tabLikeTemplates()).toContain('pages/get/get.component.html');
+    expect(tabLikeTemplates()).toContain('pages/home/home-view-switch.component.html');
   });
 
   it('the patterns catch what they are for', () => {
@@ -86,9 +85,10 @@ describe('tab bars are <app-icon-tabs> or a recorded exception (#1668)', () => {
     expect(hit('<div class="bg-theme-surface-2 rounded-xl p-4">')).toBe(false);
   });
 
-  it('the Library uses the component', () => {
-    const library = readFileSync(join(APP, 'pages/library/library.component.html'), 'utf8');
-    expect(library).toContain('<app-icon-tabs');
-    expect(tabLikeTemplates()).not.toContain('pages/library/library.component.html');
+  it('the migrated pages use the component', () => {
+    for (const page of ['pages/library/library.component.html', 'pages/get/get.component.html']) {
+      expect(readFileSync(join(APP, page), 'utf8'), page).toContain('<app-icon-tabs');
+      expect(tabLikeTemplates()).not.toContain(page);
+    }
   });
 });

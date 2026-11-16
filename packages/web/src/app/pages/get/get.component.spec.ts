@@ -74,6 +74,9 @@ function setup(tab?: string, opts: SetupOpts = {}) {
   return { fixture, navigate };
 }
 
+/** The Activity tab as the page hands it to the tab bar. */
+const activityTab = (c: GetComponent) => c.tabItems().find((t) => t.value === 'activity')!;
+
 describe('parseGetTab', () => {
   it('accepts the downloads tab', () => {
     expect(parseGetTab('activity')).toBe('activity');
@@ -132,17 +135,28 @@ describe('GetComponent', () => {
   it("badges the Activity tab with the Downloads header's unfinished count (#1938)", () => {
     const { fixture } = setup(undefined, { active: 5 });
     expect(fixture.componentInstance.activeCount()).toBe(5);
-    const badge = fixture.nativeElement.querySelector(
-      '[data-testid="get-tab-downloads-badge"]',
-    ) as HTMLElement;
-    expect(badge?.textContent?.trim()).toBe('5');
+    // The bar draws the badge (`IconTabsComponent`, pinned in its own spec);
+    // the page hands it the count under the testid e2e reads.
+    expect(activityTab(fixture.componentInstance)).toMatchObject({
+      badge: 5,
+      testid: 'get-tab-downloads',
+      badgeTestid: 'get-tab-downloads-badge',
+    });
   });
 
-  it('hides the badge when nothing is in flight', () => {
+  it('hands the bar a zero when nothing is in flight, which draws no badge', () => {
     const { fixture } = setup();
-    expect(
-      fixture.nativeElement.querySelector('[data-testid="get-tab-downloads-badge"]'),
-    ).toBeNull();
+    expect(activityTab(fixture.componentInstance).badge).toBe(0);
+  });
+
+  it('gives both tabs an icon, and only Activity a badge', () => {
+    const { fixture } = setup();
+    const items = fixture.componentInstance.tabItems();
+    expect(items.map((t) => [t.value, t.icon])).toEqual([
+      ['add', 'add'],
+      ['activity', 'download'],
+    ]);
+    expect(items[0]!.badge).toBeUndefined();
   });
 });
 
@@ -258,7 +272,7 @@ describe('GetComponent — import is an Add-tab action', () => {
     expect(track.getAttribute('aria-label')).toBeTruthy();
     // The upload is in-flight work the Activity tab now accounts for.
     expect(c.activeCount()).toBe(2);
-    expect(q(fixture, 'get-tab-downloads-badge')?.textContent?.trim()).toBe('2');
+    expect(activityTab(c).badge).toBe(2);
 
     finish('job-1');
     await done;

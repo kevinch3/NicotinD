@@ -14,6 +14,8 @@ export interface IconTabItem {
   badge?: number | string | null;
   /** `data-testid` of this tab's button. */
   testid?: string;
+  /** `data-testid` of this tab's badge, when a spec has to read the count. */
+  badgeTestid?: string;
 }
 
 /**
@@ -43,6 +45,8 @@ export class IconTabsComponent {
   readonly testid = input<string | null>(null);
   /** `data-testid` every label carries. */
   readonly labelTestid = input('icon-tab-label');
+  /** What `aria-current` says on the active `nav` tab: `page` when each tab is a URL. */
+  readonly current = input<'true' | 'page'>('true');
   /** i18n key naming the bar for assistive tech (`tabs` and `radio`). */
   readonly label = input<string | null>(null);
 
