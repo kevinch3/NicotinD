@@ -59,6 +59,7 @@ function ctx(
     lookupGenreForRelease: null,
     resolveArtistIdentity: null,
     lookupPopularity: async () => new Map(),
+    lookupSimilarArtists: async () => null,
     lookupArtistOrigin: null,
     lookupArtistReleaseGroups: null,
     fileExists: () => true,

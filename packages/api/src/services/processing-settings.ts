@@ -41,6 +41,9 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     'artist-identity': true,
     // Reads each file's own artist list once; no network and no file write (#1601).
     'artist-list': true,
+    // ListenBrainz similar artists, one request per artist MBID (#1486). Off
+    // until the owner opts in: about 3,000 outbound requests on a first pass.
+    'artist-relations': false,
     // Audio-inferred genre fallback (issue #187 task A2) — runs only when the
     // `genre` task above has nothing; confidence-gated, never a gate itself
     // (a weak classifier must never strand a fresh download).

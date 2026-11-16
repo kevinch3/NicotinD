@@ -13,6 +13,8 @@ import {
   type RelatedCandidate,
 } from './related-artists.js';
 import { bumpCoverRev } from './cover-rev.js';
+import { storeSimilarArtists } from './artist-relations.js';
+import { normalizeArtistForGrouping } from './album-grouping.js';
 
 let db: Database;
 let songSeq = 0;
@@ -191,5 +193,103 @@ describe('rankRelated rule', () => {
       { id: 'a', score: 0.9 },
       { id: 'b', score: 0.85 },
     ]);
+  });
+});
+
+// #1486: shared listeners fill what audio leaves empty. The scales are not
+// comparable, so they are never mixed into one ranking.
+describe('rankRelated with cultural relations', () => {
+  const audio = (id: string, cosine: number): RelatedCandidate => ({
+    id,
+    signals: { audio: { cosine, members: 5, coherence: 0.8 } },
+  });
+  const cultural = (id: string, score: number): RelatedCandidate => ({
+    id,
+    signals: { cultural: { score, source: 'listenbrainz' } },
+  });
+
+  it('ranks audio first and fills the remaining places by shared listeners, best first', () => {
+    const picks = rankRelated(
+      [cultural('c-low', 0.2), audio('a1', 0.9), cultural('c-high', 0.8), audio('a2', 0.88)],
+      12,
+    );
+    expect(picks.map((p) => p.id)).toEqual(['a1', 'a2', 'c-high', 'c-low']);
+  });
+
+  it('leaves the audio ranking untouched when audio already fills the row', () => {
+    const picks = rankRelated([audio('a1', 0.9), audio('a2', 0.89), cultural('c1', 1)], 2);
+    expect(picks.map((p) => p.id)).toEqual(['a1', 'a2']);
+  });
+
+  it('counts an artist both sources know once, in its audio place', () => {
+    const both: RelatedCandidate = {
+      id: 'x',
+      signals: {
+        audio: { cosine: 0.9, members: 5, coherence: 0.8 },
+        cultural: { score: 1, source: 'listenbrainz' },
+      },
+    };
+    const picks = rankRelated([both, cultural('c1', 0.5)], 12);
+    expect(picks.map((p) => p.id)).toEqual(['x', 'c1']);
+  });
+
+  it('lets shared listeners rescue an artist audio judged too far', () => {
+    const farButShared: RelatedCandidate = {
+      id: 'far',
+      signals: {
+        audio: { cosine: 0.1, members: 5, coherence: 0.8 },
+        cultural: { score: 0.7, source: 'listenbrainz' },
+      },
+    };
+    expect(rankRelated([audio('a1', 0.9), farButShared], 12).map((p) => p.id)).toEqual([
+      'a1',
+      'far',
+    ]);
+  });
+
+  it('honours the limit across both sources', () => {
+    const picks = rankRelated([audio('a1', 0.9), cultural('c1', 0.9), cultural('c2', 0.8)], 2);
+    expect(picks.map((p) => p.id)).toEqual(['a1', 'c1']);
+  });
+});
+
+describe('relatedArtists with cultural relations (#1486)', () => {
+  function plainArtist(id: string, name: string, mbid: string): void {
+    db.run(
+      `INSERT INTO library_artists (id, name, album_count, hidden, split_compound, synced_at)
+       VALUES (?, ?, 1, 0, 0, 1)`,
+      [id, name],
+    );
+    db.run(
+      `INSERT INTO library_mbids (scope, key, mbid, source, confidence, checked_at)
+       VALUES ('artist', ?, ?, 'lidarr', 0.9, 1)`,
+      [normalizeArtistForGrouping(name), mbid],
+    );
+  }
+
+  it('answers an artist audio knows nothing about from shared listeners, owned artists only', () => {
+    plainArtist('seed', 'Seed Artist', 'mb-seed');
+    plainArtist('owned', 'Owned Neighbour', 'mb-owned');
+    storeSimilarArtists(db, 'mb-seed', [
+      { mbid: 'mb-not-owned', name: 'Not Owned', score: 100 },
+      { mbid: 'mb-owned', name: 'Owned Neighbour', score: 60 },
+    ]);
+    const res = relatedArtists(db, 'seed');
+    expect(res.artists.map((a) => a.id)).toEqual(['owned']);
+    expect(res.artists[0]!.signals).toEqual({
+      cultural: { score: 0.6, source: 'listenbrainz' },
+    });
+    expect('reason' in res).toBe(false);
+  });
+
+  it('still says no-signal when neither source has been able to answer', () => {
+    plainArtist('seed', 'Seed Artist', 'mb-seed');
+    expect(relatedArtists(db, 'seed')).toEqual({ artists: [], reason: 'no-signal' });
+  });
+
+  it('is an empty list, not no-signal, once the source was asked and knew nothing', () => {
+    plainArtist('seed', 'Seed Artist', 'mb-seed');
+    storeSimilarArtists(db, 'mb-seed', []);
+    expect(relatedArtists(db, 'seed')).toEqual({ artists: [] });
   });
 });

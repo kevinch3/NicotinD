@@ -48,7 +48,16 @@ import { fileJointCreditCard, listRuleSplits } from '../joint-credits.js';
 import { loadSplitAuthority, upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistFieldsFromParse, artistIdFor } from '../library-scanner.js';
 import { getMusicMetadata } from '../music-metadata-loader.js';
-import { ListenBrainzClient, normalizePopularity } from '../listenbrainz-client.js';
+import {
+  ListenBrainzClient,
+  normalizePopularity,
+  type SimilarArtist,
+} from '../listenbrainz-client.js';
+import {
+  RELATION_TTL_MS,
+  pendingRelationArtists,
+  storeSimilarArtists,
+} from '../artist-relations.js';
 import {
   getMbid,
   isMbidReResolvable,
@@ -160,6 +169,11 @@ export interface EnrichmentContext {
    * request failed transiently (retry next window, do not ledger). Never throws.
    */
   lookupPopularity: (recordingMbids: string[]) => Promise<Map<string, number | null>>;
+  /**
+   * ListenBrainz similar artists for one artist MBID (#1486). An empty list is
+   * a confident "nothing known"; `null` is a failed request, retried next window.
+   */
+  lookupSimilarArtists: (artistMbid: string) => Promise<SimilarArtist[] | null>;
   /**
    * MB artist-origin lookup (docs/artist-origin.md). `ok:false` = transient
    * failure (retry next window, write nothing); `ok:true, country:null` = MB
@@ -538,6 +552,8 @@ export function createEnrichmentContext(deps: {
   /** MB artist-origin lookup override (tests); defaults to the shared-cache client. */
   lookupArtistOrigin?: ((mbid: string) => Promise<{ ok: boolean; country: string | null }>) | null;
   lookupArtistReleaseGroups?: ((mbid: string) => Promise<readonly string[]>) | null;
+  /** ListenBrainz similar-artists override (tests); defaults to a rate-limited client. */
+  lookupSimilarArtists?: (mbid: string) => Promise<SimilarArtist[] | null>;
   /** Data dir — locates the ListenBrainz popularity cache (issue #220). */
   dataDir?: string;
 }): EnrichmentContext {
@@ -592,6 +608,7 @@ export function createEnrichmentContext(deps: {
       }
     },
     lookupPopularity: makePopularityLookup(deps.dataDir ?? null),
+    lookupSimilarArtists: deps.lookupSimilarArtists ?? makeSimilarArtistsLookup(),
     lookupArtistOrigin: deps.lookupArtistOrigin ?? makeArtistOriginLookup(deps.dataDir ?? null),
     lookupArtistReleaseGroups:
       deps.lookupArtistReleaseGroups ?? makeArtistReleaseGroupsLookup(deps.dataDir ?? null),
@@ -613,6 +630,15 @@ export function makePopularityLookup(
     cacheFile: dataDir ? join(dataDir, 'listenbrainz-cache.json') : undefined,
   });
   return (mbids) => client.getListenCounts(mbids).catch(() => new Map<string, number | null>());
+}
+
+/**
+ * A ListenBrainz similar-artists lookup with its own client, so its 1 req/s
+ * limiter is not shared with (or starved by) the popularity batches. Never throws.
+ */
+export function makeSimilarArtistsLookup(): (mbid: string) => Promise<SimilarArtist[] | null> {
+  const client = new ListenBrainzClient();
+  return (mbid) => client.getSimilarArtists(mbid).catch(() => null);
 }
 
 const bpmTask: EnrichmentTask = {
@@ -2280,6 +2306,44 @@ const artistListTask: EnrichmentTask = {
   },
 };
 
+/**
+ * Cultural artist relations (#1486): one ListenBrainz request per artist MBID,
+ * stored locally so no page ever waits on it. Per-artist, never a landing gate.
+ * An empty answer is recorded too, so the long tail is not asked again until the
+ * TTL lapses; a failed request records nothing and is retried.
+ */
+const artistRelationsTask: EnrichmentTask = {
+  id: 'artist-relations',
+  label: 'Artist relations',
+  available: () => true,
+  countPending: (db) => pendingRelationArtists(db, Date.now() - RELATION_TTL_MS).length,
+  run: async (db, ctx, limit, albumId) => {
+    // Nothing here belongs to one album's landing.
+    if (albumId) return { applied: 0, labels: [], failed: 0, errorSample: null };
+    const pending = pendingRelationArtists(db, Date.now() - RELATION_TTL_MS, limit);
+    const names = new Map(
+      db
+        .query<{ id: string; name: string }, []>(`SELECT id, name FROM library_artists`)
+        .all()
+        .map((a) => [a.id, a.name]),
+    );
+    const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
+    let applied = 0;
+    for (const artist of pending) {
+      const similar = await ctx.lookupSimilarArtists(artist.mbid);
+      if (similar === null) {
+        recordFailure(tally, new Error('ListenBrainz similar-artists request failed'));
+        continue;
+      }
+      storeSimilarArtists(db, artist.mbid, similar);
+      applied++;
+      labels.push(`${names.get(artist.id) ?? artist.id} → ${similar.length} related`);
+    }
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
+  },
+};
+
 export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   bpmTask,
   genreTask,
@@ -2296,6 +2360,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   genreAudioTask,
   popularityTask,
   artistListTask,
+  artistRelationsTask,
 ];
 
 export function getTask(id: ProcessingTaskId): EnrichmentTask | undefined {

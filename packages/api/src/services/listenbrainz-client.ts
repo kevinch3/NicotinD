@@ -31,7 +31,22 @@ export interface ListenBrainzClientOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Override the API base (tests). */
   baseUrl?: string;
+  /** Override the labs API base, which serves similar artists (tests). */
+  labsUrl?: string;
 }
+
+/** One artist listeners of the queried artist also listen to. */
+export interface SimilarArtist {
+  mbid: string;
+  name: string;
+  /** The source's own score: an unbounded co-occurrence count. */
+  score: number;
+}
+
+const LB_LABS = 'https://labs.api.listenbrainz.org';
+/** The session-based dataset measured on prod on 2026-11-09 (#1486): 64% coverage. */
+export const SIMILAR_ARTISTS_ALGORITHM =
+  'session_based_days_7500_session_300_contribution_5_threshold_10_limit_100_filter_True_skip_30';
 
 /**
  * Minimal ListenBrainz client for the extrinsic **popularity** signal (issue
@@ -53,6 +68,7 @@ export class ListenBrainzClient {
   private readonly now: () => number;
   private readonly sleepFn: (ms: number) => Promise<void>;
   private readonly base: string;
+  private readonly labs: string;
 
   constructor(opts: ListenBrainzClientOptions = {}) {
     this.cacheFile = opts.cacheFile;
@@ -61,6 +77,7 @@ export class ListenBrainzClient {
     this.now = opts.now ?? Date.now;
     this.sleepFn = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     this.base = opts.baseUrl ?? LB_BASE;
+    this.labs = opts.labsUrl ?? LB_LABS;
     if (this.cacheFile && existsSync(this.cacheFile)) {
       try {
         const raw = JSON.parse(readFileSync(this.cacheFile, 'utf-8')) as Record<
@@ -146,6 +163,51 @@ export class ListenBrainzClient {
     } catch (err) {
       log.warn({ err }, 'ListenBrainz fetch failed');
       return result;
+    }
+  }
+
+  /**
+   * Artists that listeners of `artistMbid` also listen to (#1486), best first.
+   * An empty list is the source saying it has nothing; `null` is a request that
+   * failed, which the caller retries later and must not record as an answer.
+   * Not cached here: the caller stores the result in the database.
+   */
+  async getSimilarArtists(artistMbid: string): Promise<SimilarArtist[] | null> {
+    await this.rateLimit();
+    try {
+      const url =
+        `${this.labs}/similar-artists/json?artist_mbids=${encodeURIComponent(artistMbid)}` +
+        `&algorithm=${SIMILAR_ARTISTS_ALGORITHM}`;
+      const res = await this.fetchFn(url, {
+        signal: AbortSignal.timeout(LISTENBRAINZ_TIMEOUT_MS),
+        headers: { 'User-Agent': this.userAgent, Accept: 'application/json' },
+      });
+      if (res.status === 429 || res.status === 503) {
+        log.warn({ status: res.status }, 'ListenBrainz labs throttled — backing off 5s');
+        await this.sleepFn(5000);
+        return null;
+      }
+      if (!res.ok) {
+        log.warn({ status: res.status }, 'ListenBrainz labs rejected a similar-artists request');
+        return null;
+      }
+      const body = (await res.json()) as unknown;
+      if (!Array.isArray(body)) return null;
+      return body
+        .map((r) => r as { artist_mbid?: unknown; name?: unknown; score?: unknown })
+        .filter(
+          (r): r is { artist_mbid: string; name: string; score: number } =>
+            typeof r.artist_mbid === 'string' &&
+            r.artist_mbid !== artistMbid &&
+            typeof r.name === 'string' &&
+            typeof r.score === 'number' &&
+            r.score > 0,
+        )
+        .map((r) => ({ mbid: r.artist_mbid, name: r.name, score: r.score }))
+        .sort((a, b) => b.score - a.score);
+    } catch (err) {
+      log.warn({ err }, 'ListenBrainz similar-artists fetch failed');
+      return null;
     }
   }
 

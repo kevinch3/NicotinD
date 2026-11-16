@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
+import { Database } from 'bun:sqlite';
 import * as jose from 'jose';
-import { signJwt } from '../middleware/auth.js';
-import { internalUpstream } from './opensubsonic-upstream.js';
+import { applySchema } from '../db.js';
+
+// `signJwt` reads the user's session version through `getDatabase()`. Left to
+// whatever another test file in the same process last mocked, that was a
+// database the other file had already closed (seen when a new test file shifted
+// the shards). This file brings its own.
+const testDb = new Database(':memory:');
+applySchema(testDb);
+mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
+
+const { signJwt } = await import('../middleware/auth.js');
+const { internalUpstream } = await import('./opensubsonic-upstream.js');
 
 const SECRET = 'test-secret-at-least-32-chars-long-xx';
 
