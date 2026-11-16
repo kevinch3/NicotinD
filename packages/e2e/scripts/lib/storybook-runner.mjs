@@ -31,8 +31,8 @@ export const MIME = {
   '.woff2': 'font/woff2',
 };
 
-/** Serve `STATIC_DIR` on an ephemeral port. The only prerequisite is that the build exists. */
-export function serve() {
+/** Serve `STATIC_DIR`, on an ephemeral port unless one is given. The only prerequisite is that the build exists. */
+export function serve(port = 0) {
   const server = createServer((req, res) => {
     const path = join(STATIC_DIR, decodeURIComponent(req.url.split('?')[0]));
     readFile(path, (err, data) => {
@@ -44,7 +44,7 @@ export function serve() {
       res.end(data);
     });
   });
-  return new Promise((res) => server.listen(0, '127.0.0.1', () => res(server)));
+  return new Promise((res) => server.listen(port, '127.0.0.1', () => res(server)));
 }
 
 /**

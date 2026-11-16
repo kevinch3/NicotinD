@@ -393,6 +393,48 @@ problems above. Neither a type check nor a bundler can see that class of failure
 that compiles but does not render is worse than no catalog, because it looks maintained.
 `bun run smoke:storybook` renders every story and fails on any error.
 
+## Visual regression (#473)
+
+Every story has a screenshot baseline, and `bun run visual:storybook` fails when a story no longer
+matches its own. It runs in `verify` and in the CI `storybook` job, after the render and axe gates.
+
+**Decision: in-repo Playwright baselines, not a hosted service.** No third party sees the renders,
+no account or CI token is needed, and it reuses what the e2e screenshots already depend on (Linux
+renderings with pinned fonts, `tests/helpers/pinned-fonts.ts`). The cost is that a visual change
+means committing new PNGs.
+
+| | |
+| --- | --- |
+| Project | `packages/e2e/playwright.storybook.config.ts`, spec `storybook/stories.visual.spec.ts` |
+| Baselines | `packages/e2e/storybook/baselines/<story-id>.png`, 274 files, 5.6 MB |
+| Frame | 800 x 600, device scale 1, animations disabled, fonts pinned |
+| Theme | Midnight only (the default). E-Ink and the others are not snapshotted: each would add another 274 files |
+| Run time | about one minute |
+
+**The tolerance is 100 differing pixels, and that number was measured.** With the e2e baselines'
+settings (3 % of pixels, colour threshold 0.3) a story passed against a *different story's*
+baseline: on a dark theme a surface differs from the page by less than the colour threshold, so
+only text counts, and text is under 3 % of the frame. At 0.5 % a story still passed against a
+sibling that differed by two captions (1,707 pixels). At 100 pixels both fail and the unchanged
+catalog passes run after run. The phone and TV baselines in the e2e suite still use the loose
+settings; that is worth its own look.
+
+**After a visual change:**
+
+```bash
+bun run build:storybook
+bun run visual:storybook:update   # rewrites the baselines that changed
+git add packages/e2e/storybook/baselines
+```
+
+Look at the changed PNGs in the diff before committing: they are now the definition of correct.
+When CI fails here, the `storybook-visual-report` artifact holds the expected, actual and diff
+image for each story, so the log does not need reading.
+
+A new story fails until its baseline is committed; the list of stories comes from the built
+catalog's own index. A story whose picture is not a function of its inputs goes in `UNSTABLE` in
+the spec with its reason. The list is empty.
+
 ## Accessibility audit
 
 `@storybook/addon-a11y` runs axe per story in the Storybook UI — the right surface while
