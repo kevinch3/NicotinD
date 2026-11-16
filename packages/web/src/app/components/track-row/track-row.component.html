@@ -118,6 +118,8 @@
             class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
             [actions]="actions()"
             [drillIn]="menu.presentation() === 'sheet' || isTv"
+            [sheet]="menu.presentation() === 'sheet'"
+            [header]="menuHeader()"
             (picked)="menu.close(); runAction($event)"
           />
         </app-menu-panel>

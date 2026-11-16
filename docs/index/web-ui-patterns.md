@@ -169,5 +169,6 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   → [song-actions.md](../song-actions.md)
 - **Action list and submenus**: the body of every action menu; a row with `children` flies out
   beside it on desktop and drills in on a phone or TV; field rows filter or submit.
-  `ActionListComponent`, `flyoutSide`, `filterRows`, `playlistSubmenu`, `naturalPanelHeight`.
+  `ActionListComponent`, `MenuHeader`, `flyoutSide`, `filterRows`, `playlistSubmenu`,
+  `naturalPanelHeight`.
   → [song-actions.md](../song-actions.md)

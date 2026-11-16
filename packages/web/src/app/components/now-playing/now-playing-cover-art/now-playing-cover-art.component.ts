@@ -9,7 +9,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { ActionListComponent } from '../../action-list/action-list.component';
+import { ActionListComponent, type MenuHeader } from '../../action-list/action-list.component';
 import { NgTemplateOutlet } from '@angular/common';
 import { HOLD_MS, HOLD_SLOP_PX } from '../../../directives/entity-actions.directive';
 import { haptic } from '../../../lib/haptics';
@@ -75,6 +75,16 @@ export class NowPlayingCoverArtComponent {
   /** A track's cover at its album's live cover rev (#1666). */
   coverSrc(track: Track): string | undefined {
     return this.coverRevisions.url(songCover(track), 600, this.auth.mediaToken());
+  }
+
+  menuHeader(track: Track): MenuHeader {
+    return {
+      title: track.title,
+      subtitle: track.artist,
+      coverSrc: this.coverSrc(track),
+      artist: track.artist,
+      album: track.album ?? '',
+    };
   }
 
   private readonly menu = viewChild(MenuPanelComponent);

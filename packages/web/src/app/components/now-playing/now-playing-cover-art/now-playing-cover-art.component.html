@@ -138,6 +138,8 @@
               class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
               [actions]="menuActions()"
               [drillIn]="menu.presentation() === 'sheet' || isTv"
+              [sheet]="menu.presentation() === 'sheet'"
+              [header]="menuHeader(track)"
               (picked)="menu.close(); $event.action()"
             />
           </app-menu-panel>
@@ -181,6 +183,8 @@
               class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
               [actions]="menuActions()"
               [drillIn]="menu.presentation() === 'sheet' || isTv"
+              [sheet]="menu.presentation() === 'sheet'"
+              [header]="menuHeader(track)"
               (picked)="menu.close(); $event.action()"
             />
           </app-menu-panel>
@@ -273,6 +277,8 @@
             class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
             [actions]="menuActions()"
             [drillIn]="menu.presentation() === 'sheet' || isTv"
+            [sheet]="menu.presentation() === 'sheet'"
+            [header]="menuHeader(track)"
             (picked)="menu.close(); $event.action()"
           />
         </app-menu-panel>

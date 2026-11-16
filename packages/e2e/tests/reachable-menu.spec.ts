@@ -174,6 +174,63 @@ test.describe('track menus are reachable on a phone (#1714)', () => {
     await expectReachableSheet(menu);
   });
 
+  // #2007: the sheet covers the row that opened it, so it names the song.
+  test('the sheet is headed by the song it acts on', async ({ page }) => {
+    await page.goto('/library');
+    await openAlbumCard(page, FIXTURE.album.title);
+    const row = page.getByTestId('track-row').filter({ hasText: 'Second Wind' });
+    await row.getByTestId('track-row-menu-toggle').click();
+    const header = row.getByTestId('track-row-menu').getByTestId('menu-header');
+    await expect(header).toContainText('Second Wind');
+    await expect(header).toContainText(FIXTURE.album.artist);
+    await expect(header.locator('img')).toBeVisible();
+    // Above every action.
+    const headerBox = (await header.boundingBox())!;
+    const firstAction = (await row.getByTestId('track-action-Like').boundingBox())!;
+    expect(headerBox.y + headerBox.height).toBeLessThanOrEqual(firstAction.y + 1);
+  });
+
+  // #2008: the most-used actions lead the sheet as large buttons.
+  test('the sheet starts with a row of quick buttons, and one works', async ({ page }) => {
+    await page.goto('/library');
+    await openAlbumCard(page, FIXTURE.album.title);
+    const row = page.getByTestId('track-row').filter({ hasText: 'Three Of Cups' });
+    await row.getByTestId('track-row-menu-toggle').click();
+    const menu = row.getByTestId('track-row-menu');
+    const quick = menu.getByTestId('menu-quick-row');
+    await expect(quick.locator('button')).toHaveCount(4);
+    for (const label of ['Like', 'Add to queue', 'Play next', 'Add to playlist']) {
+      // In the row, and only there: not repeated in the list below.
+      await expect(menu.getByTestId(`track-action-${label}`)).toHaveCount(1);
+      const box = (await quick.getByTestId(`track-action-${label}`).boundingBox())!;
+      expect(box.height, `${label} is a touch target`).toBeGreaterThanOrEqual(44);
+      expect(box.width, `${label} is a touch target`).toBeGreaterThanOrEqual(44);
+    }
+    await quick.getByTestId('track-action-Like').click();
+    await expect(menu).toBeHidden();
+    await row.getByTestId('track-row-menu-toggle').click();
+    await expect(
+      row
+        .getByTestId('track-row-menu')
+        .getByTestId('menu-quick-row')
+        .getByTestId('track-action-Unlike'),
+    ).toBeVisible();
+    // Leave the fixture as it was.
+    await row.getByTestId('track-action-Unlike').click();
+  });
+
+  test('a desktop popover has neither the header nor the quick row', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto('/library');
+    await openAlbumCard(page, FIXTURE.album.title);
+    const row = page.getByTestId('track-row').first();
+    await row.getByTestId('track-row-menu-toggle').click();
+    const menu = row.getByTestId('track-row-menu');
+    await expect(menu.getByTestId('track-action-Like')).toBeVisible();
+    await expect(menu.getByTestId('menu-header')).toHaveCount(0);
+    await expect(menu.getByTestId('menu-quick-row')).toHaveCount(0);
+  });
+
   test('every item is translated in a Spanish UI', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('nicotind-lang', 'es'));
     await playAlbum(page);

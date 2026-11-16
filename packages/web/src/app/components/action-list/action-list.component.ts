@@ -11,6 +11,9 @@ import {
   signal,
 } from '@angular/core';
 import { MenuItemComponent } from '../menu-item/menu-item.component';
+import { CoverArtComponent } from '../cover-art/cover-art.component';
+import { IconComponent } from '../icon/icon.component';
+import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { startsGroup } from '../../lib/menu-groups';
 import { BackButtonService } from '../../services/native/back-button.service';
@@ -65,9 +68,28 @@ interface Level {
  * Classic `@Input()`s: the web unit harness does not bind signal inputs of a
  * nested component.
  */
+/** A quick button is an icon over a short label, so it needs the icon. */
+const isQuick = (action: TrackAction): boolean => !!action.quick && !!action.icon;
+
+/** The song, album or artist a menu acts on. */
+export interface MenuHeader {
+  title: string;
+  subtitle?: string;
+  coverSrc?: string | null;
+  /** Placeholder art is drawn from these when there is no cover. */
+  artist?: string;
+  album?: string;
+}
+
 @Component({
   selector: 'app-action-list',
-  imports: [MenuItemComponent, TranslatePipe],
+  imports: [
+    MenuItemComponent,
+    TranslatePipe,
+    CoverArtComponent,
+    OverflowRevealDirective,
+    IconComponent,
+  ],
   templateUrl: './action-list.component.html',
 })
 export class ActionListComponent implements OnDestroy {
@@ -80,6 +102,10 @@ export class ActionListComponent implements OnDestroy {
   @Input({ required: true }) set actions(value: TrackAction[]) {
     this.root = value;
   }
+  /** The menu is a phone bottom sheet: the row that opened it is hidden behind a backdrop. */
+  @Input() sheet = false;
+  /** What the menu acts on, shown at the top of a sheet (#2007). */
+  @Input() header: MenuHeader | null = null;
   @Input() testidPrefix = 'track-action-';
   @Input() tall = false;
   /** A submenu replaces the list (phone sheet, TV) instead of flying out beside it. */
@@ -117,7 +143,14 @@ export class ActionListComponent implements OnDestroy {
   /** The rows on screen: the top level, or the submenu drilled into. */
   rows(): TrackAction[] {
     const level = this.levels().at(-1);
-    return filterRows(level ? level.items : this.root, this.filterText());
+    if (level) return filterRows(level.items, this.filterText());
+    const top = this.sheet ? this.root.filter((a) => !isQuick(a)) : this.root;
+    return filterRows(top, this.filterText());
+  }
+
+  /** A sheet's first row: the most-used actions as large buttons, taken out of the list. */
+  quickRow(): TrackAction[] {
+    return this.sheet && !this.parent() ? this.root.filter(isQuick) : [];
   }
 
   /** The submenu's title, shown on its Back row. */

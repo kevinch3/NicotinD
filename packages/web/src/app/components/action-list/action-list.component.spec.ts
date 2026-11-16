@@ -5,6 +5,7 @@ import {
   FLYOUT_WIDTH_PX,
   filterRows,
   flyoutSide,
+  type MenuHeader,
 } from './action-list.component';
 import { BackButtonService } from '../../services/native/back-button.service';
 import { TranslateService } from '../../services/translate.service';
@@ -15,18 +16,22 @@ import type { TrackAction } from '../track-row/track-row.component';
   template: `<app-action-list
     [actions]="actions"
     [drillIn]="drillIn"
+    [sheet]="sheet"
+    [header]="header"
     (picked)="picked.push($event.label); $event.action()"
   />`,
 })
 class HostComponent {
   actions: TrackAction[] = [];
   drillIn = false;
+  sheet = false;
+  header: MenuHeader | null = null;
   picked: string[] = [];
 }
 
 const noop = () => {};
 
-function setup(actions: TrackAction[], drillIn: boolean) {
+function setup(actions: TrackAction[], drillIn: boolean, more: Partial<HostComponent> = {}) {
   TestBed.configureTestingModule({
     imports: [HostComponent],
     providers: [
@@ -37,7 +42,7 @@ function setup(actions: TrackAction[], drillIn: boolean) {
     ],
   });
   const fixture = TestBed.createComponent(HostComponent);
-  Object.assign(fixture.componentInstance, { actions, drillIn });
+  Object.assign(fixture.componentInstance, { actions, drillIn, ...more });
   fixture.detectChanges();
   const el = fixture.nativeElement as HTMLElement;
   const settle = async () => {
@@ -308,5 +313,108 @@ describe('ActionListComponent (#2009)', () => {
     row('Add')!.click();
     await settle();
     expect(labels()).toEqual(['Back', 'Loaded']);
+  });
+});
+
+// #2007: a phone sheet hides the row that opened it, so it names the song.
+describe('ActionListComponent sheet header', () => {
+  const header: MenuHeader = { title: 'Opening Static', subtitle: 'E2E Test Artist' };
+  const find = (el: HTMLElement) => el.querySelector<HTMLElement>('[data-testid="menu-header"]');
+
+  it('shows the title and artist at the top of a sheet', () => {
+    const { el } = setup(MENU([]), true, { sheet: true, header });
+    expect(find(el)!.textContent).toContain('Opening Static');
+    expect(find(el)!.textContent).toContain('E2E Test Artist');
+    expect(el.querySelector('app-action-list')!.firstElementChild).toBe(find(el));
+  });
+
+  it('is left out of a desktop popover and of TV, where the row stays visible', () => {
+    expect(find(setup(MENU([]), false, { header }).el)).toBeNull();
+    TestBed.resetTestingModule();
+    // TV drills in like a sheet but is not one.
+    expect(find(setup(MENU([]), true, { header }).el)).toBeNull();
+  });
+
+  it('gives way to the Back row inside a submenu, and returns with it', async () => {
+    const { el, row, settle } = setup(MENU([]), true, { sheet: true, header });
+    row('Go to artist')!.click();
+    await settle();
+    expect(find(el)).toBeNull();
+    row('Back')!.click();
+    await settle();
+    expect(find(el)).not.toBeNull();
+  });
+
+  it('draws nothing without a header', () => {
+    expect(find(setup(MENU([]), true, { sheet: true }).el)).toBeNull();
+  });
+});
+
+// #2008: a phone sheet leads with the most-used actions as large buttons.
+describe('ActionListComponent quick row', () => {
+  const menu = (ran: string[] = []): TrackAction[] => [
+    { label: 'Like', icon: 'heart', quick: true, group: 'play', action: () => ran.push('Like') },
+    { label: 'Add to queue', icon: 'queue', quick: true, group: 'play', action: noop },
+    { label: 'Start radio', icon: 'radio', group: 'play', action: noop },
+    {
+      label: 'Add to playlist',
+      icon: 'list-music',
+      quick: true,
+      group: 'keep',
+      action: noop,
+      children: () => [{ label: 'Road Trip', action: () => ran.push('Road Trip') }],
+    },
+    { label: 'Song info', icon: 'info', group: 'info', action: noop },
+  ];
+  const quick = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll('[data-testid="menu-quick-row"] > button')).map(
+      (b) => (b as HTMLElement).dataset['testid'],
+    );
+
+  it("moves the quick actions out of a sheet's list into a first row, by data", () => {
+    const { el, labels } = setup(menu(), true, { sheet: true });
+    expect(quick(el)).toEqual([
+      'track-action-Like',
+      'track-action-Add to queue',
+      'track-action-Add to playlist',
+    ]);
+    expect(labels()).toEqual(['Start radio', 'Song info']);
+  });
+
+  it('leaves a desktop popover and TV as plain lists', () => {
+    const popover = setup(menu(), false);
+    expect(quick(popover.el)).toEqual([]);
+    expect(popover.labels()).toHaveLength(5);
+    TestBed.resetTestingModule();
+    const tv = setup(menu(), true);
+    expect(quick(tv.el)).toEqual([]);
+    expect(tv.labels()).toHaveLength(5);
+  });
+
+  it('a quick button runs its action', () => {
+    const ran: string[] = [];
+    const { fixture, row } = setup(menu(ran), true, { sheet: true });
+    row('Like')!.click();
+    expect(fixture.componentInstance.picked).toEqual(['Like']);
+    expect(ran).toEqual(['Like']);
+  });
+
+  it('a quick button with a submenu drills in, and the row is gone until Back', async () => {
+    const { el, row, settle, labels } = setup(menu(), true, { sheet: true });
+    row('Add to playlist')!.click();
+    await settle();
+    expect(labels()).toEqual(['Back', 'Road Trip']);
+    expect(el.querySelector('[data-testid="menu-quick-row"]')).toBeNull();
+    row('Back')!.click();
+    await settle();
+    expect(quick(el)).toHaveLength(3);
+  });
+
+  it('keeps an action with no icon in the list: a quick button is its icon', () => {
+    const { el, labels } = setup([{ label: 'Plain', quick: true, action: noop }, ...menu()], true, {
+      sheet: true,
+    });
+    expect(quick(el)).not.toContain('track-action-Plain');
+    expect(labels()).toContain('Plain');
   });
 });
