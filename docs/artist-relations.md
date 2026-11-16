@@ -65,32 +65,53 @@ person is a member of that band.
   facts, not a score, so they are not ranked against a cosine; the cap keeps a long member list from
   pushing the sound-alikes out. The tile says which kind it is under the name.
 
-## The radio axis (off by default)
+## The radio axis
 
 Radio scores a candidate on a `cultural` axis: how strongly the seed's artist shares listeners with
 the candidate's artist (`culturalAffinityFor`, the same 0–1 relative score Related artists uses).
 
-- **`DEFAULT_WEIGHTS.cultural` is 0**, so served radio is unchanged and the formula version did not
-  move. The lookup is not even loaded while the weight is 0.
-- **No lookup, no axis.** If the source was never asked about the seed's artist, the axis is skipped.
+- **`DEFAULT_WEIGHTS.cultural` is 4** (radio formula v10).
+- **No lookup, no axis.** If the source was never asked about the seed's artist, the axis is
+  skipped, so radio is unchanged until the `artist-relations` task has run.
 - **With a lookup, an unrelated artist scores 0** on this axis rather than being skipped. The
   score is a weighted mean: were strangers skipped, a weakly related artist (0.3) would have its
   mean pulled down and rank below them.
 - Stated relationships (member, collaboration) are not part of this axis.
 
-**To calibrate it** (the step that needs the host):
+### How 4 was chosen (prod, 2026-11-16)
 
-1. Turn on Admin → Library processing → Artist relations and let it finish a pass.
-2. `bun run packages/api/src/scripts/dump-radio.ts <seed> --weights cultural=N` for a few values of
-   N, on five or more seeds per value. The dump scores with the lookup the served result used.
-3. Put the chosen N in `DEFAULT_WEIGHTS` and bump `RADIO_FORMULA_VERSION`, as every weight change
-   does.
+Measured on a scratch copy of the production database inside the container; the live database was
+opened read-only. Listener data was fetched for ten seed artists, one per primary genre (The
+Rolling Stones, Elton John, Gramatik, Fito Páez, Pink Floyd, R.E.M., Brian Eno, Green Day,
+Natiruts, Red Hot Chili Peppers). Three seed songs each, four runs each, a queue of 12: 120 radios
+per weight.
+
+| Weight | From related artists | Shares a seed genre | Mean embedding cosine | Artists per queue |
+| --- | --- | --- | --- | --- |
+| 0 | 49.1 % | 86.5 % | 0.636 | 9.13 |
+| **4** | **61.3 %** | **86.1 %** | **0.628** | **9.03** |
+| 8 | 69.7 % | 86.5 % | 0.626 | 8.57 |
+| 12 | 76.2 % | 84.8 % | 0.625 | 8.41 |
+| 18 | 81.3 % | 81.1 % | 0.612 | 8.16 |
+
+What it shows:
+
+- **Radio already drew half its queue from listener-related artists** with the axis off. Genre and
+  sound get most of the way there.
+- At 4 the related share rises twelve points and nothing else moves much. From 8 the queue
+  narrows (fewer artists per queue); from 12 genre match falls too.
+- The big catalogues saturate: The Rolling Stones go 77 % → 90 % → 96 % → 100 % related across
+  0/4/8/12. A weight that makes every track "people who like this also like" is an echo, so the
+  smallest weight that moves the number was taken.
+- It does little where it was hoped to help most: Gramatik, with 22 owned related artists, goes
+  from 1 % to 3 %.
+
+**What this does not show:** that listeners prefer the result. "More related artists" is a
+description, not a grade. The evaluation polls are the grade, and votes on v9 cannot be reused.
 
 ## What is not built
 
-- **A weight for the radio axis.** The axis exists and is off (see below); the number is not
-  chosen. It needs relation data on the production library, which exists only once the
-  `artist-relations` task is turned on, and then a `dump-radio` comparison on the host.
+- **A graded radio axis.** The weight is measured, not graded: no evaluation poll has run on v10.
 - **A dump.** The labs API is the only source used; whether ListenBrainz publishes this dataset for
   offline use is still unanswered.
 

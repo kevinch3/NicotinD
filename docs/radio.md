@@ -1192,6 +1192,12 @@ used — the version is the human/grouping label, not the ground truth.
   that adds three axes must not pool its votes with any of them, so it takes
   the next free number instead of the one it reserved.
 
+- **v10** (2026-11-16, issue #1486): a **shared-listeners axis** at weight 4. A candidate whose
+  artist shares listeners with the seed's artist (ListenBrainz, stored locally) scores on it; an
+  artist the data does not name scores 0; a seed artist with no stored relations skips the axis.
+  It does nothing until the `artist-relations` task has run. Calibrated on the production library
+  from a scratch copy, 120 radios per weight: see [artist-relations.md](artist-relations.md).
+  v9 votes cannot grade v10.
 - **v9** (2026-09-15, issue #1121): the learned genre axis becomes the default
   ([genre-affinity.md](genre-affinity.md)). No weight moved — the genre axis
   keeps weight 18 — but the *function* behind it changed, which is the same
