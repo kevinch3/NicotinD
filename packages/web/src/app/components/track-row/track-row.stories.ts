@@ -84,8 +84,8 @@ export const WithActions: Story = {
     showRemove: true,
     actions: [
       { label: 'Play next', icon: 'play', action: () => undefined },
-      { label: 'Add to queue', icon: 'plus', action: () => undefined },
-      { label: 'Remove', icon: 'trash', action: () => undefined, destructive: true },
+      { label: 'Add to queue', icon: 'add', action: () => undefined },
+      { label: 'Remove', icon: 'delete', action: () => undefined, destructive: true },
     ],
   },
 };

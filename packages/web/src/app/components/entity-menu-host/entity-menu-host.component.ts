@@ -1,5 +1,5 @@
 import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
-import { TranslatePipe } from '../../pipes/translate.pipe';
+import { MenuItemComponent } from '../menu-item/menu-item.component';
 import { EntityMenuService } from '../../services/entity-menu.service';
 import { BackButtonService } from '../../services/native/back-button.service';
 import {
@@ -42,7 +42,7 @@ export type EntityMenuLayout =
 @Component({
   selector: 'app-entity-menu-host',
   standalone: true,
-  imports: [TranslatePipe],
+  imports: [MenuItemComponent],
   templateUrl: './entity-menu-host.component.html',
 })
 export class EntityMenuHostComponent {

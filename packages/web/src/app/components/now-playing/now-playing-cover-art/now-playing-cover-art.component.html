@@ -144,16 +144,7 @@
        bottom sheet's 44px row rule applies to them (#1714). -->
   <ng-template #menuItems>
       @for (action of menuActions(); track action.label) {
-        <button
-          type="button"
-          [attr.data-testid]="'track-action-' + action.label"
-          class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
-          [class.text-status-error]="action.destructive"
-          [class.text-theme-secondary]="!action.destructive"
-          (click)="closeMenu(); action.action()"
-        >
-          {{ action.labelKey ? (action.labelKey | t) : action.label }}
-        </button>
+        <button [appMenuItem]="action" (click)="closeMenu(); action.action()"></button>
       }
   </ng-template>
 
@@ -274,16 +265,7 @@
           </button>
           <div menuPanel class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40">
             @for (action of menuActions(); track action.label) {
-              <button
-                type="button"
-                [attr.data-testid]="'track-action-' + action.label"
-                class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
-                [class.text-status-error]="action.destructive"
-                [class.text-theme-secondary]="!action.destructive"
-                (click)="menu.close(); action.action()"
-              >
-                {{ action.labelKey ? (action.labelKey | t) : action.label }}
-              </button>
+              <button [appMenuItem]="action" (click)="menu.close(); action.action()"></button>
             }
           </div>
         </app-menu-panel>

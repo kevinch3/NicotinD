@@ -9,6 +9,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { MenuItemComponent } from '../../menu-item/menu-item.component';
 import { NgTemplateOutlet } from '@angular/common';
 import { HOLD_MS, HOLD_SLOP_PX } from '../../../directives/entity-actions.directive';
 import { haptic } from '../../../lib/haptics';
@@ -48,6 +49,7 @@ export function neighbourFade(coverMaxPx: number, viewportWidth: number): number
 @Component({
   selector: 'app-now-playing-cover-art',
   imports: [
+    MenuItemComponent,
     NgTemplateOutlet,
     OverflowRevealDirective,
     CoverArtComponent,

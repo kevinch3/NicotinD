@@ -164,3 +164,6 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Theme audit (2026-11)**: every surface × the 7 presets on phone, desktop and TV, where the palette
   is flat, a contrast table for today's tokens, and the owner's answers (2026-11-09) #1683 builds on;
   `placeholderGradient`, `SettingsGroupComponent`. → [theme-audit.md](../theme-audit.md)
+- **Shared menu row**: every action menu draws its rows through one attribute component on the
+  button, which renders the icon, the label and the test id. `MenuItemComponent`, `TrackAction`.
+  → [song-actions.md](../song-actions.md)

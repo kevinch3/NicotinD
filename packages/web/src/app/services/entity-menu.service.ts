@@ -80,11 +80,13 @@ export class EntityMenuService {
       {
         label: 'Start radio',
         labelKey: 'entityMenu.startRadio',
+        icon: 'radio',
         action: () => this.startRadio(ref),
       },
       {
         label: 'Play',
         labelKey: 'entityMenu.play',
+        icon: 'play',
         action: () =>
           this.withTracks(ref, (tracks) =>
             this.player.playWithContext(tracks, 0, playContextFor(ref)),
@@ -93,6 +95,7 @@ export class EntityMenuService {
       {
         label: 'Play next',
         labelKey: 'entityMenu.playNext',
+        icon: 'play-next',
         action: () =>
           this.withTracks(ref, (tracks) => {
             // queueNext prepends, so walk backwards to keep the entity's order.
@@ -102,6 +105,7 @@ export class EntityMenuService {
       {
         label: 'Add to queue',
         labelKey: 'entityMenu.addToQueue',
+        icon: 'queue',
         action: () =>
           this.withTracks(ref, (tracks) => {
             for (const t of tracks) this.player.addToQueue(t);
@@ -110,6 +114,7 @@ export class EntityMenuService {
       {
         label: 'Save offline',
         labelKey: 'entityMenu.saveOffline',
+        icon: 'download',
         action: () =>
           this.withTracks(ref, (tracks) => {
             void this.preserve.preserveCollection(collectionKey(ref), nameOf(ref), tracks);
@@ -118,6 +123,7 @@ export class EntityMenuService {
       {
         label: 'Open',
         labelKey: 'entityMenu.open',
+        icon: 'chevron-right',
         action: () => void this.router.navigate(routeFor(ref)),
       },
     ];
