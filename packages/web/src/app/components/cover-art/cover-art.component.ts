@@ -9,6 +9,7 @@ import {
   untracked,
 } from '@angular/core';
 import { ServerConfigService } from '../../services/server-config.service';
+import { themeHue } from '../../lib/theme-hue';
 
 export function hashCode(str: string): number {
   let h = 0;
@@ -19,15 +20,34 @@ export function hashCode(str: string): number {
 }
 
 /**
- * Coverless placeholder gradient, built from the active theme's tokens
- * (`--theme-accent` / `--theme-surface-2`, resolved live from [data-theme] on
- * <html>) so it reads as generic-but-on-theme and restyles instantly when the
- * user changes themes. The angle varies deterministically per item so a grid of
- * placeholders isn't a flat wall of identical tiles.
+ * The hue a coverless item wears: one of `--theme-hue-1…8`, picked by a stable
+ * hash of its names, so the same album is the same colour everywhere and a
+ * sparse library is not a wall of accent tiles (#1686).
+ */
+export function placeholderHue(artist: string, album: string): string {
+  return themeHue(`${artist}:${album}`);
+}
+
+/** The gradient's stronger end, and how much hue the initial keeps; the theme gate measures both. */
+export const PLACEHOLDER_MIX_STRONG = 24;
+export const PLACEHOLDER_INK_PERCENT = 50;
+
+/**
+ * Coverless placeholder gradient: the item's hue mixed into the preset's
+ * surface, the way `.chip-tone-*` mixes a source tone, so it follows each
+ * preset's lightness and restyles the moment the theme changes. On E-Ink every
+ * hue is `surface-2`, so the tile is neutral. The angle varies per item too.
  */
 export function placeholderGradient(artist: string, album: string): string {
   const angle = hashCode(`${artist}:${album}`) % 360;
-  return `linear-gradient(${angle}deg, var(--theme-accent), var(--theme-surface-2))`;
+  const hue = placeholderHue(artist, album);
+  const mix = (pct: number) => `color-mix(in srgb, ${hue} ${pct}%, var(--theme-surface))`;
+  return `linear-gradient(${angle}deg, ${mix(PLACEHOLDER_MIX_STRONG)}, ${mix(12)})`;
+}
+
+/** The initial's colour over that gradient: the hue pulled toward the text colour. */
+export function placeholderInk(artist: string, album: string): string {
+  return `color-mix(in srgb, ${placeholderHue(artist, album)} ${PLACEHOLDER_INK_PERCENT}%, var(--theme-text-primary))`;
 }
 
 /** The single letter shown over the placeholder gradient. */
@@ -156,6 +176,10 @@ export class CoverArtComponent {
 
   get gradient(): string {
     return placeholderGradient(this.artist(), this.album());
+  }
+
+  get ink(): string {
+    return placeholderInk(this.artist(), this.album());
   }
 
   get initial(): string {

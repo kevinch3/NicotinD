@@ -445,10 +445,13 @@
               <a [routerLink]="getGenreLink(genre.value)"
                 appTvNavItem
                 [appEntityActions]="genreActions(genre)"
-                class="group relative flex flex-col items-start gap-1 p-4 rounded-xl bg-theme-surface hover:bg-theme-hover transition-colors border border-theme text-left cursor-pointer break-inside-avoid">
+                data-testid="genre-tile"
+                [style.--tone-hue]="genreHue(genre.value)"
+                class="hue-tone group relative flex flex-col items-start gap-1 p-4 rounded-xl transition-colors border border-theme text-left cursor-pointer break-inside-avoid">
                 <app-entity-menu-button [actions]="genreActions(genre)" />
                 <div appOverflowReveal class="text-sm text-theme-primary font-medium truncate w-full">{{ genre.value }}</div>
-                <div class="text-xs text-theme-muted">{{ genre.songCount }} tracks</div>
+                <!-- Secondary, not muted: muted text sits at about 4.6:1 on a plain surface and a tint costs some of that. -->
+                <div class="text-xs text-theme-secondary">{{ genre.songCount }} tracks</div>
               </a>
             }
           </div>

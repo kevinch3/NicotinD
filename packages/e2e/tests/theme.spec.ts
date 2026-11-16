@@ -188,6 +188,52 @@ test.describe('theme contrast table', () => {
     }
     expect(failures).toEqual([]);
   });
+  // The eight hues (#1686): a tinted surface carries text, and a coverless tile
+  // carries an initial. Measured at the strongest mix each one uses.
+  test('text stays legible on every hue tint, on every preset', async ({ page }) => {
+    await page.goto('/library');
+    const HUES = [1, 2, 3, 4, 5, 6, 7, 8];
+    const failures: string[] = [];
+    let measured = 0;
+    for (const preset of PRESETS) {
+      const raw = await page.evaluate(
+        ({ preset, names }) => {
+          document.documentElement.setAttribute('data-theme', preset);
+          const cs = getComputedStyle(document.documentElement);
+          return Object.fromEntries(names.map((n) => [n, cs.getPropertyValue(`--theme-${n}`)]));
+        },
+        {
+          preset,
+          names: ['surface', 'text-primary', 'text-secondary', ...HUES.map((h) => `hue-${h}`)],
+        },
+      );
+      const surface = parseColor(raw['surface']!);
+      const primary = parseColor(raw['text-primary']!);
+      const secondary = parseColor(raw['text-secondary']!);
+      const mixInto = (hue: string, pct: number, base: typeof surface) =>
+        composite({ ...parseColor(hue), a: pct / 100 }, base);
+      for (const h of HUES) {
+        const hue = raw[`hue-${h}`]!;
+        // `.hue-tone:hover` is 16%, the strongest a tinted surface gets.
+        const tone = mixInto(hue, 16, surface);
+        // A placeholder's initial, over the gradient's stronger end.
+        const ink = mixInto(hue, 50, primary);
+        const cover = mixInto(hue, 24, surface);
+        const checks: Array<[string, number, number]> = [
+          ['text-primary on tone', contrast(primary, tone), 4.5],
+          ['text-secondary on tone', contrast(secondary, tone), 4.5],
+          ['placeholder initial', contrast(ink, cover), 3],
+        ];
+        for (const [what, ratio, target] of checks) {
+          measured++;
+          if (ratio < target)
+            failures.push(`${preset} hue-${h}: ${what} = ${ratio.toFixed(2)} < ${target}`);
+        }
+      }
+    }
+    expect(measured, 'presets × hues × checks').toBe(7 * 8 * 3);
+    expect(failures).toEqual([]);
+  });
 });
 
 // Per-user preferences (#1299): the theme and language a person chooses reach

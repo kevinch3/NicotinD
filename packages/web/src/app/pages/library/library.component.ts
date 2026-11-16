@@ -25,6 +25,7 @@ import { ListControlsService, type SortOption } from '../../services/list-contro
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
 import { IconComponent, type IconName } from '../../components/icon/icon.component';
+import { themeHue } from '../../lib/theme-hue';
 import { IconTabsComponent } from '../../components/icon-tabs/icon-tabs.component';
 import { SearchFieldComponent } from '../../components/search-field/search-field.component';
 import {
@@ -299,6 +300,9 @@ export class LibraryComponent implements OnInit, OnDestroy {
   readonly visibleModes = computed(() =>
     this.setup.isOffline() ? this.modes.filter((m) => m.value === 'songs') : this.modes,
   );
+
+  /** A genre tile's tint: one of the eight theme hues, stable per genre (#1686). */
+  readonly genreHue = themeHue;
 
   setMode(mode: LibraryMode): void {
     this.libraryMode.set(mode);

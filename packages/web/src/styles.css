@@ -354,6 +354,18 @@
      dark themes the text lightens and on light themes (daylight/warm-paper/eink)
      it darkens, instead of the old fixed `text-*-300` tints that vanished on
      light backgrounds. */
+  /* A surface tinted by one of the eight theme hues (#1686, theme audit Q2):
+     the element sets `--tone-hue` (lib/theme-hue.ts). 12% into the surface, 16%
+     on hover: the chip tones' mix is the ceiling, because yellow at 22% drops
+     secondary text to 4.2:1 on Twilight (measured). `theme.spec.ts` checks text
+     on the hover mix for every preset and hue. */
+  .hue-tone {
+    background-color: color-mix(in srgb, var(--tone-hue, var(--theme-surface-2)) 12%, var(--theme-surface));
+  }
+  .hue-tone:hover,
+  .hue-tone:focus-visible {
+    background-color: color-mix(in srgb, var(--tone-hue, var(--theme-surface-2)) 16%, var(--theme-surface));
+  }
   .chip-tone-network {
     background-color: color-mix(in srgb, #6366f1 16%, var(--theme-surface));
     color: color-mix(in srgb, #6366f1 60%, var(--theme-text-primary));
