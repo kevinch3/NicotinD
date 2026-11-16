@@ -134,12 +134,16 @@ ones by runner price, not by time.
 
 Ordered by what they would cost a beta channel first.
 
-1. **A pre-release tag would be treated as a stable release in four places.**
-   - `deploy.yml` has no notion of a pre-release (`prerelease` appears nowhere in it). `promote`
-     would move `:release` and `:vX` to a beta image, and `publish-release` would publish it as
-     the newest release.
-   - `pages.yml` takes the newest non-draft release, and `gh release list` includes pre-releases,
-     so our F-Droid repo would serve the beta as the only version.
+1. **A pre-release tag would be treated as a stable release in four places.** The first two are
+   now closed off (#1671); the other two stand.
+   - `deploy.yml` has no notion of a pre-release. `promote` would move `:release` and `:vX` to a
+     beta image, and `publish-release` would publish it as the newest release. **Guarded:** its
+     trigger excludes `v*-*`, so a pre-release tag does not run the pipeline at all. A beta
+     channel has to replace that line with real pre-release handling.
+   - `pages.yml` took the newest non-draft release, and `gh release list` includes pre-releases,
+     so our F-Droid repo would have served the beta as the only version. **Guarded:** it now
+     passes `--exclude-pre-releases`.
+   - `check:fdroid` fails if either guard is removed.
    - `parseVersion` reads only `X.Y.Z`, so `0.9.0-beta.1` and `0.9.0` get the **same**
      `versionCode`. Android will not install the stable over the beta as an update.
    - `electron-updater` with provider `github` skips pre-releases by default. That is library
@@ -148,7 +152,8 @@ Ordered by what they would cost a beta channel first.
 2. **Two things already ignore a pre-release, by accident of how they were written.** The in-app
    APK updater reads `/releases/latest`, which GitHub defines as the newest release that is not a
    draft or a pre-release. The F-Droid main recipe's `^v[0-9.]+$` does not match `v0.9.0-beta.1`.
-   Both are properties to keep, and neither is tested.
+   Both are properties to keep, and both are pinned: `update.service.spec.ts` asserts the
+   `/releases/latest` URL, and `check:fdroid` asserts the recipe's tag pattern.
 3. **The concurrency group names are crossed.** `deploy.yml` (which builds a release and never
    deploys the host) is in group `deploy-host`; `deploy-host.yml` is in `host-deploy`. They do not
    collide, but the name says the opposite of what the workflow does.

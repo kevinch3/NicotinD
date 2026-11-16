@@ -116,7 +116,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p fdroid-apks
-          tag="$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')"
+          tag="$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName')"
           echo "Latest release: $tag"
           # `|| true`: a release predating the F-Droid APKs has none, which is a
           # skip here; the guard before the upload decides whether that fails.

@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - 'v*'
+      # A pre-release tag (v0.9.0-beta.1) does not run this pipeline: nothing
+      # here knows a beta from a stable release, so `promote` would move
+      # `:release` to it (#1671). check:fdroid pins this line.
+      - '!v*-*'
   # No workflow_dispatch, and no host deploy: the host runs `edge`, deployed
   # from every green master commit by ci.yml, and rolling back is the "Deploy
   # host" workflow (deploy-host.yml). A release publishes images and apps.
