@@ -59,3 +59,14 @@ export const LongNames: Story = {
 
 /** Nothing renders — the page shows no empty shelf. */
 export const Empty: Story = { args: { artists: [] } };
+
+/** Related by shared listeners and not in the library: each opens the Get search prefilled (#1486). */
+export const WithNotOwned: Story = {
+  args: {
+    notOwned: [
+      { mbid: 'm1', name: 'Led Zeppelin', score: 1 },
+      { mbid: 'm2', name: 'The Beatles', score: 0.98 },
+      { mbid: 'm3', name: 'Orquesta Típica Víctor y su Cantor de Siempre', score: 0.4 },
+    ],
+  },
+};

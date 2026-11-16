@@ -506,8 +506,17 @@ export interface RelatedArtist {
   signals: RelatedArtistSignals;
 }
 
+/** A related artist the library does not have (#1486). */
+export interface NotOwnedRelatedArtist {
+  mbid: string;
+  name: string;
+  score: number;
+}
+
 export interface RelatedArtistsResponse {
   artists: RelatedArtist[];
+  /** Related by shared listeners and not in the library; absent when there are none. */
+  notOwned?: NotOwnedRelatedArtist[];
   /** No source knows the artist yet (e.g. too few analysed tracks). */
   reason?: 'no-signal';
 }

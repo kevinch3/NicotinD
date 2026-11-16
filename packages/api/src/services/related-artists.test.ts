@@ -11,6 +11,7 @@ import {
   relatedArtists,
   RELATED_RELATIVE_CUT,
   type RelatedCandidate,
+  NOT_OWNED_LIMIT,
 } from './related-artists.js';
 import { bumpCoverRev } from './cover-rev.js';
 import { storeSimilarArtists } from './artist-relations.js';
@@ -285,6 +286,37 @@ describe('relatedArtists with cultural relations (#1486)', () => {
   it('still says no-signal when neither source has been able to answer', () => {
     plainArtist('seed', 'Seed Artist', 'mb-seed');
     expect(relatedArtists(db, 'seed')).toEqual({ artists: [], reason: 'no-signal' });
+  });
+
+  it('names the related artists the library does not have, strongest first, capped', () => {
+    plainArtist('seed', 'Seed Artist', 'mb-seed');
+    plainArtist('owned', 'Owned Neighbour', 'mb-owned');
+    storeSimilarArtists(db, 'mb-seed', [
+      { mbid: 'mb-owned', name: 'Owned Neighbour', score: 90 },
+      ...Array.from({ length: 12 }, (_, i) => ({
+        mbid: `mb-x${i}`,
+        name: `Stranger ${i}`,
+        score: 100 - i,
+      })),
+    ]);
+    const res = relatedArtists(db, 'seed');
+    expect(res.artists.map((a) => a.id)).toEqual(['owned']);
+    expect(res.notOwned).toHaveLength(NOT_OWNED_LIMIT);
+    expect(res.notOwned![0]).toEqual({ mbid: 'mb-x0', name: 'Stranger 0', score: 1 });
+    expect(res.notOwned!.map((n) => n.name)).not.toContain('Owned Neighbour');
+  });
+
+  it('offers them even when no related artist is owned, and omits the field when there are none', () => {
+    plainArtist('seed', 'Seed Artist', 'mb-seed');
+    storeSimilarArtists(db, 'mb-seed', [{ mbid: 'mb-x', name: 'Stranger', score: 10 }]);
+    expect(relatedArtists(db, 'seed')).toEqual({
+      artists: [],
+      notOwned: [{ mbid: 'mb-x', name: 'Stranger', score: 1 }],
+    });
+    plainArtist('other', 'Other Seed', 'mb-other');
+    plainArtist('owned', 'Owned Neighbour', 'mb-owned');
+    storeSimilarArtists(db, 'mb-other', [{ mbid: 'mb-owned', name: 'Owned Neighbour', score: 5 }]);
+    expect('notOwned' in relatedArtists(db, 'other')).toBe(false);
   });
 
   it('is an empty list, not no-signal, once the source was asked and knew nothing', () => {

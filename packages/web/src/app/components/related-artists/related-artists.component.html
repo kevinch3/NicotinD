@@ -16,3 +16,29 @@
     </div>
   </section>
 }
+<!-- Related by shared listeners and not in the library: a way into the Get search (#1486). -->
+@if (notOwned().length > 0) {
+  <section
+    class="mt-8"
+    data-testid="related-not-owned"
+    [attr.aria-label]="'artist.relatedNotOwned' | t"
+  >
+    <h2 class="text-lg font-semibold text-theme-primary">{{ 'artist.relatedNotOwned' | t }}</h2>
+    <p class="text-xs text-theme-muted mb-3">{{ 'artist.relatedNotOwnedHint' | t }}</p>
+    <div class="flex flex-wrap gap-2" appTvNavGroup axis="horizontal">
+      @for (n of notOwned(); track n.mbid) {
+        <button
+          appTvNavItem
+          appOverflowReveal
+          type="button"
+          data-testid="related-not-owned-artist"
+          (click)="find.emit(n.name)"
+          [attr.aria-label]="'artist.relatedFind' | t: { name: n.name }"
+          class="max-w-full truncate rounded-lg bg-theme-surface-2 px-3 py-2 text-sm text-theme-secondary hover:bg-theme-surface-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-accent)]"
+        >
+          {{ n.name }}
+        </button>
+      }
+    </div>
+  </section>
+}

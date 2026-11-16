@@ -84,10 +84,33 @@ export interface RelatedArtist {
   signals: RelatedSignals;
 }
 
-export type RelatedArtistsResult =
+/** A related artist the library does not have: the discovery hook (#1486). */
+export interface NotOwnedRelatedArtist {
+  mbid: string;
+  name: string;
+  /** 0–1, relative to the seed's strongest relation. */
+  score: number;
+}
+
+/** How many not-owned related artists a page is offered. */
+export const NOT_OWNED_LIMIT = 8;
+
+export type RelatedArtistsResult = (
   | { artists: RelatedArtist[] }
   /** No source has anything on the seed (today: fewer than the floor of analysed tracks). */
-  | { artists: []; reason: 'no-signal' };
+  | { artists: []; reason: 'no-signal' }
+) & {
+  /** Present only when there are some; listener data is the one source that names them. */
+  notOwned?: NotOwnedRelatedArtist[];
+};
+
+/** The strongest related artists that are not in the library, best first. */
+export function notOwnedRelated(db: Database, artistId: string): NotOwnedRelatedArtist[] {
+  return (culturalNeighbours(db, artistId, SOURCE_POOL) ?? [])
+    .filter((n) => n.id === null)
+    .slice(0, NOT_OWNED_LIMIT)
+    .map((n) => ({ mbid: n.mbid, name: n.name, score: n.score }));
+}
 
 /** Merge every source's candidates by artist id, keeping first-seen order. */
 function gather(db: Database, artistId: string): Map<string, RelatedSignals> | null {
@@ -126,8 +149,10 @@ export function relatedArtists(
 ): RelatedArtistsResult {
   const merged = gather(db, artistId);
   if (!merged) return { artists: [], reason: 'no-signal' };
+  const found = notOwnedRelated(db, artistId);
+  const discovery = found.length ? { notOwned: found } : {};
   merged.delete(artistId);
-  if (merged.size === 0) return { artists: [] };
+  if (merged.size === 0) return { artists: [], ...discovery };
 
   const ids = [...merged.keys()];
   const rows = db
@@ -164,5 +189,6 @@ export function relatedArtists(
         signals: merged.get(id)!,
       };
     }),
+    ...discovery,
   };
 }

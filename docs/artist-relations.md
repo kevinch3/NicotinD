@@ -30,14 +30,25 @@ who listeners of an artist also listen to, from ListenBrainz, stored locally.
   with too few analysed tracks for audio, the case this exists for, now gets a row instead of
   `no-signal`. Each tile's `signals` says which source backed it.
 
+## Discovery: related artists the library does not have
+
+`GET /api/library/artists/:id/related` also returns `notOwned`: the strongest related artists with
+no library row (`notOwnedRelated`, at most `NOT_OWNED_LIMIT` = 8, `{ mbid, name, score }`). The field
+is absent when there are none. Only listener data can name them, so an artist the source was never
+asked about has none.
+
+The artist page lists them under **Not in your library** (`RelatedArtistsComponent`, `notOwned`
+input, `find` output). Picking one opens Get → Add with the name prefilled in the omnibox, the same
+hand-over Library Find uses (#1663); nothing is searched or fetched until the user presses Enter.
+The sample of 2026-11-09 had about 55 not-owned related artists per answered artist, so the cap is
+what keeps this a short row.
+
 ## What is not built
 
 - **Radio.** A cultural-affinity axis beside the embedding cosine needs calibration of the kind
   #1119 did for genre affinity, on prod. Until then radio does not read these rows.
 - **MusicBrainz relationships** (member of, collaboration): `kind` has room for them; only
   `similar` from `listenbrainz` is written.
-- **Discovery.** `culturalNeighbours` already returns the not-owned related artists (`id: null`),
-  about 55 per answered artist in the 2026-11-09 sample. Nothing shows them yet.
 - **A dump.** The labs API is the only source used; whether ListenBrainz publishes this dataset for
   offline use is still unanswered.
 

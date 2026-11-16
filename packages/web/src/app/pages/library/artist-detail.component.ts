@@ -11,6 +11,7 @@ import {
   OnDestroy,
   untracked,
 } from '@angular/core';
+import { SearchService } from '../../services/search.service';
 import { CoverWashDirective } from '../../directives/cover-wash.directive';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
@@ -27,6 +28,7 @@ import type {
   DiscographyNotProvisioned,
   ArtistIdentityResult,
   RelatedArtist,
+  NotOwnedRelatedArtist,
   ArtistSources,
 } from '../../services/api/api-types';
 import { awaitDiscographyArt, awaitProvisioning } from '../../lib/await-provisioning';
@@ -141,6 +143,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly chunk = chunk;
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private readonly acquireSearch = inject(SearchService);
   private http = inject(HttpClient);
   private destroyRef = inject(DestroyRef);
   private api = inject(LibraryApiService);
@@ -773,12 +776,25 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
 
   // ─── Related artists (docs/related-artists.md) ────────────────────────────
   readonly relatedArtists = signal<RelatedArtist[]>([]);
+  /** Related artists that are not in the library (#1486). */
+  readonly relatedNotOwned = signal<NotOwnedRelatedArtist[]>([]);
+
+  /** Open Get → Add with the artist's name in its omnibox, prefilled as Find does (#1663). */
+  findArtist(name: string): void {
+    if (this.acquireSearch.query() !== name) this.acquireSearch.resetResults();
+    this.acquireSearch.setQuery(name);
+    void this.router.navigate(['/get'], { queryParams: { tab: 'add' } });
+  }
 
   private async loadRelatedArtists(artistId: string): Promise<void> {
     this.relatedArtists.set([]);
+    this.relatedNotOwned.set([]);
     try {
       const data = await firstValueFrom(this.api.getRelatedArtists(artistId));
-      if (this.artistId === artistId) this.relatedArtists.set(data.artists);
+      if (this.artistId === artistId) {
+        this.relatedArtists.set(data.artists);
+        this.relatedNotOwned.set(data.notOwned ?? []);
+      }
     } catch {
       /* no-op — no row is the right failure */
     }

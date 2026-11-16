@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RelatedArtistsComponent } from './related-artists.component';
 import { setInputValue } from '../../../testing/signal-input';
-import type { RelatedArtist } from '../../services/api/api-types';
+import type { NotOwnedRelatedArtist, RelatedArtist } from '../../services/api/api-types';
 
 const artist = (id: string, over: Partial<RelatedArtist> = {}): RelatedArtist => ({
   id,
@@ -15,7 +15,11 @@ const artist = (id: string, over: Partial<RelatedArtist> = {}): RelatedArtist =>
 });
 
 describe('RelatedArtistsComponent', () => {
-  function setup(artists: RelatedArtist[], token: string | null = 'tok') {
+  function setup(
+    artists: RelatedArtist[],
+    token: string | null = 'tok',
+    notOwned: NotOwnedRelatedArtist[] = [],
+  ) {
     TestBed.configureTestingModule({
       imports: [RelatedArtistsComponent],
       providers: [provideRouter([])],
@@ -23,6 +27,7 @@ describe('RelatedArtistsComponent', () => {
     const fixture = TestBed.createComponent(RelatedArtistsComponent);
     setInputValue(fixture.componentInstance.artists, artists);
     setInputValue(fixture.componentInstance.token, token);
+    setInputValue(fixture.componentInstance.notOwned, notOwned);
     fixture.detectChanges();
     return fixture;
   }
@@ -63,5 +68,38 @@ describe('RelatedArtistsComponent', () => {
     const after = artist('a', { coverArt: 'ar-a', coverRev: 2 } as Partial<RelatedArtist>);
     const c = setup([before]).componentInstance;
     expect(c.coverSrc(after)).not.toBe(c.coverSrc(before));
+  });
+
+  // #1486: related artists the library does not have are a way into the Get search.
+  describe('not-owned related artists', () => {
+    const withNotOwned = (owned: RelatedArtist[]) =>
+      setup(owned, 'tok', [
+        { mbid: 'm1', name: 'Stranger One', score: 1 },
+        { mbid: 'm2', name: 'Stranger Two', score: 0.5 },
+      ]);
+    const chips = (el: HTMLElement) =>
+      Array.from(
+        el.querySelectorAll<HTMLButtonElement>('[data-testid="related-not-owned-artist"]'),
+      );
+
+    it('renders nothing when there are none', () => {
+      const fixture = setup([artist('a')]);
+      expect(fixture.nativeElement.querySelector('[data-testid="related-not-owned"]')).toBeNull();
+    });
+
+    it('lists them in order, also when no related artist is owned', () => {
+      const fixture = withNotOwned([]);
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('[data-testid="related-artists"]')).toBeNull();
+      expect(chips(el).map((b) => b.textContent?.trim())).toEqual(['Stranger One', 'Stranger Two']);
+    });
+
+    it('emits the name of the one picked', () => {
+      const fixture = withNotOwned([artist('a')]);
+      const picked: string[] = [];
+      fixture.componentInstance.find.subscribe((name) => picked.push(name));
+      chips(fixture.nativeElement)[1]!.click();
+      expect(picked).toEqual(['Stranger Two']);
+    });
   });
 });
