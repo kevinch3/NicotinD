@@ -1,6 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { startsGroup, type MenuGroup } from '../../lib/menu-groups';
-import { MenuItemComponent } from '../menu-item/menu-item.component';
+import { ActionListComponent } from '../action-list/action-list.component';
+import { isTvUi } from '../../lib/platform';
+import type { MenuGroup } from '../../lib/menu-groups';
 import type { IconName } from '../icon/icon.component';
 import { Component, computed, inject, input, output } from '@angular/core';
 import { AuthService } from '../../services/auth.service';
@@ -38,6 +39,16 @@ export interface TrackAction {
   /** Rows of one group sit together; a separator is drawn where it changes (#2006). */
   group?: MenuGroup;
   action: () => void;
+  /**
+   * Opens a submenu instead of running (#2009). A function, so a menu costs
+   * nothing for a submenu nobody opens; it may be async.
+   */
+  children?: () => TrackAction[] | Promise<TrackAction[]>;
+  /**
+   * Makes the row a text field: `filter` narrows the rows beside it as you
+   * type, `submit` runs with the typed text on Enter.
+   */
+  field?: { kind: 'filter' | 'submit'; placeholderKey: string; submit?: (text: string) => void };
   destructive?: boolean;
 }
 
@@ -51,7 +62,7 @@ function formatDuration(seconds?: number): string {
 @Component({
   selector: 'app-track-row',
   imports: [
-    MenuItemComponent,
+    ActionListComponent,
     NgTemplateOutlet,
     OverflowRevealDirective,
     CoverArtComponent,
@@ -66,8 +77,8 @@ function formatDuration(seconds?: number): string {
   templateUrl: './track-row.component.html',
 })
 export class TrackRowComponent {
-  /** Whether a separator goes above a menu row (#2006). */
-  readonly startsGroup = startsGroup;
+  /** On TV a submenu replaces the list, as on a phone sheet (#2009). */
+  readonly isTv = isTvUi();
   /** Right-click and hold open the same ⋯ list (#1298). */
   readonly menuActions = (): TrackAction[] => this.actions();
   readonly auth = inject(AuthService);

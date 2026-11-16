@@ -1293,6 +1293,8 @@
   "review.identifyUndecodable": "This file couldn't be read — likely truncated or corrupt",
   "review.sourcesDown": "Unavailable: {list}",
   "song.addToPlaylist": "Add to playlist",
+  "song.playlistFind": "Find a playlist",
+  "song.playlistNewName": "New playlist name",
   "song.addToQueue": "Add to queue",
   "song.dontRecommend": "Don't recommend this",
   "song.goToAlbum": "Go to album",

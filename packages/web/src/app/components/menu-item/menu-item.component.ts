@@ -29,6 +29,14 @@ import type { TrackAction } from '../track-row/track-row.component';
     <span appOverflowReveal class="min-w-0 flex-1 truncate">{{
       action.labelKey ? (action.labelKey | t) : action.label
     }}</span>
+    @if (action.children) {
+      <app-icon
+        name="chevron-right"
+        [size]="14"
+        class="shrink-0 text-theme-muted"
+        data-menu-item-submenu
+      />
+    }
   `,
   host: {
     type: 'button',

@@ -1,6 +1,5 @@
 import { Component, HostListener, computed, effect, inject, signal } from '@angular/core';
-import { startsGroup } from '../../lib/menu-groups';
-import { MenuItemComponent } from '../menu-item/menu-item.component';
+import { ActionListComponent } from '../action-list/action-list.component';
 import { EntityMenuService } from '../../services/entity-menu.service';
 import { BackButtonService } from '../../services/native/back-button.service';
 import {
@@ -43,12 +42,12 @@ export type EntityMenuLayout =
 @Component({
   selector: 'app-entity-menu-host',
   standalone: true,
-  imports: [MenuItemComponent],
+  imports: [ActionListComponent],
   templateUrl: './entity-menu-host.component.html',
 })
 export class EntityMenuHostComponent {
-  /** Whether a separator goes above a menu row (#2006). */
-  readonly startsGroup = startsGroup;
+  /** On TV a submenu replaces the list, as on a phone sheet (#2009). */
+  readonly isTv = isTvUi();
   readonly menu = inject(EntityMenuService);
   private readonly back = inject(BackButtonService);
 

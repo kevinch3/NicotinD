@@ -51,6 +51,21 @@ import { BackButtonService } from '../../services/native/back-button.service';
  * DOM, so scoped `row.getByTestId(...)` selectors and the D-pad wiring are the
  * same in both modes. docs/design-patterns.md "Reachable menus".
  */
+/**
+ * The height the panel's content wants, even while a previous max-height caps
+ * the box: the sum of its projected bodies' own heights.
+ *
+ * Not `scrollHeight`: that also counts whatever an absolutely positioned
+ * descendant hangs outside the body, and a submenu flyout beside a row (#2009)
+ * made a menu that fitted look too tall, which switched scrolling on and
+ * clipped the flyout out of sight.
+ */
+export function naturalPanelHeight(panelEl: HTMLElement, boxHeight: number): number {
+  const bodies = Array.from(panelEl.children) as HTMLElement[];
+  if (bodies.length === 0) return Math.max(boxHeight, panelEl.scrollHeight);
+  return bodies.reduce((sum, el) => sum + el.offsetHeight, 0);
+}
+
 @Component({
   selector: 'app-menu-panel',
   templateUrl: './menu-panel.component.html',
@@ -145,8 +160,7 @@ export class MenuPanelComponent {
 
     const r = triggerEl.getBoundingClientRect();
     const p = panelEl.getBoundingClientRect();
-    // scrollHeight is the natural height even while a previous max-height caps the box.
-    const natural = Math.max(p.height, panelEl.scrollHeight);
+    const natural = naturalPanelHeight(panelEl, p.height);
     const band = menuMaxHeight(vh, topInset, bottomInset);
     const height = Math.min(natural, band);
     this.maxHeight.set(natural > band ? band : null);

@@ -96,6 +96,51 @@ The separator is a `<div role="separator">` between the buttons, not a button, s
 focus and D-pad handling skip it. The song menus and the entity menu host draw them; entity and
 album actions carry no groups today, so those menus show none.
 
+## Submenus, and Add to playlist ▸ (#2009)
+
+`ActionListComponent` (`components/action-list/`) is the body of every action menu: track rows,
+both Now Playing menus and the entity menu host. It draws the rows through `MenuItemComponent`,
+the separators, and submenus. The album page's two menus still loop over `MenuItemComponent`
+themselves, because they interleave a non-action row.
+
+An action with **`children`** opens a submenu instead of running. `children` is a function, so a
+menu costs nothing for a submenu nobody opens, and it may be async.
+
+| Where | How a submenu shows |
+| --- | --- |
+| Desktop popover | a **flyout** beside the row, on the left when the right would leave the viewport (`flyoutSide`) |
+| Phone sheet, TV (`drillIn`) | it **replaces the list** under a Back row named after the submenu |
+| A desktop menu that scrolls | drill-in too: a flyout would be clipped |
+
+- The row carries a chevron, `aria-haspopup="menu"` and `aria-expanded`.
+- **Back and Escape leave the submenu before the menu** (it takes a place on `BackButtonService.stack`
+  while a submenu is open). **Right** opens a submenu, **Left** returns.
+- `picked` fires for a leaf row only. The menu that owns the list closes itself and runs the action.
+- A menu rebuilds its rows whenever something they read changes (a like, a download's progress).
+  The open submenu is kept across that; a menu is created afresh each time it opens, which is what
+  returns it to the top.
+
+**Field rows.** An action with `field` is a text input, not a button: `filter` narrows the rows
+beside it as you type (`filterRows`), `submit` runs with the typed text on Enter. Enter is always
+consumed: submitting closes the menu, focus returns to the menu's trigger button during the same
+key press, and an unconsumed Enter would press that button and reopen the menu.
+
+**Add to playlist ▸** (`addToPlaylistAction` → `playlistSubmenu`, `lib/track-utils.ts`):
+
+1. *Find a playlist*, a filter field, only when there are more than `PLAYLIST_FILTER_FROM` (8).
+2. *New playlist*, a submit field: type a name, press Enter, and the playlist is created with the
+   song in it.
+3. The user's own playlists, most recently changed first. Curated playlists and Liked Songs are
+   left out.
+
+The dialog (`AddToPlaylistComponent`, `PlaylistService.openPicker`) stays for the selection bar's
+bulk "Add". Not built: ticks on playlists that already hold the song, which needs an endpoint
+(`GET /api/playlists?containing=<songId>`).
+
+**Measuring a menu's height.** `MenuPanelComponent` sizes itself from its body's own height
+(`naturalPanelHeight`), not its `scrollHeight`: a flyout hanging beside a row made a menu that
+fitted look too tall, which switched scrolling on and clipped the flyout out of sight.
+
 ## Entity menus: albums, artists, genres, playlists (#1298)
 
 The same rule, one level up. `EntityMenuService.build(ref, ctx)` is the single source of a

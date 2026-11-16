@@ -1,0 +1,65 @@
+@if (parent(); as p) {
+  <!-- Drilled in: the way back comes first, named after the submenu it leaves. -->
+  <button
+    [appMenuItem]="{ label: 'Back', labelKey: p.labelKey, icon: 'chevron-left', action: noop }"
+    [testidPrefix]="testidPrefix"
+    [tall]="tall"
+    [attr.role]="itemRole"
+    data-back
+    (click)="goBack()"
+  ></button>
+  <div role="separator" data-testid="menu-separator" class="my-1 border-t border-theme"></div>
+}
+@for (action of rows(); track action.label; let i = $index) {
+  @if (startsGroup(rows(), i)) {
+    <div role="separator" data-testid="menu-separator" class="my-1 border-t border-theme"></div>
+  }
+  @if (action.field; as field) {
+    <div class="px-3 py-1.5">
+      <input
+        #box
+        type="text"
+        [attr.data-testid]="testidPrefix + action.label"
+        [attr.aria-label]="field.placeholderKey | t"
+        [placeholder]="field.placeholderKey | t"
+        [value]="field.kind === 'filter' ? filterText() : ''"
+        (input)="field.kind === 'filter' && filterText.set(box.value)"
+        (keydown.enter)="onFieldEnter($event, action, box.value)"
+        (click)="$event.stopPropagation()"
+        class="w-full rounded-lg border border-theme bg-theme-surface-2 px-3 py-2 text-sm text-theme-primary placeholder:text-theme-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-accent)]"
+      />
+    </div>
+  } @else {
+    <button
+      [appMenuItem]="action"
+      [testidPrefix]="testidPrefix"
+      [tall]="tall"
+      [attr.role]="itemRole"
+      [attr.data-submenu]="action.children ? 'true' : null"
+      [attr.aria-haspopup]="action.children ? 'menu' : null"
+      [attr.aria-expanded]="action.children ? flyout()?.parent?.label === action.label : null"
+      (click)="activate(action, $any($event.currentTarget))"
+    ></button>
+  }
+}
+@if (flyout(); as f) {
+  <!-- A wrapper carries the position: the list inside is itself `relative`, as
+       the positioning context of a flyout of its own. -->
+  <div
+    data-testid="menu-flyout"
+    [attr.role]="itemRole ? 'menu' : 'group'"
+    [attr.aria-label]="f.parent.labelKey ? (f.parent.labelKey | t) : f.parent.label"
+    class="absolute z-10 w-56 rounded-xl border border-theme bg-theme-surface py-1 shadow-xl"
+    [style.top.px]="f.top"
+    [style.left]="f.side === 'right' ? '100%' : null"
+    [style.right]="f.side === 'left' ? '100%' : null"
+  >
+    <app-action-list
+      [actions]="f.items"
+      [testidPrefix]="testidPrefix"
+      [tall]="tall"
+      [itemRole]="itemRole"
+      (picked)="picked.emit($event)"
+    />
+  </div>
+}

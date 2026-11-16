@@ -167,3 +167,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Shared menu row**: every action menu draws its rows through one attribute component on the
   button, which renders the icon, the label and the test id. `MenuItemComponent`, `TrackAction`.
   → [song-actions.md](../song-actions.md)
+- **Action list and submenus**: the body of every action menu; a row with `children` flies out
+  beside it on desktop and drills in on a phone or TV; field rows filter or submit.
+  `ActionListComponent`, `flyoutSide`, `filterRows`, `playlistSubmenu`, `naturalPanelHeight`.
+  → [song-actions.md](../song-actions.md)

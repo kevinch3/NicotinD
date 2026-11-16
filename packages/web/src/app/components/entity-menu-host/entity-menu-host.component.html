@@ -24,18 +24,14 @@
       (click)="$event.stopPropagation()"
       (pointerdown)="$event.stopPropagation()"
     >
-      @for (action of s.actions; track action.label; let i = $index) {
-        @if (startsGroup(s.actions, i)) {
-          <div role="separator" data-testid="menu-separator" class="my-1 border-t border-theme"></div>
-        }
-        <button
-          [appMenuItem]="action"
-          testidPrefix="entity-action-"
-          role="menuitem"
-          [tall]="l.kind === 'sheet'"
-          (click)="run(action)"
-        ></button>
-      }
+      <app-action-list
+        [actions]="s.actions"
+        testidPrefix="entity-action-"
+        itemRole="menuitem"
+        [tall]="l.kind === 'sheet'"
+        [drillIn]="l.kind === 'sheet' || isTv"
+        (picked)="run($event)"
+      />
     </div>
   }
 }
