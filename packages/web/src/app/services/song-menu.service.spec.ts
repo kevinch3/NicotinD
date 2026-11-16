@@ -169,7 +169,7 @@ describe('SongMenuService.build', () => {
         expect(await entries(setup('user').svc)).toEqual(['More by this artist']);
       });
 
-      it('lists at most five, and picking one opens Get with the name searched', async () => {
+      it('lists at most five, and picking one opens Get with the name prefilled', async () => {
         related = () => of({ artists: [], notOwned: notOwned(8) });
         const { svc, router } = setup('user');
         const similar = (await getMore(svc)!.children!()).find(

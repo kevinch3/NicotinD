@@ -165,7 +165,7 @@ artist's own page.
 | Entry | Does |
 | --- | --- |
 | **More by <artist>** | opens the artist page, whose discography already marks the albums the library lacks |
-| **Similar artists ▸** | up to five related artists the library lacks (`SIMILAR_ARTISTS_SHOWN`); picking one opens Get → Add with the name searched (#2015) |
+| **Similar artists ▸** | up to five related artists the library lacks (`SIMILAR_ARTISTS_SHOWN`); picking one opens Get → Add with the name prefilled (#2015) |
 
 The label names the primary credited artist through `labelParams`, the values `MenuItemComponent`
 passes to the `t` pipe for a `labelKey` with placeholders. Full album and a better copy are
