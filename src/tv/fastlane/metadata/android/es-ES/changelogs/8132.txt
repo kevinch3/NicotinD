@@ -1,0 +1,6 @@
+• acquisition: one hunt scheduler with priority lanes in front of the source (#1978)
+• agents: an unattended token writes genres by itself only once its proposals are accepted (#1987)
+• artists: list related artists that are not in the library, with a way to look for them (#1982)
+• artists: store band, member and collaboration links, and show them first in Related artists (#1984)
+• audit: flag albums whose track artists look like composers (#1980)
+…and 43 more
