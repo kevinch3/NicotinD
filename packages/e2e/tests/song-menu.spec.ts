@@ -12,6 +12,51 @@ test.describe('song row menu', () => {
   // dir; later specs in the run still expect it. See preserveMusicFixture.
   const quietHours = preserveMusicFixture('E2E_Test_Artist/E2E_Test_Album/04 - Quiet_Hours.flac');
 
+  // #2011: the row's menu is one menu, however it is opened.
+  test('right-click on a row opens the same items as its ⋯ menu, at the pointer', async ({
+    page,
+  }) => {
+    await page.goto('/library');
+    await openAlbumCard(page, FIXTURE.album.title);
+    const row = page.getByTestId('track-row').first();
+    await expect(row).toBeVisible();
+
+    await row.getByTestId('track-row-menu-toggle').click();
+    const fromToggle = await row
+      .locator('[data-testid^="track-action-"]')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')!.slice(13)));
+    expect(fromToggle.length).toBeGreaterThan(5);
+    await page.keyboard.press('Escape');
+    await expect(row.getByTestId('track-row-menu')).toBeHidden();
+
+    const box = (await row.boundingBox())!;
+    const at = { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
+    await page.mouse.click(at.x, at.y, { button: 'right' });
+    const menu = page.getByTestId('entity-menu');
+    await expect(menu).toBeVisible();
+    const fromRightClick = await menu
+      .locator('[data-testid^="entity-action-"]')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')!.slice(14)));
+    expect(fromRightClick).toEqual(fromToggle);
+    // Opened where the pointer was, not anchored to the ⋯ button at the row's end.
+    const menuBox = (await menu.boundingBox())!;
+    expect(Math.abs(menuBox.x - at.x)).toBeLessThan(24);
+    // And it did not play the row.
+    await expect(row).not.toHaveAttribute('data-playback-state', 'playing');
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+  });
+
+  test("the keyboard menu key opens the focused row's menu", async ({ page }) => {
+    await page.goto('/library');
+    await openAlbumCard(page, FIXTURE.album.title);
+    const row = page.getByTestId('track-row').first();
+    await row.getByTestId('track-row-menu-toggle').focus();
+    await page.keyboard.press('Shift+F10');
+    await expect(page.getByTestId('entity-menu')).toBeVisible();
+    await expect(page.getByTestId('entity-action-Add to queue')).toBeVisible();
+  });
+
   test('shows the common actions and hides "Go to album" on an album page', async ({ page }) => {
     await page.goto('/library');
     await openAlbumCard(page, FIXTURE.album.title);
