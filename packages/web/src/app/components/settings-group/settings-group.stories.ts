@@ -1,4 +1,4 @@
-import { moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import { moduleMetadata, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { SettingsGroupComponent } from './settings-group.component';
 
 const meta: Meta<SettingsGroupComponent> = {

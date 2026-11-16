@@ -1,5 +1,10 @@
 import { Component, effect, input, viewChild } from '@angular/core';
-import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import {
+  applicationConfig,
+  moduleMetadata,
+  type Meta,
+  type StoryObj,
+} from '@storybook/angular-vite';
 import { AlbumHuntModalComponent } from './album-hunt-modal.component';
 import { storyProviders } from '../../../stories/support/story-providers';
 import type { DiscographyAlbum, FolderCandidate } from '../../services/api/api-types';

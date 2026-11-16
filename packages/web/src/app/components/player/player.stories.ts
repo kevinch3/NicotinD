@@ -1,4 +1,9 @@
-import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import {
+  applicationConfig,
+  moduleMetadata,
+  type Meta,
+  type StoryObj,
+} from '@storybook/angular-vite';
 import { PlayerComponent } from './player.component';
 import { storyProviders, type StoryState } from '../../../stories/support/story-providers';
 import { demoTrack, demoTracks } from '../../../stories/support/fixtures';

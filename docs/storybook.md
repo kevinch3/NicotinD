@@ -335,32 +335,50 @@ test there would duplicate solid coverage at a much higher cost.
 
 ## Integration constraints
 
-Three things about `@storybook/angular` that cost a build cycle each. Change them only
-with a reason.
+Storybook is built by **Vite**, through `@storybook/angular-vite` (#478). It was webpack, through
+`@storybook/angular`, until 2026-11-16; the Vite framework is a separate package, not a mode of the
+old one, so stories import their types from `@storybook/angular-vite`.
 
-1. **`@angular-devkit/build-angular` is required, not optional.** The angular-cli preset
-   reads
-   `if (!resolvePackageDir('@angular-devkit/build-angular')) return baseConfig`, which
-   looks like graceful degradation — but `resolvePackageDir` calls `require.resolve`
-   *outside* its `try`/`catch`, so its absence throws. The documented fallback is dead
-   code. It also means Storybook runs a webpack Angular toolchain beside this repo's
-   esbuild `@angular/build`; `@storybook/angular` ships no Vite builder.
+| | webpack (before) | Vite (now) |
+| --- | --- | --- |
+| `build:storybook` wall time | minutes | 11 s |
+| Peak memory | 3.5 GB, or 1.9 GB without minify | 2.7 GB |
+| Under a hard 3 GB limit | only without minify | completes |
 
-2. **Styles come from the `browserTarget`, not an import.** Once `build-angular` is
-   installed, the preset reads `styles: ["src/styles.css"]` and the PostCSS handling from
-   the `nicotind-web:build` target. Do not import `styles.css` in `preview.ts` —
-   TypeScript cannot type a `.css` module — and do not add a `postcss.config.cjs` shim;
-   the Angular pipeline already understands this repo's `postcss.config.json`.
+Measured with `scripts/measure-memory.sh` on the dev machine. The peak is the Angular compile, not
+the bundler: turning minification off changes nothing, so the old low-memory switch that skipped minification
+was removed. 2.7 GB is higher than the old no-minify build and leaves about 300 MB
+under the 3 GB scope, for 11 seconds rather than minutes.
 
-3. **`.storybook/tsconfig.json` exists because the Angular webpack plugin rejects any
-   file missing from the program**, and `tsconfig.app.json` reaches neither
-   `.storybook/*.ts` nor the story files.
+Three things that are different from the app's own build, and that cost a build cycle each:
 
-Two smaller ones:
+1. **`styles` is set on the Storybook targets themselves.** `angular.json` carries
+   `"styles": ["src/styles.css"]` on both `storybook` and `build-storybook`. The Vite framework
+   does not read it from the `browserTarget`. Without it the catalog ships with **no stylesheet at
+   all**.
 
-- `webpackFinal` maps `.js` specifiers onto `.ts` (`resolve.extensionAlias`). `@nicotind/core`
-  is TypeScript source using ESM-style `./origin.js` imports; esbuild resolves those
-  natively, webpack does not.
+2. **Tailwind's PostCSS plugin is wired in `main.ts` (`viteFinal`).** The app's builder reads
+   `postcss.config.json`; Vite does not look for that file name. Without the plugin the stylesheet
+   arrives with theme tokens and **no utilities**: `hidden` hides nothing.
+
+   Both failures are silent. All 274 stories still mounted, and axe complained about two rules.
+   `storybook-gates.mjs` now checks, on the first story, that a theme token is defined and that
+   `.hidden` computes to `display: none` (`stylesheetApplied`), and reports an unstyled catalog as
+   a smoke failure.
+
+3. **`@angular/animations` is a devDependency**, pinned to the Angular version in use. The
+   framework imports `@angular/platform-browser/animations`, whose optional peer it is; without it
+   the build fails on missing exports.
+
+Smaller ones:
+
+- `.storybook/tsconfig.json` still exists: `tsconfig.app.json` reaches neither `.storybook/*.ts`
+  nor the story files.
+- `@nicotind/core`'s ESM-style `./origin.js` imports resolve natively under Vite, so the old
+  `webpackFinal` alias is gone.
+- `@angular-devkit/build-angular` is still a devDependency, and it still brings webpack into
+  `node_modules`. Nothing in this repo runs it any more. Removing it re-resolved a large part of
+  `bun.lock` in a first attempt, so it is left for a change of its own.
 - `ajv@^8` is a root devDependency. `ajv-keywords@5` peers `ajv@^8` and bun does not scope
   it, so it resolved to the hoisted root `ajv`, which was eslint's v6. Packages with a
   declared `ajv` dependency keep their own copy, so eslint still gets v6.
@@ -371,7 +389,7 @@ Two smaller ones:
 
 `build:storybook` compiles stories; it does not run them. The first green build of this
 catalog shipped **67 of 139 stories that threw on mount** — the router and `SwUpdate`
-problems above. Neither a type check nor webpack can see that class of failure. A catalog
+problems above. Neither a type check nor a bundler can see that class of failure. A catalog
 that compiles but does not render is worse than no catalog, because it looks maintained.
 `bun run smoke:storybook` renders every story and fails on any error.
 

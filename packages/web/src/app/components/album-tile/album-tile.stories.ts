@@ -1,4 +1,4 @@
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { AlbumTileComponent } from './album-tile.component';
 import { storyProviders } from '../../../stories/support/story-providers';
 import type { AlbumTile } from '../../lib/artist-album-tiles';

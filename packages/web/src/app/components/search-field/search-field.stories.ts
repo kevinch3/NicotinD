@@ -1,4 +1,9 @@
-import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import {
+  applicationConfig,
+  moduleMetadata,
+  type Meta,
+  type StoryObj,
+} from '@storybook/angular-vite';
 import { SearchFieldComponent } from './search-field.component';
 import { SortSelectComponent } from '../sort-select/sort-select.component';
 import { LibraryFilterPanelComponent } from '../library-filter-panel/library-filter-panel.component';

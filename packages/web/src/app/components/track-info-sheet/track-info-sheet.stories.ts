@@ -1,4 +1,9 @@
-import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import {
+  applicationConfig,
+  moduleMetadata,
+  type Meta,
+  type StoryObj,
+} from '@storybook/angular-vite';
 import { TrackInfoSheetComponent } from './track-info-sheet.component';
 import { storyProviders, type StoryState } from '../../../stories/support/story-providers';
 import { demoSong } from '../../../stories/support/fixtures';

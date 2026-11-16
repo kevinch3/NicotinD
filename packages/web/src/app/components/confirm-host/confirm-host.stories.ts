@@ -1,4 +1,4 @@
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { inject, provideAppInitializer } from '@angular/core';
 import { ConfirmHostComponent } from './confirm-host.component';
 import { ConfirmService } from '../../services/confirm.service';

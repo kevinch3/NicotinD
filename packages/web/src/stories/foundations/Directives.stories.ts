@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/angular';
+import type { Meta, StoryObj } from '@storybook/angular-vite';
 import { Component } from '@angular/core';
-import { moduleMetadata } from '@storybook/angular';
+import { moduleMetadata } from '@storybook/angular-vite';
 import { TvNavGroupDirective } from '../../app/directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../app/directives/tv-nav-item.directive';
 import { BottomChromeSafeDirective } from '../../app/directives/bottom-chrome-safe.directive';

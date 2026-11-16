@@ -1,4 +1,4 @@
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { ImportDropCardComponent, type ImportDropSummary } from './import-drop-card.component';
 import { storyProviders } from '../../../stories/support/story-providers';
 

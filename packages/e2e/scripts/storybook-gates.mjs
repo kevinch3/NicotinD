@@ -160,8 +160,33 @@ async function switchTheme(page, theme) {
   }, theme);
 }
 
+/**
+ * Whether the app's stylesheet reached the story: a theme token is defined and
+ * a Tailwind utility does what it says.
+ *
+ * Nothing else here would notice its absence. The first Vite build of this
+ * catalog shipped with no stylesheet at all (`styles` is not read from the
+ * browser target) and then with no utilities (Vite does not read
+ * `postcss.config.json`). Every one of 274 stories still mounted, and axe found
+ * two rules to complain about (#478). An unstyled catalog is a rendering
+ * failure, so it is reported as one.
+ */
+function stylesheetApplied() {
+  const token = getComputedStyle(document.documentElement)
+    .getPropertyValue('--theme-surface-3')
+    .trim();
+  const probe = document.createElement('div');
+  probe.className = 'hidden';
+  document.body.appendChild(probe);
+  const hidden = getComputedStyle(probe).display === 'none';
+  probe.remove();
+  return { token: token !== '', utilities: hidden };
+}
+
 const stories = readStories();
 const failures = [];
+/** Reported once: it is one defect of the build, not one per story. */
+let stylesheetReported = false;
 /** rule id -> { impact, help, helpUrl, stories:Set, nodes:number, sample:string } */
 const byRule = new Map();
 
@@ -200,6 +225,21 @@ const { errors: visitErrors } = await visitStories({
 
     page.off('pageerror', onErr);
     page.off('console', onConsole);
+
+    if (SMOKE && !stylesheetReported) {
+      const styled = await page.evaluate(stylesheetApplied);
+      if (!styled.token || !styled.utilities) {
+        stylesheetReported = true;
+        failures.push({
+          id: story.id,
+          errorBox:
+            'the app stylesheet is not applied to stories: ' +
+            (styled.token ? '' : 'no theme tokens (is `styles` set on the Storybook target?) ') +
+            (styled.utilities ? '' : 'no Tailwind utilities (is the PostCSS plugin wired in viteFinal?)'),
+          errors: [],
+        });
+      }
+    }
 
     if (SMOKE) {
       // The fixture transport answers unmatched routes with a deliberate 404; that is the

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/angular';
+import type { Meta, StoryObj } from '@storybook/angular-vite';
 import { SourceChipComponent } from './source-chip.component';
 
 const meta: Meta<SourceChipComponent> = {

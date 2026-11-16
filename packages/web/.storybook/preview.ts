@@ -1,10 +1,11 @@
-import type { Decorator, Preview } from '@storybook/angular';
+import type { Decorator, Preview } from '@storybook/angular-vite';
 import { withThemeByDataAttribute } from '@storybook/addon-themes';
 import { setStoryLang } from '../src/stories/support/story-lang';
 
-// Tailwind and the theme tokens arrive via the `browserTarget` in angular.json — the
-// angular-cli preset reads that target's `styles: ["src/styles.css"]` and its PostCSS
-// handling. Do not import the stylesheet here; TypeScript cannot type a `.css` module.
+// Tailwind and the theme tokens arrive via `styles: ["src/styles.css"]` on the two
+// Storybook targets in angular.json, with the Tailwind PostCSS plugin wired in
+// `main.ts` (`viteFinal`). Do not import the stylesheet here; TypeScript cannot
+// type a `.css` module. The smoke gate fails if either half goes missing.
 
 /** Mirrors `ThemeId` in src/app/services/theme.service.ts. */
 const THEMES = {

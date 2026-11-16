@@ -1,4 +1,4 @@
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { ArtistGenreModalComponent } from './artist-genre-modal.component';
 import { storyProviders } from '../../../stories/support/story-providers';
 import { DEMO_ARTIST_ID } from '../../../stories/support/fixtures';

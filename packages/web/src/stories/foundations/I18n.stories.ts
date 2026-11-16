@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from '@storybook/angular';
+import type { Meta, StoryObj } from '@storybook/angular-vite';
 import { Component } from '@angular/core';
-import { moduleMetadata, applicationConfig } from '@storybook/angular';
+import { moduleMetadata, applicationConfig } from '@storybook/angular-vite';
 import { TranslatePipe } from '../../app/pipes/translate.pipe';
 import { storyProviders } from '../support/story-providers';
 

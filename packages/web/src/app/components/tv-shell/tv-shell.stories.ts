@@ -1,4 +1,4 @@
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { TvShellComponent } from './tv-shell.component';
 import { storyProviders } from '../../../stories/support/story-providers';
 import { demoTrack, demoTracks } from '../../../stories/support/fixtures';

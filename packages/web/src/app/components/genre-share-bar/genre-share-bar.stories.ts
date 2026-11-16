@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/angular';
+import type { Meta, StoryObj } from '@storybook/angular-vite';
 import { GenreShareBarComponent } from './genre-share-bar.component';
 
 const meta: Meta<GenreShareBarComponent> = {

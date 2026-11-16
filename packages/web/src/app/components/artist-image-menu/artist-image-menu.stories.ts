@@ -1,4 +1,9 @@
-import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import {
+  applicationConfig,
+  moduleMetadata,
+  type Meta,
+  type StoryObj,
+} from '@storybook/angular-vite';
 import { expect, userEvent, within, waitFor } from 'storybook/test';
 import { ArtistImageMenuComponent } from './artist-image-menu.component';
 import { storyProviders, type StoryState } from '../../../stories/support/story-providers';

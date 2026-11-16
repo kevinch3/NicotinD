@@ -1,4 +1,9 @@
-import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import {
+  applicationConfig,
+  moduleMetadata,
+  type Meta,
+  type StoryObj,
+} from '@storybook/angular-vite';
 import { expect, userEvent, within, waitFor } from 'storybook/test';
 import { MenuPanelComponent } from './menu-panel.component';
 import { storyProviders } from '../../../stories/support/story-providers';

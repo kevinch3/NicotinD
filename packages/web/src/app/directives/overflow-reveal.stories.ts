@@ -1,4 +1,4 @@
-import { moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import { moduleMetadata, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { OverflowRevealDirective } from './overflow-reveal.directive';
 
 const LONG = 'Muriendo De Envidia Featuring A Guest Whose Name Will Never Fit';
