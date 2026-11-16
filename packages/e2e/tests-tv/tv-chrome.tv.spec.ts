@@ -22,7 +22,12 @@ test.describe('TV chrome', () => {
   test('Home is the front door — moods, browse and settings, no phone nav', async ({ page }) => {
     await goto(page, '/');
     await expect(page.getByTestId('tv-home')).toBeVisible();
-    await expect(page.getByTestId('radio-preset').first()).toBeVisible();
+    // The mood block is there, with no vibe tile in it: a tile shows only when
+    // its probe finds a matching song (#1739), and the fixtures carry no mood
+    // data. The Chromium `tv` project asserts the tiles with the probes
+    // answered; this lane asserts what the real server gives (#1934).
+    await expect(page.getByTestId('radio-new-mood')).toBeVisible();
+    await expect(page.getByTestId('radio-preset')).toHaveCount(0);
     await expect(page.getByTestId('tv-nav-browse')).toBeVisible();
     await expect(page.getByTestId('tv-nav-settings')).toBeVisible();
     // The phone chrome must not render on TV. `app-player` IS mounted — it

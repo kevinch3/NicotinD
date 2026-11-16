@@ -257,6 +257,14 @@ Login → library → play → Now Playing → Settings. The target is not UI lo
 it) but WebView-only failure modes: CORS through `nativeAppCors`, the service worker not
 intercepting `/api/stream` (`ngsw-bypass`), and media-session wiring.
 
+**Home asserts the fixture library's state, not the vibe tiles (#1934).** A vibe tile shows only
+when its one-song probe matches (#1739), and the silent fixtures carry no mood data, so the real
+server shows the mood block (`radio-new-mood`) with no `radio-preset` in it. This lane asserts
+exactly that. The tiles themselves are asserted in the Chromium `tv` project, which answers the
+probes with `vibesPlayable(page)`; that project also pins the no-tile state
+(`tests/tv-build/home.tvbuild.spec.ts`), so both lanes agree on what the fixture server renders.
+
+
 ## The phone lane
 
 `bun run e2e:phone`, `playwright.phone.config.ts`, specs in `tests-phone/*.phone.spec.ts` importing
