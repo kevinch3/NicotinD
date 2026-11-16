@@ -129,3 +129,6 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **Deployment pipeline, as built**: one map of every workflow, gate, secret, version reader and
   update path, with run timings, findings and a beta-channel proposal that is not built.
   → [deployment-pipeline.md](../deployment-pipeline.md)
+- **Storybook visual regression**: one screenshot per story against a committed baseline, 100
+  differing pixels allowed, in `verify` and the CI `storybook` job; `visual:storybook:update`
+  rewrites them. `UNSTABLE`, `pinFonts`. → [storybook.md](../storybook.md)

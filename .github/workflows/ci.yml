@@ -395,6 +395,23 @@ jobs:
       - name: Storybook gates (render smoke + axe)
         run: bun run gates:storybook
 
+      # One screenshot per story against the baselines committed under
+      # packages/e2e/storybook/baselines (#473). After a visual change:
+      # `bun run build:storybook && bun run visual:storybook:update`, commit the PNGs.
+      - name: Storybook visual regression
+        run: bun run visual:storybook
+
+      # Expected, actual and diff images for every story that changed.
+      - name: Upload the visual report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: storybook-visual-report
+          path: |
+            packages/e2e/playwright-report/
+            packages/e2e/test-results/
+          retention-days: 7
+
   # Analysis sidecar (packages/analysis): contract + pure-function tests against
   # a fake model registry — no TensorFlow/Essentia download in CI. The gated
   # golden tests (real models) auto-skip without ANALYSIS_MODELS_DIR.
