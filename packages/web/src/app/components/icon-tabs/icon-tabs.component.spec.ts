@@ -74,6 +74,16 @@ describe('IconTabsComponent (#1668)', () => {
     expect(bar.classList).not.toContain('w-full');
   });
 
+  it("extends each tab's hit area over the bar's padding, to 44px tall (#1668)", () => {
+    // h-9 is 36px; the pseudo-element adds the bar's 4px of padding above and below.
+    for (const b of make().buttons) {
+      expect(b.classList).toContain('h-9');
+      expect(b.classList).toContain('relative');
+      expect(b.classList).toContain('after:absolute');
+      expect(b.classList).toContain('after:-inset-y-1');
+    }
+  });
+
   it('emits the value of the tab that was pressed', () => {
     const { fixture, buttons } = make();
     const seen: string[] = [];

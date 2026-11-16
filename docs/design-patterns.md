@@ -49,7 +49,10 @@ These are documented in full elsewhere; `CLAUDE.md` links straight to them.
   `navRole` on `appTvNavGroup` / `appTvNavItem`, whose host bindings would otherwise overwrite them;
   the same directives give the bar its D-pad and arrow-key movement. A `badge` (a count, or `''` for
   a dot) rides the icon on an inactive tab and sits inline on the active one, so hiding a label never
-  hides a count. **A tab needs an icon that reads without its label**; a set that cannot get
+  hides a count. **Touch target:** a tab is 36px tall (`h-9`) and an `::after` extends its hit area
+  over the bar's 4px of padding, so the target is 44px tall without making the bar taller. Width is
+  what the row leaves: eight Library tabs on a 360px phone are about 33px each, above WCAG 2.5.8's
+  24px and below 44px, which eight tabs cannot have (`mobile-ux.spec.ts` asserts both). **A tab needs an icon that reads without its label**; a set that cannot get
   distinguishable icons stays a text control and is recorded as an exception.
   `icon-tabs.sweep.spec.ts` is the guard: every template with a `tablist`, a `radiogroup` or the
   segmented-pill markup is the component, a pending migration, or an exception with its reason, and
