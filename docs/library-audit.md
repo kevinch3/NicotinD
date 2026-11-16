@@ -505,6 +505,10 @@ Worth recording, because four separate things had to line up:
 ## Prevention (so new patterns can't recur)
 - `sanitizeArtistTag` / `sanitizeAlbumTag` (`library-organizer.ts`) now reject
   `looksLikeSourceWatermark` values at ingest, so a watermark never mints an artist/album.
+- A leading track index is stripped from an artist tag whether it is bare (`01. `, `04 - `) or
+  bracketed (`[99] `, `(07) `), the way DJ-pool uploads number their tracks (#866,
+  `stripTrackPrefix`). Round brackets take at most two digits, so `(500) Days of Summer` stays
+  a name. A value that is only an index (`[99]`) is dropped (`isTrackNumberFragment`).
 - `cleanDisplayTitle` (`services/title-clean.ts`, issue #722) strips YouTube junk —
   "(Official Video)", "(Audio Oficial)", "[Lyric Video]" — from the title and album tags in
   `readWithFallback` before landing, whole-segment conservative so "(Remix)"/"(En Vivo)" survive.
