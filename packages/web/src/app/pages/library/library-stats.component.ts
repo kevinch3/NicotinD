@@ -10,7 +10,22 @@ import { TranslateService } from '../../services/translate.service';
 import { sharePercents } from '../../lib/share-percents';
 import { TvNavGroupDirective } from '../../directives/tv-nav-group.directive';
 import { TvNavItemDirective } from '../../directives/tv-nav-item.directive';
-import type { ListeningStats, StatsPeriod } from '../../services/api/api-types';
+import type {
+  ListeningStats,
+  StatsPeriod,
+  StatsTopAlbum,
+  StatsTopArtist,
+  StatsTopSong,
+} from '../../services/api/api-types';
+import { RouterLink } from '@angular/router';
+import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import { PlayerService } from '../../services/player.service';
+import { AuthService } from '../../services/auth.service';
+import { CoverRevisionsService } from '../../services/cover-revisions.service';
+import { EntityMenuService } from '../../services/entity-menu.service';
+import { toTrack } from '../../lib/track-utils';
+import { resolveAlbumRoute, resolveArtistRoute } from '../../lib/route-utils';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
 
 interface PeriodOption {
@@ -27,6 +42,9 @@ export interface GenreRow {
   percent: number;
   kind?: 'other' | 'untagged';
 }
+
+/** List sizes "Show more" steps through; mirrors the server's TOP_LIMITS. */
+export const STATS_LIMITS = [10, 25, 50] as const;
 
 const PERIODS: PeriodOption[] = [
   { value: '30d', label: 'stats.period.30d' },
@@ -50,6 +68,8 @@ const PERIODS: PeriodOption[] = [
 @Component({
   selector: 'app-library-stats',
   imports: [
+    RouterLink,
+    CoverArtComponent,
     OverflowRevealDirective,
     GenreShareBarComponent,
     TranslatePipe,
@@ -63,6 +83,11 @@ const PERIODS: PeriodOption[] = [
 export class LibraryStatsComponent {
   private readonly api = inject(HistoryApiService);
   private readonly i18n = inject(TranslateService);
+  private readonly library = inject(LibraryApiService);
+  private readonly player = inject(PlayerService);
+  private readonly auth = inject(AuthService);
+  private readonly covers = inject(CoverRevisionsService);
+  private readonly entityMenu = inject(EntityMenuService);
 
   readonly periods = PERIODS;
   readonly genreModes = ['share', 'all'] as const;
@@ -71,6 +96,17 @@ export class LibraryStatsComponent {
   readonly loading = signal(false);
   /** Distinguishes "still loading" from "loaded, and there is nothing here". */
   readonly loaded = signal(false);
+
+  /** How many rows each top list asks for. */
+  readonly limit = signal<number>(STATS_LIMITS[0]);
+
+  /** A list came back full and a larger size exists, so there may be more to show. */
+  readonly canShowMore = computed(() => {
+    const s = this.stats();
+    const limit = this.limit();
+    if (!s || limit >= STATS_LIMITS[STATS_LIMITS.length - 1]!) return false;
+    return [s.topSongs, s.topArtists, s.topAlbums].some((list) => list.length >= limit);
+  });
 
   readonly hasHistory = computed(() => (this.stats()?.totals.plays ?? 0) > 0);
 
@@ -156,11 +192,71 @@ export class LibraryStatsComponent {
     await this.load();
   }
 
+  async showMore(): Promise<void> {
+    const next = STATS_LIMITS.find((n) => n > this.limit());
+    if (!next) return;
+    this.limit.set(next);
+    await this.load();
+  }
+
+  /** Tap a song row to play it again. A song that left the library has no button. */
+  async playSong(song: StatsTopSong): Promise<void> {
+    const full = await firstValueFrom(
+      this.library.getSong(song.songId).pipe(catchError(() => of(null))),
+    );
+    if (full) this.player.play(toTrack(full));
+  }
+
+  /** One tap: the same radio the artist's tile menu starts. */
+  startArtistRadio(a: StatsTopArtist): void {
+    if (!a.artistId) return;
+    const radio = this.entityMenu
+      .build({ kind: 'artist', id: a.artistId, name: a.artist })
+      .find((action) => action.labelKey === 'entityMenu.startRadio');
+    void radio?.action();
+  }
+
+  artistLink(id: string | null | undefined): string[] | null {
+    return id ? resolveArtistRoute(id) : null;
+  }
+
+  albumLink(id: string | null | undefined): string[] | null {
+    return id ? resolveAlbumRoute(id) : null;
+  }
+
+  songCoverSrc(song: StatsTopSong): string | undefined {
+    return this.coverSrc(song.coverArt, song.coverRev, 'album', song.albumId ?? song.coverArt);
+  }
+
+  albumCoverSrc(album: StatsTopAlbum): string | undefined {
+    return this.coverSrc(album.coverArt, album.coverRev, 'album', album.albumId);
+  }
+
+  /** The portrait, or the album cover the server sent in its place. */
+  artistCoverSrc(a: StatsTopArtist): string | undefined {
+    const kind = a.coverKind === 'album' ? 'album' : 'artist';
+    return this.coverSrc(a.coverArt, a.coverRev, kind, kind === 'artist' ? a.artistId : a.coverArt);
+  }
+
+  private coverSrc(
+    coverArt: string | null | undefined,
+    coverRev: number | undefined,
+    kind: 'album' | 'artist',
+    id: string | null | undefined,
+  ): string | undefined {
+    if (!coverArt) return undefined;
+    return this.covers.url(
+      { coverArt, coverRev: coverRev ?? 0, kind, id: id ?? coverArt },
+      96,
+      this.auth.mediaToken(),
+    );
+  }
+
   /** Non-fatal: a failed load leaves the empty state rather than an error page. */
   private async load(): Promise<void> {
     this.loading.set(true);
     const res = await firstValueFrom(
-      this.api.getStats(this.period()).pipe(catchError(() => of(null))),
+      this.api.getStats(this.period(), this.limit()).pipe(catchError(() => of(null))),
     );
     this.stats.set(res);
     this.loading.set(false);

@@ -14,6 +14,7 @@ import { HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { type Observable, of, throwError } from 'rxjs';
 import {
   demoGenreSlices,
+  demoListeningStats,
   demoSongs,
   DEMO_ARTIST_ID,
   demoProvenance,
@@ -23,6 +24,7 @@ import {
 
 /** URL suffix → response body. First match wins, so put specific routes first. */
 const ROUTES: Array<[RegExp, () => unknown]> = [
+  [/\/api\/history\/stats/, () => demoListeningStats],
   [/\/api\/auth\/me$/, () => ({ role: 'admin', username: 'storybook', welcomeDismissed: true })],
   [/\/api\/setup\/status$/, () => ({ needsSetup: false })],
   [/\/api\/library\/liked-ids$/, () => ({ ids: [demoSongs[0].id] })],

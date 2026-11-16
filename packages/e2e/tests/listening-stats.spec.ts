@@ -82,6 +82,69 @@ test.describe('listening stats', () => {
     await expect(panel.getByTestId('stats-clock-bar')).toHaveCount(24);
   });
 
+  // #1669: rows link to where the thing lives, carry artwork, and a song row plays.
+  test('top rows carry artwork, link to their pages and play, at phone width', async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/library');
+    const token = await page.evaluate(() => localStorage.getItem('nicotind_token'));
+    const auth = { Authorization: `Bearer ${token}` };
+    const songs = await songsMatching(request, auth, FIXTURE.album.title);
+    expect(songs.length).toBeGreaterThan(0);
+    const now = Date.now();
+    const post = await request.post('/api/history/plays', {
+      headers: auth,
+      data: {
+        events: [1, 2, 3].map((n) => ({
+          clientEventId: `e2e-stats-links-${now}-${n}`,
+          songId: songs[0]!.id,
+          startedAt: now - n * 60_000,
+          msPlayed: 250_000,
+          durationMs: 300_000,
+          reason: 'ended',
+          source: 'album',
+          device: 'browser',
+          title: songs[0]!.title,
+          artist: FIXTURE.album.artist,
+          album: FIXTURE.album.title,
+        })),
+      },
+    });
+    expect(post.ok()).toBeTruthy();
+
+    await page.goto('/library');
+    await page.getByTestId('library-tabs').getByRole('button', { name: 'Stats' }).click();
+    const panel = page.getByTestId('library-stats');
+    await page.getByTestId('stats-period').filter({ hasText: 'All time' }).click();
+
+    // Artwork: the fixture album has a cover, so its row and its song's row show an image.
+    const albumRow = panel.getByTestId('stats-top-album').filter({ hasText: FIXTURE.album.title });
+    await expect(albumRow.locator('img').first()).toBeVisible();
+    const songRow = panel.getByTestId('stats-top-song').filter({ hasText: songs[0]!.title });
+    await expect(songRow.locator('img').first()).toBeVisible();
+
+    // Nothing spills sideways at 375px.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+
+    // A song row plays it again.
+    await songRow.getByTestId('stats-play-song').click();
+    await expect(page.getByTestId('player-title').first()).toContainText(songs[0]!.title);
+
+    // The artist row goes to the artist's page.
+    await panel
+      .getByTestId('stats-top-artist')
+      .filter({ hasText: FIXTURE.album.artist })
+      .getByTestId('stats-artist-link')
+      .click();
+    await expect(page).toHaveURL(/\/library\/artists\//);
+    await expect(page.getByRole('heading', { name: FIXTURE.album.artist }).first()).toBeVisible();
+  });
+
   test('switching period refetches without leaving the tab', async ({ page }) => {
     await page.goto('/library');
     await page.getByTestId('library-tabs').getByRole('button', { name: 'Stats' }).click();

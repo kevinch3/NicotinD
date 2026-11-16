@@ -33,22 +33,43 @@ export interface StatsTotals {
   msPlayed: number;
 }
 
+/** How many rows a top list may ask for: the default, and what "Show more" reaches (#1669). */
+export const TOP_LIMITS = [10, 25, 50] as const;
+
 export interface TopSong {
   songId: string;
   title: string | null;
   artist: string | null;
   plays: number;
+  /** The song is still in the library, so it can be played and linked (#1669). */
+  live: boolean;
+  albumId: string | null;
+  artistId: string | null;
+  coverArt: string | null;
+  coverRev: number;
 }
 
 export interface TopArtist {
   artist: string;
   plays: number;
+  /** Null for an artist whose songs are no longer in the library: plain text, no link. */
+  artistId: string | null;
+  /** The portrait, else the cover of the artist's largest album, else null. */
+  coverArt: string | null;
+  coverRev: number;
+  /** Whether `coverArt` is the artist's own portrait or an album cover standing in. */
+  coverKind: 'artist' | 'album' | null;
 }
 
 export interface TopAlbum {
   album: string;
   artist: string | null;
   plays: number;
+  /** Null for an album that is no longer in the library. */
+  albumId: string | null;
+  artistId: string | null;
+  coverArt: string | null;
+  coverRev: number;
 }
 
 export interface TopGenre {
@@ -129,6 +150,7 @@ export function listeningStats(
   userId: string,
   period: StatsPeriod,
   now: number,
+  limit: number = TOP_LIMIT,
 ): ListeningStats {
   const { from, to } = resolvePeriod(period, now);
   const scope = `p.user_id = ? AND p.counted = 1 AND p.at >= ? AND p.at <= ?`;
@@ -151,59 +173,95 @@ export function listeningStats(
 
   const topSongs = db
     .query<
-      { song_id: string; title: string | null; artist: string | null; plays: number },
+      {
+        song_id: string;
+        title: string | null;
+        artist: string | null;
+        plays: number;
+        live: number;
+        album_id: string | null;
+        artist_id: string | null;
+        cover_art: string | null;
+        cover_rev: number | null;
+      },
       [string, number, number, number]
     >(
       `SELECT p.song_id            AS song_id,
               ${TITLE_EXPR}        AS title,
               ${ARTIST_EXPR}       AS artist,
-              COUNT(*)             AS plays
+              COUNT(*)             AS plays,
+              s.id IS NOT NULL     AS live,
+              s.album_id           AS album_id,
+              s.artist_id          AS artist_id,
+              COALESCE(s.cover_art, al.cover_art, s.album_id) AS cover_art,
+              al.cover_rev         AS cover_rev
          FROM play_events p
-    LEFT JOIN library_songs s ON s.id = p.song_id
+    LEFT JOIN library_songs s  ON s.id = p.song_id
+    LEFT JOIN library_albums al ON al.id = s.album_id
         WHERE ${scope}
         GROUP BY p.song_id
         ORDER BY plays DESC, title ASC
         LIMIT ?`,
     )
-    .all(...args, TOP_LIMIT)
-    .map((r) => ({ songId: r.song_id, title: r.title, artist: r.artist, plays: r.plays }));
+    .all(...args, limit)
+    .map((r) => ({
+      songId: r.song_id,
+      title: r.title,
+      artist: r.artist,
+      plays: r.plays,
+      live: r.live === 1,
+      albumId: r.album_id,
+      artistId: r.artist_id,
+      coverArt: r.cover_art,
+      coverRev: r.cover_rev ?? 0,
+    }));
 
-  // Aliases are deliberately not `artist`/`album`: those names also exist as
-  // real columns on both joined tables, and SQLite rejects the GROUP BY as
-  // ambiguous.
-  const topArtists = db
-    .query<{ artist_name: string | null; plays: number }, [string, number, number, number]>(
-      `SELECT ${ARTIST_EXPR} AS artist_name, COUNT(*) AS plays
-         FROM play_events p
-    LEFT JOIN library_songs s ON s.id = p.song_id
-        WHERE ${scope} AND ${ARTIST_EXPR} IS NOT NULL
-        GROUP BY artist_name
-        ORDER BY plays DESC, artist_name ASC
-        LIMIT ?`,
-    )
-    .all(...args, TOP_LIMIT)
-    .map((r) => ({ artist: r.artist_name ?? '', plays: r.plays }));
+  const topArtists = topArtistsByCredit(db, scope, args, limit);
 
   // Albums group on the live album row where it exists, falling back to the
-  // event's album text — a deleted album still belongs in a year review.
+  // event's album text — a deleted album still belongs in a year review. The
+  // row's id travels with it, so a live album is a link and a deleted one is
+  // plain text (#1669). Aliases are deliberately not `artist`/`album`: those
+  // names are real columns on the joined tables and SQLite calls the GROUP BY
+  // ambiguous.
   const topAlbums = db
     .query<
-      { album_name: string | null; artist_name: string | null; plays: number },
+      {
+        album_name: string | null;
+        artist_name: string | null;
+        plays: number;
+        album_id: string | null;
+        artist_id: string | null;
+        cover_art: string | null;
+        cover_rev: number | null;
+      },
       [string, number, number, number]
     >(
       `SELECT COALESCE(al.name, p.album) AS album_name,
               COALESCE(al.artist, ${ARTIST_EXPR}) AS artist_name,
-              COUNT(*) AS plays
+              COUNT(*) AS plays,
+              al.id AS album_id,
+              al.artist_id AS artist_id,
+              al.cover_art AS cover_art,
+              al.cover_rev AS cover_rev
          FROM play_events p
     LEFT JOIN library_songs s  ON s.id = p.song_id
     LEFT JOIN library_albums al ON al.id = s.album_id
         WHERE ${scope} AND COALESCE(al.name, p.album) IS NOT NULL
-        GROUP BY album_name, artist_name
+        GROUP BY COALESCE(al.id, 'gone:' || album_name || char(0) || COALESCE(artist_name, ''))
         ORDER BY plays DESC, album_name ASC
         LIMIT ?`,
     )
-    .all(...args, TOP_LIMIT)
-    .map((r) => ({ album: r.album_name ?? '', artist: r.artist_name, plays: r.plays }));
+    .all(...args, limit)
+    .map((r) => ({
+      album: r.album_name ?? '',
+      artist: r.artist_name,
+      plays: r.plays,
+      albumId: r.album_id,
+      artistId: r.artist_id,
+      coverArt: r.album_id ? (r.cover_art ?? r.album_id) : null,
+      coverRev: r.cover_rev ?? 0,
+    }));
 
   // Genres come from the multi-genre join table, not `library_songs.genre` —
   // that column is only the *primary*, so ranking on it would under-report every
@@ -283,4 +341,120 @@ function foldGenreShare(
     other: { plays: otherPlays, share: share(otherPlays), genreCount: tail.length },
     untagged: { plays: untaggedPlays, share: share(untaggedPlays) },
   };
+}
+
+/**
+ * Top artists by **credit** (#1669, owner decision 1): a play counts once toward
+ * every artist the song credits, so a featuring appearance counts for both. The
+ * credits come from `library_song_artists` (#1526), else the song's own artist;
+ * plays of a song that has left the library fall back to the event's artist
+ * text and carry no id, so they render as plain text.
+ *
+ * Three plain joins merged here rather than one query with a correlated
+ * "has credits" test per event.
+ */
+function topArtistsByCredit(
+  db: Database,
+  scope: string,
+  args: [string, number, number],
+  limit: number,
+): TopArtist[] {
+  interface Row {
+    artist_id: string | null;
+    name: string;
+    cover_art: string | null;
+    cover_rev: number | null;
+    plays: number;
+  }
+  const credited = db
+    .query<Row, [string, number, number]>(
+      `SELECT a.id AS artist_id, a.name AS name, a.cover_art AS cover_art,
+              a.cover_rev AS cover_rev, COUNT(*) AS plays
+         FROM play_events p
+         JOIN (SELECT DISTINCT song_id, artist_id FROM library_song_artists) sa
+              ON sa.song_id = p.song_id
+         JOIN library_artists a ON a.id = sa.artist_id
+        WHERE ${scope}
+        GROUP BY a.id`,
+    )
+    .all(...args);
+  const uncredited = db
+    .query<Row, [string, number, number]>(
+      `SELECT a.id AS artist_id, COALESCE(a.name, s.artist) AS name, a.cover_art AS cover_art,
+              a.cover_rev AS cover_rev, COUNT(*) AS plays
+         FROM play_events p
+         JOIN library_songs s ON s.id = p.song_id
+    LEFT JOIN library_artists a ON a.id = s.artist_id
+        WHERE ${scope}
+          AND COALESCE(a.name, s.artist) IS NOT NULL
+          AND s.id NOT IN (
+            SELECT sa.song_id FROM library_song_artists sa
+              JOIN library_artists ca ON ca.id = sa.artist_id
+          )
+        GROUP BY COALESCE(a.id, 'name:' || s.artist)`,
+    )
+    .all(...args);
+  const gone = db
+    .query<Row, [string, number, number]>(
+      `SELECT NULL AS artist_id, p.artist AS name, NULL AS cover_art, 0 AS cover_rev,
+              COUNT(*) AS plays
+         FROM play_events p
+    LEFT JOIN library_songs s ON s.id = p.song_id
+        WHERE ${scope} AND s.id IS NULL AND p.artist IS NOT NULL
+        GROUP BY p.artist`,
+    )
+    .all(...args);
+
+  // One row per artist: by id where the library has the artist, by name where
+  // it does not (a song whose artist row is gone, or a play of a deleted song).
+  const merged = new Map<string, Row>();
+  for (const r of [...credited, ...uncredited, ...gone]) {
+    const key = r.artist_id ?? `name:${r.name}`;
+    const seen = merged.get(key);
+    if (seen) seen.plays += r.plays;
+    else merged.set(key, { ...r });
+  }
+  const top = [...merged.values()]
+    .sort((x, y) => y.plays - x.plays || x.name.localeCompare(y.name))
+    .slice(0, limit);
+
+  // Portrait first; an artist without one borrows its largest album's cover.
+  const fallback = db.prepare<
+    { id: string; cover_art: string | null; cover_rev: number },
+    [string]
+  >(
+    `SELECT id, cover_art, cover_rev FROM library_albums
+      WHERE artist_id = ? ORDER BY song_count DESC, name LIMIT 1`,
+  );
+  return top.map((r) => {
+    if (!r.artist_id) {
+      return {
+        artist: r.name,
+        plays: r.plays,
+        artistId: null,
+        coverArt: null,
+        coverRev: 0,
+        coverKind: null,
+      };
+    }
+    if (r.cover_art) {
+      return {
+        artist: r.name,
+        plays: r.plays,
+        artistId: r.artist_id,
+        coverArt: r.cover_art,
+        coverRev: r.cover_rev ?? 0,
+        coverKind: 'artist' as const,
+      };
+    }
+    const album = fallback.get(r.artist_id);
+    return {
+      artist: r.name,
+      plays: r.plays,
+      artistId: r.artist_id,
+      coverArt: album ? (album.cover_art ?? album.id) : null,
+      coverRev: album?.cover_rev ?? 0,
+      coverKind: album ? ('album' as const) : null,
+    };
+  });
 }

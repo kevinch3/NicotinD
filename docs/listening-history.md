@@ -221,6 +221,36 @@ The genre block draws `GenreShareBarComponent` (the artist page's part-to-whole 
 `kind`/`percent`/`caption` inputs) above a ranked list reading "34% · 212 plays", plus a mode switch
 to the overlapping view.
 
+### Top rows link, carry artwork and play (#1669)
+
+The top lists carry identities, so a row can go where the thing lives. The owner's five questions on
+#1669 were built on the defaults written into the issue.
+
+| Field | On | Meaning |
+| --- | --- | --- |
+| `live`, `albumId`, `artistId`, `coverArt`, `coverRev` | `topSongs` | `live: false` is a song that left the library |
+| `artistId`, `coverArt`, `coverRev`, `coverKind` | `topArtists` | `artistId: null` is an artist with no library row |
+| `albumId`, `artistId`, `coverArt`, `coverRev` | `topAlbums` | `albumId: null` is an album that left the library |
+
+- **A row with no live target is plain text**, with a "No longer in your library" title. It never
+  renders a link or a button. The same holds against an older server, which sends names only.
+- **Artists are counted by credit** (`topArtistsByCredit`). A play counts once toward every artist the
+  song credits in `library_song_artists` (#1526), so a featuring appearance counts for both, and one
+  artist under two roles counts once. A song with no credit rows counts toward its own artist. Rows
+  group by artist id: name variants of one artist merge, and two artists who share a name stay
+  apart. Plays of a deleted song fall back to the event's artist text. It is three plain joins
+  merged in memory, with no predicate evaluated per event.
+- **Artist artwork** is the portrait, else the cover of the artist's largest album
+  (`coverKind: 'album'`), else the placeholder tile.
+- **Tapping a song row plays it** (`playSong`); the artist name beside it is its own link. An artist
+  row links to the artist and has a one-tap **Radio** button, which runs the same Start radio the
+  artist's tile menu does (`EntityMenuService.build`).
+- **Show more**: `?limit=` takes 10 (the default), 25 or 50 (`TOP_LIMITS`); any other value is 10.
+  The button appears only when a list came back full.
+- **Not built:** trends against the previous period (default 3 was no), the hold/right-click entity
+  menu on these rows, and the latency measurement on prod the issue asks for.
+
+
 ## Roadmap
 
 - **P2 — stats page.** ✅ Shipped (see above).

@@ -8,7 +8,12 @@
  */
 import type { LyricsDto, WaveformData } from '@nicotind/core';
 import type { Track } from '../../app/services/player.service';
-import type { ArtistCredit, ProvenanceRecord, Song } from '../../app/services/api/api-types';
+import type {
+  ArtistCredit,
+  ListeningStats,
+  ProvenanceRecord,
+  Song,
+} from '../../app/services/api/api-types';
 import type { DownloadItem } from '../../app/lib/download-groups';
 import type { GenreSlice } from '../../app/components/genre-radar/genre-radar.component';
 
@@ -196,3 +201,92 @@ export const demoProvenance: ProvenanceRecord[] = [
     detail: { to: '104', reason: 'essentia rhythm' },
   },
 ];
+
+/**
+ * A period of listening for the Stats tab (#1669): live rows that link and play,
+ * one row per list whose target left the library (plain text), and a long name.
+ */
+export const demoListeningStats: ListeningStats = {
+  period: '30d',
+  from: 0,
+  to: 1,
+  totals: { plays: 128, distinctSongs: 41, distinctArtists: 12, msPlayed: 27_000_000 },
+  topSongs: [
+    ...demoSongs.slice(0, 4).map((song, i) => ({
+      songId: song.id,
+      title: song.title,
+      artist: song.artist,
+      plays: 14 - i * 3,
+      live: true,
+      albumId: DEMO_ALBUM_ID,
+      artistId: DEMO_ARTIST_ID,
+      coverArt: DEMO_ALBUM_ID,
+      coverRev: 0,
+    })),
+    {
+      songId: 'gone-song',
+      title: 'A Song That Was Deleted',
+      artist: 'Former Artist',
+      plays: 2,
+      live: false,
+    },
+  ],
+  topArtists: [
+    {
+      artist: 'Nocturnal Signal',
+      plays: 61,
+      artistId: DEMO_ARTIST_ID,
+      coverArt: DEMO_ARTIST_ID,
+      coverRev: 0,
+      coverKind: 'artist',
+    },
+    {
+      artist: 'The Extraordinarily Long-Named Orchestra of the Northern Territories',
+      plays: 23,
+      artistId: 'artist-long',
+      coverArt: null,
+      coverRev: 0,
+      coverKind: null,
+    },
+    {
+      artist: 'Former Artist',
+      plays: 2,
+      artistId: null,
+      coverArt: null,
+      coverRev: 0,
+      coverKind: null,
+    },
+  ],
+  topAlbums: [
+    {
+      album: 'Static Bloom',
+      artist: 'Nocturnal Signal',
+      plays: 44,
+      albumId: DEMO_ALBUM_ID,
+      artistId: DEMO_ARTIST_ID,
+      coverArt: DEMO_ALBUM_ID,
+      coverRev: 0,
+    },
+    {
+      album: 'An Album No Longer Here',
+      artist: 'Former Artist',
+      plays: 2,
+      albumId: null,
+      artistId: null,
+      coverArt: null,
+      coverRev: 0,
+    },
+  ],
+  topGenres: demoGenreSlices.slice(0, 3).map((g, i) => ({ genre: g.genre, plays: 60 - i * 20 })),
+  genreShare: {
+    totalPlays: 128,
+    slices: demoGenreSlices.slice(0, 3).map((g, i) => ({
+      genre: g.genre,
+      plays: [64, 32, 16][i]!,
+      share: [0.5, 0.25, 0.125][i]!,
+    })),
+    other: { plays: 8, share: 0.0625, genreCount: 2 },
+    untagged: { plays: 8, share: 0.0625 },
+  },
+  clock: Array.from({ length: 24 }, (_, h) => (h >= 18 ? (h - 17) * 4 : h === 9 ? 6 : 0)),
+};
