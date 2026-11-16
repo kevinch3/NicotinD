@@ -10,6 +10,7 @@ import {
   isReservedJobPending,
 } from './acquisition-job-store.js';
 import { HuntQueue } from './hunt-queue.js';
+import type { HuntScheduler } from './hunt-scheduler.js';
 
 const log = createLogger('track-get');
 
@@ -27,6 +28,8 @@ export interface TrackGetRequest {
 }
 
 export interface TrackGetDeps {
+  /** The source's shared gate (#1945); without one this queue runs alone. */
+  huntScheduler?: HuntScheduler;
   db: Database;
   getAddon: () => RemoteAddonPlugin | null;
 }
@@ -48,10 +51,16 @@ interface PendingTrackGet {
  * "A track Get is a server job".
  */
 export class TrackGetService {
-  private readonly queue = new HuntQueue<void>({ maxQueued: MAX_WAITING });
+  private readonly queue: HuntQueue<void>;
   private readonly attempts = new Map<string, Promise<void>>();
 
-  constructor(private readonly deps: TrackGetDeps) {}
+  constructor(private readonly deps: TrackGetDeps) {
+    this.queue = new HuntQueue<void>({
+      maxQueued: MAX_WAITING,
+      scheduler: deps.huntScheduler,
+      lane: 'get',
+    });
+  }
 
   request(req: TrackGetRequest): TrackGetAnswer {
     const addon = this.deps.getAddon();

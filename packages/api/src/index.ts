@@ -1,4 +1,5 @@
 import { hostname } from 'node:os';
+import { HuntScheduler } from './services/hunt-scheduler.js';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic, createBunWebSocket } from 'hono/bun';
@@ -571,7 +572,11 @@ export function createApp({
   // HTTP through the same organize→scan pipeline slskd completions use. Ticks
   // are no-ops while no remote addon is enabled.
   // A partial album asks another peer for the rest by itself (#1879).
+  // One gate in front of the acquisition source for every queue that searches
+  // it: picker > Get > auto-complete (#1945).
+  const huntScheduler = new HuntScheduler();
   const autoComplete = new AutoCompleteService({
+    huntScheduler,
     db,
     getPlugin: (addonId) => plugins.get(addonId),
     enabled: () => config.downloads.autoCompletePartial && (acquisitionOnRef.enabled?.() ?? true),
@@ -874,6 +879,7 @@ export function createApp({
   // Assigned once Lidarr is wired below; until then (or without Lidarr) only track Gets queue.
   let albumGetForQueue: AlbumGetService | null = null;
   const trackGet = new TrackGetService({
+    huntScheduler,
     db,
     getAddon: () => activeRemoteAcquisitionAddon(plugins),
   });
@@ -1120,6 +1126,7 @@ export function createApp({
       curator.reclassify(albumIdsForPaths(db, relPaths), 'enrich-singles');
     };
     const albumGet = new AlbumGetService({
+      huntScheduler,
       db,
       lidarr,
       getAddon: () => activeRemoteAcquisitionAddon(plugins),
@@ -1132,6 +1139,7 @@ export function createApp({
       '/api/discography',
       discographyRoutes({
         albumGet,
+        huntScheduler,
         getAddon: () => activeRemoteAcquisitionAddon(plugins),
         discography: discographySvc,
         provisioning: artistProvisioning,

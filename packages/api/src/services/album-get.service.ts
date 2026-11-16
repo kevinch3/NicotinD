@@ -18,6 +18,7 @@ import {
   listReservedAlbumGets,
 } from './acquisition-job-store.js';
 import { HuntQueue } from './hunt-queue.js';
+import type { HuntScheduler } from './hunt-scheduler.js';
 import { standardTracklist } from './standard-edition.js';
 
 const log = createLogger('album-get');
@@ -49,6 +50,8 @@ export interface AlbumGetRequest {
 }
 
 export interface AlbumGetDeps {
+  /** The source's shared gate (#1945); without one this queue runs alone. */
+  huntScheduler?: HuntScheduler;
   db: Database;
   lidarr: Lidarr;
   getAddon: () => RemoteAddonPlugin | null;
@@ -77,7 +80,7 @@ interface PendingGet {
  * intent and reads the downloads feed. See docs/album-hunt.md "A Get is a server job".
  */
 export class AlbumGetService {
-  private readonly queue = new HuntQueue<AcquireResult>({ maxQueued: MAX_WAITING });
+  private readonly queue: HuntQueue<AcquireResult>;
   private readonly attempts = new Map<string, Promise<void>>();
   private readonly retryDelayMs: (attempt: number) => number | null;
   private readonly schedule: (fn: () => void, ms: number) => void;
@@ -86,6 +89,11 @@ export class AlbumGetService {
   private readonly retryAt = new Map<string, number>();
 
   constructor(private readonly deps: AlbumGetDeps) {
+    this.queue = new HuntQueue<AcquireResult>({
+      maxQueued: MAX_WAITING,
+      scheduler: deps.huntScheduler,
+      lane: 'get',
+    });
     this.retryDelayMs = deps.retryDelayMs ?? albumGetRetryDelayMs;
     this.now = deps.now ?? Date.now;
     this.schedule =

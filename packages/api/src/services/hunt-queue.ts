@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { HuntLane, HuntScheduler, HuntTicket } from './hunt-scheduler.js';
 
 /**
  * Interactive album hunts, one at a time per source (#1625).
@@ -48,6 +49,13 @@ export interface HuntQueueOptions {
   maxQueued?: number;
   /** Tells a timeout from any other failure, so the caller can say which. */
   isTimeout?: (err: unknown) => boolean;
+  /**
+   * The source's shared gate and this queue's lane in it (#1945). With one, a
+   * hunt waits for its turn across every queue before it searches; without
+   * one the queue runs alone, as it did.
+   */
+  scheduler?: HuntScheduler;
+  lane?: HuntLane;
 }
 
 /** How many recent durations the estimate averages. */
@@ -63,6 +71,10 @@ export class HuntQueue<R> {
   private readonly retainMs: number;
   private readonly maxQueued: number;
   private readonly isTimeout: (err: unknown) => boolean;
+  private readonly scheduler: HuntScheduler | null;
+  private readonly lane: HuntLane;
+  /** The head hunt's place at the shared gate, while it waits there. */
+  private gate: HuntTicket | null = null;
 
   constructor(opts: HuntQueueOptions = {}) {
     this.now = opts.now ?? Date.now;
@@ -70,6 +82,8 @@ export class HuntQueue<R> {
     this.retainMs = opts.retainMs ?? 5 * 60_000;
     this.maxQueued = opts.maxQueued ?? 50;
     this.isTimeout = opts.isTimeout ?? (() => false);
+    this.scheduler = opts.scheduler ?? null;
+    this.lane = opts.lane ?? 'get';
   }
 
   /**
@@ -110,11 +124,17 @@ export class HuntQueue<R> {
     const activeLeft = this.activeRemainingMs(mean);
     switch (e.state) {
       case 'queued': {
-        const at = this.waiting.indexOf(id);
+        // The head hunt may be waiting at the shared gate: it has left
+        // `waiting` and is not searching yet. Other queues' searches ahead of
+        // this queue's head count toward every position behind it too.
+        const gated = this.active === id;
+        const at = gated ? 0 : this.waiting.indexOf(id);
+        const elsewhere = this.gate?.ahead() ?? 0;
+        const ownAhead = gated ? 0 : at + (this.active ? 1 : 0);
         return {
           state: 'queued',
-          position: at + (this.active ? 1 : 0),
-          etaMs: activeLeft + at * mean,
+          position: ownAhead + elsewhere,
+          etaMs: (gated ? 0 : activeLeft + at * mean) + elsewhere * mean,
         };
       }
       case 'searching':
@@ -154,7 +174,17 @@ export class HuntQueue<R> {
   /** Remove a hunt that has not started. A running hunt cannot be recalled. */
   cancel(id: string): boolean {
     const at = this.waiting.indexOf(id);
-    if (at < 0) return false;
+    if (at < 0) {
+      // The head hunt, still waiting at the shared gate: it can be recalled too.
+      if (this.active !== id || !this.gate?.cancel()) return false;
+      this.gate = null;
+      this.active = null;
+      const head = this.entries.get(id);
+      this.entries.delete(id);
+      head?.settle();
+      this.pump();
+      return true;
+    }
     this.waiting.splice(at, 1);
     const e = this.entries.get(id);
     this.entries.delete(id);
@@ -169,6 +199,19 @@ export class HuntQueue<R> {
     const e = this.entries.get(id);
     if (!e) return this.pump();
     this.active = id;
+    if (!this.scheduler) return this.start(e, () => {});
+    // Its turn in this queue; now its turn at the source, across every queue.
+    const ticket = this.scheduler.request(this.lane);
+    this.gate = ticket;
+    void ticket.granted.then((release) => {
+      if (this.gate !== ticket) return release();
+      this.gate = null;
+      this.start(e, release);
+    });
+  }
+
+  private start(e: Entry<R>, release: () => void): void {
+    const id = e.id;
     e.state = 'searching';
     e.startedAt = this.now();
     void e
@@ -188,6 +231,7 @@ export class HuntQueue<R> {
       .finally(() => {
         e.finishedAt = this.now();
         this.active = null;
+        release();
         e.settle();
         this.pump();
       });
