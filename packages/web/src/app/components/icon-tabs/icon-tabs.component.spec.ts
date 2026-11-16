@@ -117,6 +117,34 @@ describe('IconTabsComponent (#1668)', () => {
     });
   });
 
+  it('says aria-current="page" when each tab is a URL', () => {
+    const fixture = TestBed.createComponent(IconTabsComponent);
+    setInputValue(fixture.componentInstance.items, ITEMS);
+    setInputValue(fixture.componentInstance.active, 'albums');
+    setInputValue(fixture.componentInstance.current, 'page');
+    fixture.detectChanges();
+    const current = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+    ).map((b) => b.getAttribute('aria-current'));
+    expect(current).toEqual([null, 'page', null]);
+  });
+
+  it('lets a tab name its badge for a spec that reads the count', () => {
+    const items: IconTabItem[] = [
+      { value: 'a', icon: 'add', label: 'a' },
+      { value: 'b', icon: 'download', label: 'b', badge: 4, badgeTestid: 'b-count' },
+    ];
+    for (const active of ['a', 'b']) {
+      const fixture = TestBed.createComponent(IconTabsComponent);
+      setInputValue(fixture.componentInstance.items, items);
+      setInputValue(fixture.componentInstance.active, active);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.querySelector('[data-testid="b-count"]')?.textContent?.trim()).toBe('4');
+      expect(el.querySelector('[data-testid="icon-tab-badge"]')).toBeNull();
+    }
+  });
+
   describe('badges', () => {
     const badge = (b: HTMLElement) =>
       b.querySelector<HTMLElement>('[data-testid="icon-tab-badge"]');

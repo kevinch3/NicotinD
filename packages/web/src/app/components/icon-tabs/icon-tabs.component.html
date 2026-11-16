@@ -14,7 +14,7 @@
       [attr.data-mode]="item.value"
       [attr.data-testid]="item.testid ?? null"
       [navRole]="itemRole()"
-      [attr.aria-current]="variant() === 'nav' && isActive ? 'true' : null"
+      [attr.aria-current]="variant() === 'nav' && isActive ? current() : null"
       [attr.aria-selected]="variant() === 'tabs' ? isActive : null"
       [attr.aria-checked]="variant() === 'radio' ? isActive : null"
       [title]="item.label | t"
@@ -34,7 +34,7 @@
         <!-- A hidden label must not hide the count: it rides the icon instead. -->
         @if (!isActive && hasBadge(item)) {
           <span
-            data-testid="icon-tab-badge"
+            [attr.data-testid]="item.badgeTestid ?? 'icon-tab-badge'"
             class="absolute -right-2 -top-1.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-theme-accent px-0.5 text-[9px] font-bold leading-none text-theme-on-accent"
           >{{ item.badge }}</span>
         }
@@ -42,7 +42,7 @@
       <span [attr.data-testid]="labelTestid()" [class.truncate]="isActive" [class.sr-only]="!isActive">{{ item.label | t }}</span>
       @if (isActive && hasBadge(item)) {
         <span
-          data-testid="icon-tab-badge"
+          [attr.data-testid]="item.badgeTestid ?? 'icon-tab-badge'"
           class="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-theme-accent px-1 text-[10px] font-bold text-theme-on-accent"
         >{{ item.badge }}</span>
       }

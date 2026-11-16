@@ -16,6 +16,10 @@ import {
 } from '../../components/import-drop-card/import-drop-card.component';
 import { ImportEntryComponent } from '../../components/import-entry/import-entry.component';
 import { IconComponent } from '../../components/icon/icon.component';
+import {
+  IconTabsComponent,
+  type IconTabItem,
+} from '../../components/icon-tabs/icon-tabs.component';
 import { ImportUploadService, NothingToUploadError } from '../../services/import-upload.service';
 import { filesFromDataTransfer, filesFromInput } from '../../lib/dropped-files';
 import { buildUploadManifest, type DroppedFile } from '../../lib/upload-plan';
@@ -30,9 +34,15 @@ export type GetTab = 'add' | 'activity';
  * "Downloads" made the card that says 📁 Imported sit under a heading claiming
  * it was downloaded (#664). The nav already said "Add"; the page did not.
  */
-const TABS: ReadonlyArray<{ value: GetTab; label: string; testid: string }> = [
-  { value: 'add', label: 'get.tab.add', testid: 'get-tab-find' },
-  { value: 'activity', label: 'get.tab.activity', testid: 'get-tab-downloads' },
+const TABS: ReadonlyArray<IconTabItem & { value: GetTab }> = [
+  { value: 'add', label: 'get.tab.add', icon: 'add', testid: 'get-tab-find' },
+  {
+    value: 'activity',
+    label: 'get.tab.activity',
+    icon: 'download',
+    testid: 'get-tab-downloads',
+    badgeTestid: 'get-tab-downloads-badge',
+  },
 ];
 
 /**
@@ -70,6 +80,7 @@ export function parseGetTab(raw: string | null): GetTab {
     ImportDropCardComponent,
     ImportEntryComponent,
     IconComponent,
+    IconTabsComponent,
   ],
   templateUrl: './get.component.html',
 })
@@ -109,7 +120,10 @@ export class GetComponent {
     };
   });
 
-  readonly tabs = TABS;
+  /** The tab bar's items; the Activity tab carries the count both nav badges print. */
+  readonly tabItems = computed<IconTabItem[]>(() =>
+    TABS.map((t) => (t.value === 'activity' ? { ...t, badge: this.activeCount() } : t)),
+  );
   readonly tab = signal<GetTab>(parseGetTab(this.route.snapshot.queryParamMap.get('tab')));
 
   /** Import is an Add-tab action (#1664); `canImport` is the role bar. */
