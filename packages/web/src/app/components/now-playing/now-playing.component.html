@@ -8,6 +8,7 @@
   <div
     appTvNavGroup
     data-covers-chrome
+    [appCoverWash]="washCover()"
     [axis]="'vertical'"
     [class]="'fixed inset-0 z-[60] bg-theme-base ease-out flex flex-col touch-pan-y ' +
       (sheetInstant() ? 'transition-none ' : 'transition-transform duration-300 ') +

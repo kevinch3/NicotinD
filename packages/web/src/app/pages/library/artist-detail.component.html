@@ -3,8 +3,8 @@
     <app-skeleton variant="artist-header" [label]="'common.loadingAlbums' | t" />
     <app-skeleton variant="album-tile" />
   } @else if (artist()) {
-    <!-- Artist header -->
-    <div class="flex items-center gap-5 mb-8">
+    <!-- Artist header, washed with the portrait's colour (#1687). -->
+    <div [appCoverWash]="artistImageSrc()" data-testid="artist-header" class="flex items-center gap-5 -mx-4 -mt-4 mb-4 rounded-2xl px-4 pt-4 pb-4">
       <div class="relative flex-shrink-0 group">
         <app-cover-art
           [src]="artistImageSrc()"

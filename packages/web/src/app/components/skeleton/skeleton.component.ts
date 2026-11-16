@@ -68,8 +68,10 @@ const CONTAINER: Record<SkeletonVariant, string> = {
   'genre-tile': 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3',
   'track-row': 'block space-y-0.5',
   'shelf-tile': 'flex gap-3 overflow-x-auto pb-2 -mx-1 px-1',
-  'detail-header': 'flex flex-col sm:flex-row items-center sm:items-end gap-6 mb-8',
-  'artist-header': 'flex items-center gap-5 mb-8',
+  // Same box as the real headers, which carry the cover wash's band (#1687).
+  'detail-header':
+    'flex flex-col sm:flex-row items-center sm:items-end gap-6 -mx-4 -mt-4 mb-4 rounded-2xl px-4 pt-4 pb-4',
+  'artist-header': 'flex items-center gap-5 -mx-4 -mt-4 mb-4 rounded-2xl px-4 pt-4 pb-4',
   // The mosaic's "list" is a free canvas, so there is no grid to mirror; the
   // host just fills whatever box the page absolutely positions it in.
   mosaic: 'block absolute inset-0 overflow-hidden',

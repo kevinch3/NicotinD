@@ -11,6 +11,7 @@ import {
   OnDestroy,
   untracked,
 } from '@angular/core';
+import { CoverWashDirective } from '../../directives/cover-wash.directive';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -113,6 +114,7 @@ const SONGS_PAGE_SIZE = 60;
   selector: 'app-artist-detail',
   standalone: true,
   imports: [
+    CoverWashDirective,
     SkeletonComponent,
     TranslatePipe,
     ArtistImageMenuComponent,

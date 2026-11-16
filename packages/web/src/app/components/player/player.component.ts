@@ -11,6 +11,7 @@ import {
   AfterViewInit,
   NgZone,
 } from '@angular/core';
+import { CoverWashDirective } from '../../directives/cover-wash.directive';
 import { PlayerService, type Track } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
@@ -166,6 +167,7 @@ export function browserDurationIsAcceptable(knownSec: number, nativeSec: number)
 @Component({
   selector: 'app-player',
   imports: [
+    CoverWashDirective,
     OverflowRevealDirective,
     CoverArtComponent,
     DeviceSwitcherComponent,
@@ -271,6 +273,12 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   );
 
   readonly slideClass = computed(() => miniPlayerSlideClass(this.player.currentTrack() !== null));
+
+  /** The cover the bar is washed with (#1687). */
+  readonly washCover = computed(() => {
+    const track = this.player.currentTrack();
+    return track ? (this.coverSrc(track) ?? null) : null;
+  });
 
   /** The bar's cover at its album's live cover rev (#1666). */
   coverSrc(track: Track): string | undefined {

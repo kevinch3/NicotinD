@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '../helpers';
-import { ADMIN, bearer, expandGroup } from '../helpers';
+import { ADMIN, FIXTURE, bearer, expandGroup, openAlbumCard } from '../helpers';
 import { composite, contrast, parseColor } from './helpers/contrast';
 
 test.describe('e-ink theme', () => {
@@ -233,6 +233,88 @@ test.describe('theme contrast table', () => {
     }
     expect(measured, 'presets × hues × checks').toBe(7 * 8 * 3);
     expect(failures).toEqual([]);
+  });
+});
+
+// The cover wash (#1687): the artwork's colour over a surface, clamped so the
+// text keeps its contrast, and absent on E-Ink.
+test.describe('cover wash', () => {
+  const washOf = (page: Page, testid: string) =>
+    page
+      .getByTestId(testid)
+      .evaluate((el) => (el as HTMLElement).style.getPropertyValue('--theme-cover-wash'));
+
+  test('the album header takes a translucent tint of its cover, and paints it', async ({
+    page,
+  }) => {
+    await page.goto('/library');
+    await openAlbumCard(page, FIXTURE.album.title);
+    const header = page.getByTestId('album-header');
+    await expect(header).toBeVisible();
+    await expect.poll(() => washOf(page, 'album-header')).toMatch(/^rgb\(\d+ \d+ \d+ \/ 0\.\d+\)$/);
+    const alpha = Number(/\/ ([\d.]+)\)/.exec(await washOf(page, 'album-header'))![1]);
+    expect(alpha).toBeGreaterThan(0);
+    expect(alpha).toBeLessThanOrEqual(0.18);
+    // The class turns the variable into a layer over the page.
+    expect(await header.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain(
+      'linear-gradient',
+    );
+  });
+
+  /**
+   * Open the album under `preset`. The preset is set on the document, as the
+   * contrast table above does, and the album is entered by an in-app
+   * navigation, so the directive measures against that preset's tokens.
+   */
+  async function openAlbumUnder(page: Page, preset: string): Promise<void> {
+    await page.goto('/library');
+    await page.evaluate((p) => document.documentElement.setAttribute('data-theme', p), preset);
+    await openAlbumCard(page, FIXTURE.album.title);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', preset);
+    await expect(page.getByTestId('album-header')).toBeVisible();
+  }
+
+  test('text over the washed header still clears 4.5:1 on every coloured preset', async ({
+    page,
+  }) => {
+    const failures: string[] = [];
+    let measured = 0;
+    for (const preset of ['midnight', 'daylight', 'warm-paper', 'oled', 'twilight', 'forest']) {
+      await openAlbumUnder(page, preset);
+      await expect.poll(() => washOf(page, 'album-header'), preset).not.toBe('');
+      const raw = await page.evaluate(() => {
+        const cs = getComputedStyle(document.documentElement);
+        const get = (n: string) => cs.getPropertyValue(`--theme-${n}`);
+        return {
+          bg: get('bg'),
+          primary: get('text-primary'),
+          secondary: get('text-secondary'),
+          muted: get('text-muted'),
+        };
+      });
+      const wash = /^rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)\)$/.exec(
+        await washOf(page, 'album-header'),
+      )!;
+      const washed = composite(
+        { r: Number(wash[1]), g: Number(wash[2]), b: Number(wash[3]), a: Number(wash[4]) },
+        parseColor(raw.bg),
+      );
+      for (const level of ['primary', 'secondary', 'muted'] as const) {
+        measured++;
+        const ratio = contrast(parseColor(raw[level]), washed);
+        if (ratio < 4.5) failures.push(`${preset}: text-${level} = ${ratio.toFixed(2)}`);
+      }
+    }
+    expect(measured, 'presets × text levels').toBe(18);
+    expect(failures).toEqual([]);
+  });
+
+  test('E-Ink takes no wash', async ({ page }) => {
+    await openAlbumUnder(page, 'eink');
+    await expect(page.getByTestId('album-cover').locator('img')).toBeVisible();
+    // The palette is read once the image has loaded; give that a moment to not happen.
+    await page.waitForTimeout(600);
+    expect(await washOf(page, 'album-header')).toBe('');
   });
 });
 

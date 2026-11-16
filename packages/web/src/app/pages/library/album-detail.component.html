@@ -6,7 +6,9 @@
     <app-skeleton variant="detail-header" [label]="'common.loadingSongs' | t" />
     <app-skeleton variant="track-row" [count]="10" [trackCover]="false" />
   } @else if (selectedAlbum()) {
-    <div class="flex flex-col sm:flex-row items-center sm:items-end gap-6 mb-8 text-center sm:text-left">
+    <!-- The header takes a wash of the cover's colour (#1687). The negative
+         margins give the wash room without moving anything inside it. -->
+    <div [appCoverWash]="coverSrc()" data-testid="album-header" class="flex flex-col sm:flex-row items-center sm:items-end gap-6 -mx-4 -mt-4 mb-4 rounded-2xl px-4 pt-4 pb-4 text-center sm:text-left">
       <app-cover-art
         data-testid="album-cover"
         [src]="coverSrc()"

@@ -1,4 +1,5 @@
 import { Component, inject, signal, computed, effect, OnInit } from '@angular/core';
+import { CoverWashDirective } from '../../directives/cover-wash.directive';
 import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -46,6 +47,7 @@ import { AlbumCompletenessComponent } from './album-completeness.component';
 @Component({
   selector: 'app-album-detail',
   imports: [
+    CoverWashDirective,
     SkeletonComponent,
     TranslatePipe,
     TrackRowComponent,

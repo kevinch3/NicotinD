@@ -10,6 +10,12 @@ export interface CoverPalette {
   primary: string;
   secondary: string;
   glow: string;
+  /**
+   * The cover's dominant colour as sampled, not darkened: what the cover wash
+   * mixes into a surface (#1687). Absent on the default palette, so a cover
+   * that could not be read tints nothing.
+   */
+  dominant?: string;
 }
 
 /** Fallback gradient when a cover can't be loaded or yields too few samples. */
@@ -74,6 +80,7 @@ export function computePaletteFromPixels(data: Uint8ClampedArray): CoverPalette 
     primary: darken(c1, 0.35),
     secondary: darken(c2, 0.3),
     glow: darken(c1, 0.5),
+    dominant: darken(c1, 1),
   };
 }
 
