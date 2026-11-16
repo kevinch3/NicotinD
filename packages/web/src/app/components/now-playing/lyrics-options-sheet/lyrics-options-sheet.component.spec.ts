@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { setInputValue } from '../../../../testing/signal-input';
-import { LyricsOptionsSheetComponent } from './lyrics-options-sheet.component';
+import { LyricsOptionsSheetComponent, type LyricsTryState } from './lyrics-options-sheet.component';
 
 describe('LyricsOptionsSheetComponent (#1656)', () => {
   function make(opts: { source?: string | null; timed?: boolean; edited?: boolean } = {}) {
@@ -44,5 +44,73 @@ describe('LyricsOptionsSheetComponent (#1656)', () => {
     (el.querySelector('[data-testid="lyrics-options-close"]') as HTMLElement).click();
     el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(closed).toBe(2);
+  });
+
+  describe('Try another source (#1674)', () => {
+    const state = (over: Partial<LyricsTryState> = {}): LyricsTryState => ({
+      walk: null,
+      busy: false,
+      result: null,
+      ...over,
+    });
+    function withTry(tryState: LyricsTryState | null, edited = false) {
+      const fixture = TestBed.createComponent(LyricsOptionsSheetComponent);
+      setInputValue(fixture.componentInstance.source, 'lrclib');
+      setInputValue(fixture.componentInstance.timed, true);
+      setInputValue(fixture.componentInstance.edited, edited);
+      setInputValue(fixture.componentInstance.tryState, tryState);
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      const q = (id: string) => el.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+      return { fixture, q };
+    }
+
+    it('is absent without a try state, which is the default and what TV gets', () => {
+      expect(withTry(null).q('lyrics-try-another')).toBeNull();
+    });
+
+    it('emits on press, and is disabled with a spinner while busy', () => {
+      const { fixture, q } = withTry(state());
+      let presses = 0;
+      fixture.componentInstance.tryAnother.subscribe(() => presses++);
+      q('lyrics-try-another')!.click();
+      expect(presses).toBe(1);
+
+      const busy = withTry(state({ busy: true })).q('lyrics-try-another') as HTMLButtonElement;
+      expect(busy.disabled).toBe(true);
+      expect(busy.querySelector('.animate-spin')).not.toBeNull();
+    });
+
+    it('shows "n of m" on the source line once a walk wrote the row, not for an edit', () => {
+      const walk = { index: 2, total: 7 };
+      expect(withTry(state({ walk })).q('lyrics-options-position')?.textContent).toContain(
+        'nowPlaying.lyricsPosition',
+      );
+      expect(withTry(state()).q('lyrics-options-position')).toBeNull();
+      expect(withTry(state({ walk }), true).q('lyrics-options-position')).toBeNull();
+    });
+
+    it('reports each outcome in a status region', () => {
+      const text = (kind: 'applied' | 'only-one' | 'no-match' | 'error') => {
+        const applied =
+          kind === 'applied'
+            ? {
+                source: 'lrclib',
+                sourceTrackId: '7',
+                candidateKey: '7',
+                index: 2,
+                total: 7,
+                timed: true,
+              }
+            : null;
+        const el = withTry(state({ result: { kind, applied } })).q('lyrics-try-result')!;
+        expect(el.getAttribute('role')).toBe('status');
+        return el.textContent!.trim();
+      };
+      expect(text('applied')).toBe('nowPlaying.lyricsTryApplied');
+      expect(text('only-one')).toBe('nowPlaying.lyricsTryOnlyOne');
+      expect(text('no-match')).toBe('nowPlaying.lyricsTryNone');
+      expect(text('error')).toBe('nowPlaying.lyricsTryError');
+    });
   });
 });

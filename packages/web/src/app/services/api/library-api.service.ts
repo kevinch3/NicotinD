@@ -8,6 +8,7 @@ import type {
   BpmAnalysisResult,
   GenreSuggestion,
   LyricsDto,
+  LyricsNextDto,
   MetadataCandidate,
   ApplyMetadataRequest,
   CoverCandidatesResponse,
@@ -846,6 +847,17 @@ export class LibraryApiService {
    */
   getPeaks(id: string) {
     return this.http.get<WaveformData>(`/api/peaks/${id}`);
+  }
+
+  /**
+   * "Try another source" (curator, #1674): apply the next candidate. Answers
+   * 409 `lyrics-customized` on edited lyrics unless `confirmReplaceEdit`.
+   */
+  nextLyrics(id: string, confirmReplaceEdit = false) {
+    return this.http.post<LyricsNextDto>(
+      `/api/library/songs/${id}/lyrics/next`,
+      confirmReplaceEdit ? { confirmReplaceEdit } : {},
+    );
   }
 
   /**

@@ -119,16 +119,7 @@ export async function fetchSongLyrics(
   let sourceErrored = false;
   let keptTimed = false;
   const skippedUntimed: string[] = [];
-  // Either detector the health report uses: a recorded match duration beyond the
-  // tolerance, or (for rows whose source never stated one) an LRC that outlasts
-  // the file.
-  const storedIsOtherTake =
-    !!existing?.synced &&
-    song.duration > 0 &&
-    ((existing.matchedDurationSec != null &&
-      Math.abs(existing.matchedDurationSec - song.duration) > LYRICS_DURATION_TOLERANCE_SEC) ||
-      lrcOverrunSec(existing.synced, existing.offsetMs, song.duration) >
-        LYRICS_DURATION_TOLERANCE_SEC);
+  const storedIsOtherTake = isOtherTake(existing, song.duration);
   for (const plugin of deps.plugins.getEnabledWithCapability('lyrics')) {
     const result = await plugin.lyrics?.fetchLyrics(query).catch(() => {
       sourceErrored = true;
@@ -173,8 +164,24 @@ export async function fetchSongLyrics(
   return sourceErrored ? { kind: 'source-error' } : { kind: 'no-match' };
 }
 
+/**
+ * A stored timed row matched to another take (#1205): either detector the health
+ * report uses, a recorded match duration beyond the tolerance, or (for rows whose
+ * source never stated one) an LRC that outlasts the file.
+ */
+export function isOtherTake(existing: LyricsDto | null, songDuration: number): boolean {
+  return (
+    !!existing?.synced &&
+    songDuration > 0 &&
+    ((existing.matchedDurationSec != null &&
+      Math.abs(existing.matchedDurationSec - songDuration) > LYRICS_DURATION_TOLERANCE_SEC) ||
+      lrcOverrunSec(existing.synced, existing.offsetMs, songDuration) >
+        LYRICS_DURATION_TOLERANCE_SEC)
+  );
+}
+
 /** Two LRC bodies are the same text, ignoring line endings and edge whitespace. */
-function sameLrc(a: string, b: string): boolean {
+export function sameLrc(a: string, b: string): boolean {
   const norm = (t: string) => t.replace(/\r\n?/g, '\n').trim();
   return norm(a) === norm(b);
 }
@@ -183,7 +190,7 @@ function sameLrc(a: string, b: string): boolean {
  * Why `result` was the one stored (#1676), recorded beside the words so a song
  * whose lyrics changed under a listener can be explained from the row alone.
  */
-function choiceFor(
+export function choiceFor(
   result: LyricsResult,
   localDuration: number,
   ctx: Pick<LyricsChoice, 'skippedUntimed' | 'replacedOtherTake' | 'forced'>,

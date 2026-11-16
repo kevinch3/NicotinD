@@ -409,3 +409,72 @@ describe('LrclibPlugin says how it matched (#1676)', () => {
     expect(r?.matchedBy).toBe('search-unranked');
   });
 });
+
+describe('LrclibPlugin.fetchCandidates (#1674)', () => {
+  const candidates = (fetchFn: typeof fetch) =>
+    new LrclibPlugin({ enabled: true }, { fetchFn, retryBackoffMs: 0 }).lyrics.fetchCandidates!(
+      query,
+    );
+
+  it('returns the /get record and every /search hit, unfiltered and keyed by record id', async () => {
+    const fetchFn = routeFetch([
+      { match: '/get', status: 200, body: { id: 7, duration: 200, plainLyrics: 'exact' } },
+      {
+        match: '/search',
+        status: 200,
+        body: [
+          { id: 7, duration: 200, plainLyrics: 'exact' },
+          { id: 8, duration: 203, plainLyrics: 'w', syncedLyrics: '[00:01.00]w' },
+          { id: 9, duration: 260, plainLyrics: 'another take' },
+          { id: 10, instrumental: true },
+        ],
+      },
+    ]);
+    const list = await candidates(fetchFn);
+    expect(list.map((c) => [c.candidateKey, c.matchedBy, c.matchedDurationSec])).toEqual([
+      ['7', 'exact', 200],
+      ['8', 'search', 203],
+      ['9', 'search', 260],
+    ]);
+    expect(list.every((c) => c.source === 'lrclib')).toBe(true);
+  });
+
+  it('keys a record with no id by its text', async () => {
+    const fetchFn = routeFetch([
+      { match: '/get', status: 404, body: {} },
+      { match: '/search', status: 200, body: [{ plainLyrics: 'words' }, { plainLyrics: 'words' }] },
+    ]);
+    const list = await candidates(fetchFn);
+    expect(list).toHaveLength(1);
+    expect(list[0]!.candidateKey).toMatch(/^text:/);
+  });
+
+  it('still returns the /search hits when /get keeps failing, and the reverse', async () => {
+    const onlySearch = routeFetch([
+      { match: '/get', status: 500, body: {} },
+      { match: '/search', status: 200, body: [{ id: 8, plainLyrics: 'w' }] },
+    ]);
+    expect((await candidates(onlySearch)).map((c) => c.candidateKey)).toEqual(['8']);
+    const onlyGet = routeFetch([
+      { match: '/get', status: 200, body: { id: 7, plainLyrics: 'exact' } },
+      { match: '/search', status: 500, body: {} },
+    ]);
+    expect((await candidates(onlyGet)).map((c) => c.candidateKey)).toEqual(['7']);
+  });
+
+  it('throws when both endpoints fail, so the host reports a source error', async () => {
+    const fetchFn = routeFetch([
+      { match: '/get', status: 500, body: {} },
+      { match: '/search', status: 500, body: {} },
+    ]);
+    await expect(candidates(fetchFn)).rejects.toThrow();
+  });
+
+  it('returns an empty list when the source has nothing', async () => {
+    const fetchFn = routeFetch([
+      { match: '/get', status: 404, body: {} },
+      { match: '/search', status: 200, body: [] },
+    ]);
+    expect(await candidates(fetchFn)).toEqual([]);
+  });
+});

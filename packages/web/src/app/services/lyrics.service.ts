@@ -1,7 +1,8 @@
 import { Injectable, computed, inject, signal, untracked } from '@angular/core';
 import { defer, finalize, firstValueFrom, tap, type Observable } from 'rxjs';
-import type { LyricsDto } from '@nicotind/core';
+import type { LyricsApplied, LyricsDto, LyricsNextDto } from '@nicotind/core';
 import { parseLrc, findActiveLine, applyLyricsOffset, LYRICS_OFFSET_MAX_MS } from '@nicotind/core';
+import { httpErrorCode } from '../lib/http-error';
 import { LibraryApiService } from './api/library-api.service';
 import { LibraryEventsService } from './library-events.service';
 import { NetworkStatusService } from './network-status.service';
@@ -58,6 +59,12 @@ export const LYRICS_CACHE_SIZE = 20;
  * Only this file may call `LibraryApiService`'s lyrics methods: lint rule
  * `nicotind/lyrics-single-owner` (scripts/eslint-rules/lyrics-single-owner.js).
  */
+/** What a press of "Try another source" did. */
+export interface LyricsTryResult {
+  kind: LyricsNextDto['outcome'] | 'error';
+  applied: LyricsApplied | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class LyricsService {
   private readonly api = inject(LibraryApiService);
@@ -463,6 +470,70 @@ export class LyricsService {
       ),
       (l) => l ?? undefined,
     );
+  }
+
+  /**
+   * Apply the next source candidate to `id` (#1674). `only-one` and `no-match`
+   * leave the row, and so the entry, as it was.
+   */
+  next(id: string, confirmReplaceEdit = false): Observable<LyricsNextDto> {
+    const token = this.begin(id, { inFlight: 'write' });
+    return this.written(
+      id,
+      token,
+      this.api.nextLyrics(id, confirmReplaceEdit).pipe(
+        tap((r) => {
+          const applied = r.outcome === 'applied' ? r.lyrics : null;
+          this.settle(
+            id,
+            token,
+            applied ? { dto: applied, error: false, inFlight: null } : { inFlight: null },
+          );
+          if (applied) this.remember(id, applied);
+        }),
+      ),
+      (r) => (r.outcome === 'applied' ? (r.lyrics ?? undefined) : undefined),
+    );
+  }
+
+  private readonly tryState = signal<{
+    id: string;
+    busy: boolean;
+    result: LyricsTryResult | null;
+  } | null>(null);
+  private readonly currentTry = computed(() => {
+    const t = this.tryState();
+    return t && t.id === this.currentId() ? t : null;
+  });
+  /** "Try another source" is running for the current track. */
+  readonly trying = computed(() => this.currentTry()?.busy ?? false);
+  /** What the last press did, for the current track only. */
+  readonly tryResult = computed(() => this.currentTry()?.result ?? null);
+
+  /**
+   * "Try another source" for `id`. Edited lyrics are replaced only after
+   * `confirmReplace` resolves true (#1786); declining leaves everything as it was.
+   */
+  tryAnother(id: string, confirmReplace: () => Promise<boolean>): void {
+    if (untracked(() => this.tryState()?.busy)) return;
+    const done = (result: LyricsTryResult | null) => this.tryState.set({ id, busy: false, result });
+    const run = (confirmed: boolean) => {
+      this.tryState.set({ id, busy: true, result: null });
+      this.next(id, confirmed).subscribe({
+        next: (r) => done({ kind: r.outcome, applied: r.applied }),
+        error: (err) => {
+          if (confirmed || httpErrorCode(err) !== 'lyrics-customized') {
+            done({ kind: 'error', applied: null });
+            return;
+          }
+          this.tryState.set({ id, busy: false, result: null });
+          void confirmReplace().then((ok) => {
+            if (ok) run(true);
+          });
+        },
+      });
+    };
+    run(false);
   }
 
   /**

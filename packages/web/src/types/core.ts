@@ -61,7 +61,7 @@ export type {
   ApplyCoverRequest,
 } from '../../../core/src/types/metadata-fix';
 
-export type { LyricsDto } from '../../../core/src/types/lyrics';
+export type { LyricsApplied, LyricsDto, LyricsNextDto } from '../../../core/src/types/lyrics';
 // *Values*, not types: the nudge control and the API both bound the offset, and
 // both must bound it the same way or the UI promises a range the server refuses.
 export { LYRICS_OFFSET_MAX_MS, LYRICS_OFFSET_STEP_MS } from '../../../core/src/types/lyrics';

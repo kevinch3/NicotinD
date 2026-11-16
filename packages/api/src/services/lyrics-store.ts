@@ -80,7 +80,24 @@ function toDto(r: DbRow): LyricsDto {
     matchedDurationSec: r.matched_duration,
     sourceTrackId: r.source_id,
     offsetMs: r.offset_ms ?? 0,
+    walk: walkOf(r.customized === 1, parseChoice(r.choice_json)),
   };
+}
+
+/** "n of m" for a row "Try another source" wrote and nobody has edited since. */
+function walkOf(customized: boolean, choice: LyricsChoice | null | undefined): LyricsDto['walk'] {
+  if (customized || choice?.via !== 'next' || !choice.index || !choice.total) return null;
+  return { index: choice.index, total: choice.total };
+}
+
+/** Why the stored words were chosen, or null for a row with no record of it. */
+export function getLyricsChoice(db: Database, songId: string): LyricsChoice | null {
+  const row = db
+    .query<{ choice_json: string | null }, [string]>(
+      'SELECT choice_json FROM library_lyrics WHERE song_id = ?',
+    )
+    .get(songId);
+  return parseChoice(row?.choice_json ?? null);
 }
 
 /** Keep a stored offset inside the range the UI and the MCP tool both promise. */
@@ -152,6 +169,7 @@ export function setLyrics(db: Database, songId: string, input: SetLyricsInput): 
     matchedDurationSec,
     sourceTrackId,
     offsetMs,
+    walk: walkOf(input.customized, input.choice),
   };
 }
 

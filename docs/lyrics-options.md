@@ -19,6 +19,17 @@ Some of #1657 has shipped since it was filed. This doc treats it as existing beh
   `GET …/lyrics/export` returns the LRC with the offset baked in (`lyrics-store.ts:237-260`).
 - **Sync-offset writes are serialized**, latest tap wins (#1656 part 5, PR #1705;
   `packages/web/src/app/services/lyrics.service.ts:341-403`).
+- **"Try another source" walks the candidates** (#1674). `LyricsCapability.fetchCandidates` is
+  optional; LRCLIB implements it (the `/get` record plus every `/search` hit, unfiltered).
+  `listLyricsCandidates` (`packages/api/src/services/lyrics-next.ts`) applies the duration gate,
+  folds duplicates and ranks; `nextSongLyrics` applies the one after the stored row and
+  `POST /api/library/songs/:id/lyrics/next` (curators) serves it. The walk writes
+  `candidateKey`, `index`, `total`, `duplicates`, `via: 'next'` and `passedOver` into
+  `choice_json`, and `LyricsDto.walk` carries `index`/`total` to the options sheet's source line.
+  **Not built from sections 1 to 3:** the first and the forced fetch still take each source's own
+  single answer (`fetchLyrics`), so a row they wrote has no "n of m" until the first press;
+  `customized_kind`; `previous_json` and "Undo last change" (they arrive with #1675, whose timing
+  save needs the same snapshot); and the "A timed version is available" hint.
 - **The track-info sheet asks before an edit drops the timing** (#1666;
   `track-info-sheet.component.ts:401-416`). The drop itself still happens.
 
@@ -347,9 +358,10 @@ the track-info sheet when the row is timed or plain.
 
 ## 5. Karaoke options group (absorbs #1656)
 
-**Built:** the Options button, the sheet, the source line (without "n of m" and the editor's name,
-which need #1674 and the provenance read) and the sync tool with fixed geometry, words and press
-and hold. Items 2, 4 and 5 below arrive with #1674 and #1675.
+**Built:** the Options button, the sheet, the source line with "n of m" (without the editor's
+name, which needs the provenance read), "Try another source" (#1674: `lyrics-try-another`, with
+its outcome in the `lyrics-try-result` status line) and the sync tool with fixed geometry, words
+and press and hold. Items 4 and 5 below arrive with #1675.
 
 One "Options" button (a sliders icon) in the karaoke header, between the title and the vocal-mute
 button (`now-playing-karaoke-fullscreen.component.html:44-99`), and the same button in the Lyrics

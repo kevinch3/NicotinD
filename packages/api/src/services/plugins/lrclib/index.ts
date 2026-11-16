@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import type {
   Plugin,
   PluginManifest,
   PluginHostContext,
+  LyricsCandidate,
   LyricsCapability,
   LyricsQuery,
   LyricsResult,
@@ -77,6 +79,14 @@ function toResult(track: LrclibTrack): LyricsResult | null {
   };
 }
 
+/** A key for a record the source gave no id: its text, hashed. */
+function textKey(result: LyricsResult): string {
+  return `text:${createHash('sha1')
+    .update(result.synced ?? result.plain ?? '')
+    .digest('hex')
+    .slice(0, 16)}`;
+}
+
 const unrankedHit = (result: LyricsResult): SearchHit => ({
   result: { ...result, matchedBy: 'search-unranked' },
   verified: false,
@@ -120,6 +130,7 @@ export class LrclibPlugin implements Plugin {
 
   readonly lyrics: LyricsCapability = {
     fetchLyrics: (query) => this.fetchLyrics(query),
+    fetchCandidates: (query) => this.fetchCandidates(query),
   };
 
   async init(ctx: PluginHostContext): Promise<void> {
@@ -163,6 +174,31 @@ export class LrclibPlugin implements Plugin {
     // a source error (the UI offers a retry), not an authoritative "no lyrics".
     if (getError) throw getError;
     return null;
+  }
+
+  /**
+   * The exact `/get` record and every `/search` hit, unfiltered (#1674): the host
+   * applies the duration gate, folds duplicates and ranks. Throws only when both
+   * endpoints failed, so one endpoint's outage does not hide the other's records.
+   */
+  private async fetchCandidates(query: LyricsQuery): Promise<LyricsCandidate[]> {
+    const out = new Map<string, LyricsCandidate>();
+    const add = (result: LyricsResult | null, matchedBy: string) => {
+      if (!result) return;
+      const candidateKey = result.sourceTrackId ?? textKey(result);
+      if (!out.has(candidateKey)) out.set(candidateKey, { ...result, matchedBy, candidateKey });
+    };
+    const params = new URLSearchParams({ artist_name: query.artist, track_name: query.title });
+    const [exact, hits] = await Promise.allSettled([
+      this.getExact(query),
+      this.request<LrclibTrack[]>(`/search?${params.toString()}`),
+    ]);
+    if (exact.status === 'rejected' && hits.status === 'rejected') throw exact.reason;
+    if (exact.status === 'fulfilled') add(exact.value, 'exact');
+    if (hits.status === 'fulfilled' && Array.isArray(hits.value)) {
+      for (const hit of hits.value) add(toResult(hit), 'search');
+    }
+    return [...out.values()];
   }
 
   private async getExact(query: LyricsQuery): Promise<LyricsResult | null> {

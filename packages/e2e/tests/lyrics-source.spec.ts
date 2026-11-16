@@ -92,4 +92,78 @@ test.describe('lyrics source (fixture LRCLIB)', () => {
     });
     expect(((await stored.json()) as { synced: string | null }).synced).toBe(LRC);
   });
+
+  // "Try another source" (#1674): the walk over the source's candidates.
+  const LRC_B = '[00:00.50]another take, line one\n[00:01.50]another take, line two';
+  const twoTakes = () => {
+    const base = { trackName: SONG.title, artistName: SONG.artist, duration: song.duration };
+    return seedFixtureLyrics([
+      { ...base, id: 1, exact: true, plainLyrics: 'first timed line', syncedLyrics: LRC },
+      // The same words again under another record id: one candidate, not two.
+      { ...base, id: 2, plainLyrics: 'first timed line', syncedLyrics: LRC },
+      { ...base, id: 3, plainLyrics: 'another take', syncedLyrics: LRC_B },
+      // Another recording's words: beyond the duration tolerance, never offered.
+      {
+        ...base,
+        id: 4,
+        duration: song.duration + 60,
+        plainLyrics: 'x',
+        syncedLyrics: '[00:01.00]x',
+      },
+    ]);
+  };
+  const next = (request: APIRequestContext) =>
+    request.post(`/api/library/songs/${song.id}/lyrics/next`, { headers: bearer(token), data: {} });
+
+  test('next walks the distinct candidates within tolerance and wraps (#1674)', async ({
+    request,
+  }) => {
+    await twoTakes();
+    const seen: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const body = (await (await next(request)).json()) as {
+        outcome: string;
+        lyrics: { synced: string };
+        applied: { sourceTrackId: string; index: number; total: number };
+      };
+      expect(body.outcome).toBe('applied');
+      seen.push(`${body.applied.sourceTrackId}:${body.applied.index}/${body.applied.total}`);
+      expect(body.lyrics.synced).toBe(body.applied.sourceTrackId === '3' ? LRC_B : LRC);
+    }
+    expect(seen).toEqual(['1:1/2', '3:2/2', '1:1/2']);
+  });
+
+  test('Try another source in the lyrics options applies the other take and says so (#1674)', async ({
+    page,
+    request,
+  }) => {
+    await twoTakes();
+    expect((await (await next(request)).json()).applied.index).toBe(1);
+
+    await page.goto('/library');
+    await page
+      .getByTestId('library-tabs')
+      .getByRole('button', { name: 'Songs', exact: true })
+      .click();
+    const row = page.locator('app-track-row').filter({ hasText: SONG.title }).first();
+    await row.getByTestId('track-row-title').click();
+    await page.getByTestId('player-title').click();
+    await expect(page.getByTestId('now-playing-heading')).toBeVisible();
+    await page.getByTestId('now-playing-tab-lyrics').click();
+    const panel = page.getByTestId('now-playing-lyrics');
+    await expect(panel.locator('[data-karaoke-line]').first()).toContainText('first timed line');
+
+    await page.getByTestId('lyrics-options-toggle').click();
+    await expect(page.getByTestId('lyrics-options-position')).toHaveText('1 of 2');
+    await page.getByTestId('lyrics-try-another').click();
+
+    await expect(page.getByTestId('lyrics-try-result')).toHaveText(
+      'Applied: LRCLIB · timed · 2 of 2',
+    );
+    await expect(page.getByTestId('lyrics-options-position')).toHaveText('2 of 2');
+    // The karaoke view follows the new take's timed lines.
+    await expect(panel.locator('[data-karaoke-line]').first()).toContainText(
+      'another take, line one',
+    );
+  });
 });
