@@ -164,12 +164,21 @@ artist's own page.
 
 | Entry | Does |
 | --- | --- |
+| **Get the full album (N missing)** | curators only, and only when the album is confirmed incomplete: confirm, then hunt the missing tracks (#2014) |
 | **More by <artist>** | opens the artist page, whose discography already marks the albums the library lacks |
 | **Similar artists ▸** | up to five related artists the library lacks (`SIMILAR_ARTISTS_SHOWN`); picking one opens Get → Add with the name prefilled (#2015) |
 
 The label names the primary credited artist through `labelParams`, the values `MenuItemComponent`
-passes to the `t` pipe for a `labelKey` with placeholders. Full album and a better copy are
-separate issues (#2014, #2016).
+passes to the `t` pipe for a `labelKey` with placeholders. A better copy is a separate issue
+(#2016).
+
+**Get the full album** reads `GET /api/library/albums/:id/completeness` each time Get more ▸ opens
+(a hunt changes the answer) and shows only for a confirmed `missing > 0`; complete, unknown and a
+failed read all leave it out. It then asks once, calls `POST /api/library/albums/:id/complete`, and
+toasts the outcome with the album page's own strings (`COMPLETE_OUTCOME_KIND`,
+`lib/album-complete-outcome.ts`). It is for **refiners and admins**, because that route is
+`requireCurator`; a plain user is neither shown the item nor asked about completeness. Opening it
+to every acquirer is a one-line guard change and spends hunt budget, so it is the owner's decision.
 
 Similar artists come from `GET /api/library/artists/:id/related`'s `notOwned`
 ([artist-relations.md](artist-relations.md)), for the song's primary artist. They are fetched when

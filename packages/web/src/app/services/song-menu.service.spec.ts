@@ -3,7 +3,13 @@ import { TestBed, getTestBed } from '@angular/core/testing';
 import { startsGroup } from '../lib/menu-groups';
 import { Router } from '@angular/router';
 import { SearchService } from './search.service';
-import type { RelatedArtistsResponse } from './api/api-types';
+import type {
+  AlbumCompleteness,
+  CompleteAlbumResponse,
+  RelatedArtistsResponse,
+} from './api/api-types';
+import { ToastService } from './toast.service';
+import { TranslateService } from './translate.service';
 import {
   SongMenuService,
   songSelection,
@@ -41,6 +47,11 @@ const song = (over: Partial<BaseSong> = {}): BaseSong => ({
 
 /** What the related-artists endpoint answers; a test swaps it before building a menu. */
 let related: () => Observable<RelatedArtistsResponse> = () => of({ artists: [] });
+/** What the completeness and complete-album endpoints answer. */
+let completeness: () => Observable<AlbumCompleteness> = () =>
+  of({ albumId: 'al1', confirmed: null });
+let completed: () => Observable<CompleteAlbumResponse> = () =>
+  of({ ok: true, outcome: 'enqueued', lidarrAlbumId: 1 } as CompleteAlbumResponse);
 
 function setup(role: Role = 'user', excluded = false, acquisitionOn = true, identify = true) {
   const router = { navigate: vi.fn() };
@@ -83,6 +94,15 @@ function setup(role: Role = 'user', excluded = false, acquisitionOn = true, iden
           deleteSongs: vi.fn(() => of({})),
           getIdentifyAvailable: vi.fn(() => of({ available: identify })),
           getRelatedArtists: vi.fn(() => related()),
+          getAlbumCompleteness: vi.fn(() => completeness()),
+          completeAlbum: vi.fn(() => completed()),
+        },
+      },
+      { provide: ToastService, useValue: { show: vi.fn() } },
+      {
+        provide: TranslateService,
+        useValue: {
+          t: (k: string, p?: Record<string, unknown>) => (p ? `${k} ${JSON.stringify(p)}` : k),
         },
       },
       {
@@ -159,6 +179,134 @@ describe('SongMenuService.build', () => {
       expect(svc.build(s(), { hideGoToArtist: true }).some((a) => a.label === 'Get more')).toBe(
         false,
       );
+    });
+
+    // #2014: the album is confirmed incomplete, and this person may complete it.
+    describe('Get the full album', () => {
+      const partial = () =>
+        song({
+          artistId: 'ar1',
+          albumId: 'al1',
+          album: 'Circus',
+          artists: [{ id: 'one', name: 'One', role: 'primary' }],
+        });
+      const entry = async (svc: SongMenuService, s = partial()) =>
+        (await svc.build(s, {}).find((a) => a.label === 'Get more')!.children!()).find(
+          (e) => e.label === 'Get the full album',
+        );
+      const incomplete = (missing: number) => () =>
+        of({ albumId: 'al1', confirmed: { expected: 10, owned: 10 - missing, missing } });
+      afterEach(() => {
+        completeness = () => of({ albumId: 'al1', confirmed: null });
+        completed = () =>
+          of({ ok: true, outcome: 'enqueued', lidarrAlbumId: 1 } as CompleteAlbumResponse);
+      });
+
+      it('is offered to a curator when the album is confirmed incomplete, saying how many', async () => {
+        completeness = incomplete(3);
+        const found = await entry(setup('refiner').svc);
+        expect(found).toMatchObject({ labelKey: 'song.getFullAlbum', labelParams: { missing: 3 } });
+      });
+
+      it('is left out when the album is complete', async () => {
+        completeness = incomplete(0);
+        expect(await entry(setup('refiner').svc)).toBeUndefined();
+      });
+
+      it('is left out when completeness is unknown', async () => {
+        expect(await entry(setup('refiner').svc)).toBeUndefined();
+      });
+
+      it('is left out when the read fails, and the rest of the menu still opens', async () => {
+        completeness = () => throwError(() => new Error('500'));
+        const { svc } = setup('refiner');
+        expect(await entry(svc)).toBeUndefined();
+        const rows = await svc.build(partial(), {}).find((a) => a.label === 'Get more')!
+          .children!();
+        expect(rows.map((r) => r.label)).toContain('More by this artist');
+      });
+
+      it('is not asked for, nor shown to, a plain user: the server would refuse them', async () => {
+        completeness = incomplete(3);
+        const { svc } = setup('user');
+        expect(await entry(svc)).toBeUndefined();
+        const api = TestBed.inject(LibraryApiService) as unknown as {
+          getAlbumCompleteness: ReturnType<typeof vi.fn>;
+        };
+        expect(api.getAlbumCompleteness).not.toHaveBeenCalled();
+      });
+
+      it('is left out for a song with no album', async () => {
+        completeness = incomplete(3);
+        const loose = song({
+          artistId: 'ar1',
+          artists: [{ id: 'one', name: 'One', role: 'primary' }],
+        });
+        expect(await entry(setup('refiner').svc, loose)).toBeUndefined();
+      });
+
+      it('confirms, starts the hunt, and toasts the outcome', async () => {
+        completeness = incomplete(3);
+        const { svc } = setup('refiner');
+        (await entry(svc))!.action();
+        const toast = TestBed.inject(ToastService).show as ReturnType<typeof vi.fn>;
+        await vi.waitFor(() => expect(toast).toHaveBeenCalled());
+        const ask = TestBed.inject(ConfirmService).ask as ReturnType<typeof vi.fn>;
+        expect(ask.mock.calls[0]![0]).toContain('"album":"Circus"');
+        expect(ask.mock.calls[0]![1]).toMatchObject({ destructive: false });
+        const api = TestBed.inject(LibraryApiService) as unknown as {
+          completeAlbum: ReturnType<typeof vi.fn>;
+        };
+        expect(api.completeAlbum).toHaveBeenCalledWith('al1');
+        expect(toast).toHaveBeenCalledWith({
+          kind: 'success',
+          message: 'album.completeOutcome.enqueued',
+        });
+      });
+
+      it('does nothing when the confirm is declined', async () => {
+        completeness = incomplete(3);
+        const { svc } = setup('refiner');
+        (TestBed.inject(ConfirmService).ask as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+          false,
+        );
+        (await entry(svc))!.action();
+        await Promise.resolve();
+        await Promise.resolve();
+        const api = TestBed.inject(LibraryApiService) as unknown as {
+          completeAlbum: ReturnType<typeof vi.fn>;
+        };
+        expect(api.completeAlbum).not.toHaveBeenCalled();
+      });
+
+      it("a source outage is an error toast carrying the addon's own detail", async () => {
+        completeness = incomplete(3);
+        completed = () =>
+          of({
+            ok: true,
+            outcome: 'slskd-unavailable',
+            detail: 'connection refused',
+            lidarrAlbumId: 1,
+          } as CompleteAlbumResponse);
+        const { svc } = setup('refiner');
+        (await entry(svc))!.action();
+        const toast = TestBed.inject(ToastService).show as ReturnType<typeof vi.fn>;
+        await vi.waitFor(() => expect(toast).toHaveBeenCalled());
+        expect(toast.mock.calls[0]![0]).toEqual({
+          kind: 'error',
+          message: 'album.completeOutcome.slskd-unavailable — connection refused',
+        });
+      });
+
+      it('a refused or failed request is one plain error toast', async () => {
+        completeness = incomplete(3);
+        completed = () => throwError(() => new Error('403'));
+        const { svc } = setup('refiner');
+        (await entry(svc))!.action();
+        const toast = TestBed.inject(ToastService).show as ReturnType<typeof vi.fn>;
+        await vi.waitFor(() => expect(toast).toHaveBeenCalled());
+        expect(toast.mock.calls[0]![0]).toEqual({ kind: 'error', message: 'album.completeFailed' });
+      });
     });
 
     // #2015: artists close to this one that the library does not have.

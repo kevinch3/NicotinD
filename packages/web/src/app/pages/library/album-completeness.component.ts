@@ -1,22 +1,12 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
-import type { AlbumCompleteness, CompleteAlbumResponse } from '../../services/api/api-types';
+import type { AlbumCompleteness } from '../../services/api/api-types';
+import { COMPLETE_OUTCOME_KIND } from '../../lib/album-complete-outcome';
 import { AuthService } from '../../services/auth.service';
 import { ToastService } from '../../services/toast.service';
 import { TranslateService } from '../../services/translate.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
-
-type Outcome = CompleteAlbumResponse['outcome'];
-
-const OUTCOME_KIND: Record<Outcome, 'info' | 'success' | 'error'> = {
-  enqueued: 'success',
-  'already-complete': 'info',
-  'in-flight': 'info',
-  'no-candidate': 'info',
-  'slskd-unavailable': 'error',
-  'enqueue-failed': 'error',
-};
 
 /**
  * The album page's "incomplete — N of M tracks" badge, and the state behind the
@@ -87,7 +77,7 @@ export class AlbumCompletenessComponent {
     try {
       const res = await firstValueFrom(this.api.completeAlbum(this.albumId()));
       if (res.outcome === 'enqueued' || res.outcome === 'in-flight') this.requested.set(true);
-      const kind = OUTCOME_KIND[res.outcome] ?? 'info';
+      const kind = COMPLETE_OUTCOME_KIND[res.outcome] ?? 'info';
       const message = this.i18n.t(`album.completeOutcome.${res.outcome}`);
       // A failure's detail is the addon's own error — what tells an outage from a rejection.
       this.toast.show({
