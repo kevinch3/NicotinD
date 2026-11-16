@@ -1320,6 +1320,18 @@ export interface LibraryHealthReport {
     audit: {
       metric: { high: number; medium: number; low: number };
       worklist: { rule: string; severity: 'high' | 'medium' | 'low'; count: number }[];
+      /** Artist tags the organizer's sanitizer would alter (#864); a measurement. */
+      artistTagYield?: {
+        examined: number;
+        wouldChange: { values: number; songs: number };
+        wouldDrop: { values: number; songs: number };
+        sample: {
+          column: 'artist' | 'album_artist';
+          raw: string;
+          clean: string | null;
+          songs: number;
+        }[];
+      };
       remediation: string;
     };
     fragments: {

@@ -17,6 +17,7 @@ import { findFolderCoverName } from './cover-sources.js';
 import { losslessSuffixSql } from './library-track-select.js';
 import { lowInformationOnlyGenreSql, unresolvedGenreSql } from './genre-split.js';
 import { genreLaneReport, type GenreLaneReport } from './genre-lanes.js';
+import { artistTagYield, type ArtistTagYield } from './artist-tag-yield.js';
 import { countOpenCurationFlags } from './curation-flags.js';
 import { jointCreditFacts, type JointCreditFacts } from './joint-credits.js';
 import { albumAlreadyComplete, matchingLocalAlbums, onDiskTitles } from './library-completeness.js';
@@ -156,6 +157,11 @@ export interface LibraryHealthReport {
     audit: {
       metric: { high: number; medium: number; low: number };
       worklist: { rule: string; severity: AuditSeverity; count: number }[];
+      /**
+       * Artist tags the organizer's sanitizer would alter (#864): the number of
+       * ids a scan-path sanitizer would re-mint. A measurement; nothing acts on it.
+       */
+      artistTagYield: ArtistTagYield;
       remediation: string;
     };
     fragments: {
@@ -814,6 +820,7 @@ export function libraryHealth(
       audit: {
         metric: severityTally,
         worklist: audit.summary.slice(0, sample),
+        artistTagYield: artistTagYield(db, sample),
         remediation:
           'scripts/audit-library.ts --rule=<id> for detail; repair via repair-pollution / retag-pollution / fix_album_metadata',
       },
