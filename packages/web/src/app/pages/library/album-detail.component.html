@@ -209,6 +209,7 @@
     @if (selection.active()) {
       <app-selection-bar
         [count]="selection.count()"
+        [moreActions]="songMenu.buildMany(menuSelection)"
         [total]="detailControls.filtered().length"
         [canDelete]="auth.canCurate()"
         (selectAll)="selectAllSongs()"
@@ -236,7 +237,8 @@
           [offline]="preserve.isPreserved(song.id)"
           [selectable]="selection.active()"
           [selected]="selection.isSelected(song.id)"
-          [actions]="songMenu.build(toSong(song), { hideGoToAlbum: true })"
+          [selectionCount]="selection.count()"
+          [actions]="songMenu.forRow(toSong(song), { hideGoToAlbum: true }, menuSelection)"
           (play)="playSong(song)"
           (selectedChange)="selection.toggleRange(song.id, albumOrderedIds(), $event.shiftKey)"
         />

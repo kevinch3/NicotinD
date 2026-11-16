@@ -114,6 +114,8 @@ export class TrackRowComponent {
   /** When true, the row shows a checkbox (multi-select mode) reflecting `selected`. */
   readonly selectable = input(false);
   readonly selected = input(false);
+  /** How many songs are selected: past one, a selected row's menu acts on all of them. */
+  readonly selectionCount = input(0);
   readonly artists = input<ArtistCredit[]>();
   readonly actions = input<TrackAction[]>([]);
   readonly play = output<void>();
@@ -139,7 +141,19 @@ export class TrackRowComponent {
     this.coverRevisions.url(songCover(this.track()), 40, this.auth.mediaToken()),
   );
 
-  readonly menuHeader = computed<MenuHeader>(() => ({
+  readonly menuHeader = computed<MenuHeader>(() => {
+    if (this.selected() && this.selectionCount() > 1) {
+      return {
+        title: `${this.selectionCount()} songs selected`,
+        titleKey: 'song.selectionCount',
+        titleParams: { count: this.selectionCount() },
+        plain: true,
+      };
+    }
+    return this.songHeader();
+  });
+
+  private readonly songHeader = computed<MenuHeader>(() => ({
     title: this.track().title,
     subtitle: this.track().artist,
     coverSrc: this.coverSrc(),

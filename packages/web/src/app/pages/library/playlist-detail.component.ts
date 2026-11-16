@@ -14,7 +14,7 @@ import { NavigationService } from '../../services/navigation.service';
 import { PageBackService } from '../../services/page-back.service';
 import { PreserveService } from '../../services/preserve.service';
 import { TransferService } from '../../services/transfer.service';
-import { SongMenuService } from '../../services/song-menu.service';
+import { SongMenuService, songSelection } from '../../services/song-menu.service';
 import { SongPickerComponent } from '../../components/song-picker/song-picker.component';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import type { PlaylistDetail, Song } from '../../services/api/api-types';
@@ -159,6 +159,12 @@ export class PlaylistDetailComponent implements OnInit {
 
   // ─── Multi-select ─────────────────────────────────────────────────
   readonly selection = createSelection();
+  /** The selection as the song menu reads it: a selected row's menu acts on all of it (#2012). */
+  readonly menuSelection = songSelection(
+    this.selection,
+    () => this.visibleSongs(),
+    (s) => s,
+  );
 
   selectAllSongs(): void {
     this.selection.selectAll(this.visibleSongs().map((s) => s.id));

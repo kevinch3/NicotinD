@@ -1,4 +1,6 @@
-import { Component, input, output } from '@angular/core';
+import { Component, inject, input, output } from '@angular/core';
+import { EntityMenuService } from '../../services/entity-menu.service';
+import type { TrackAction } from '../track-row/track-row.component';
 import { IconComponent } from '../icon/icon.component';
 
 /**
@@ -25,6 +27,15 @@ export class SelectionBarComponent {
   readonly canDownload = input(false);
   /** Show a "Save offline" bulk action — distinct from `canDownload` (network download). */
   readonly canPreserve = input(false);
+
+  /** The bulk song menu (`SongMenuService.buildMany`); its `⋯` shows when set (#2012). */
+  readonly moreActions = input<TrackAction[] | null>(null);
+  private readonly entityMenu = inject(EntityMenuService);
+
+  openMore(anchor: HTMLElement): void {
+    const actions = this.moreActions();
+    if (actions?.length) this.entityMenu.open({ actions, anchor });
+  }
 
   readonly selectAll = output<void>();
   readonly play = output<void>();

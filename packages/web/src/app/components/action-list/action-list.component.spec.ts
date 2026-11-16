@@ -345,6 +345,22 @@ describe('ActionListComponent sheet header', () => {
     expect(find(el)).not.toBeNull();
   });
 
+  it('a plain header names a count: translated, and with no artwork', () => {
+    const many: MenuHeader = {
+      title: '3 songs selected',
+      titleKey: 'song.selectionCount',
+      titleParams: { count: 3 },
+      plain: true,
+    };
+    const { el } = setup(MENU([]), true, { sheet: true, header: many });
+    expect(find(el)!.textContent).toContain('T(song.selectionCount)');
+    expect(find(el)!.querySelector('app-cover-art')).toBeNull();
+    TestBed.resetTestingModule();
+    expect(
+      find(setup(MENU([]), true, { sheet: true, header }).el)!.querySelector('app-cover-art'),
+    ).not.toBeNull();
+  });
+
   it('draws nothing without a header', () => {
     expect(find(setup(MENU([]), true, { sheet: true }).el)).toBeNull();
   });

@@ -114,6 +114,7 @@
       @if (selection.active()) {
         <app-selection-bar
           [count]="selection.count()"
+          [moreActions]="songMenu.buildMany(menuSelection)"
           [total]="visibleSongs().length"
           [canDelete]="true"
           deleteLabel="Remove from playlist"
@@ -136,7 +137,8 @@
             [showRemove]="!readOnly()"
             [selectable]="selection.active()"
             [selected]="selection.isSelected(song.id)"
-            [actions]="songMenu.build(song, { onRemoveFromPlaylist: () => removeSong(song.id) })"
+            [selectionCount]="selection.count()"
+            [actions]="songMenu.forRow(song, { onRemoveFromPlaylist: () => removeSong(song.id) }, menuSelection)"
             (play)="playFrom(i)"
             (remove)="removeSong(song.id)"
             (selectedChange)="selection.toggleRange(song.id, playlistOrderedIds(), $event.shiftKey)"

@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { SelectionBarComponent } from './selection-bar.component';
+import { EntityMenuService } from '../../services/entity-menu.service';
 
 // Note: this Angular JIT test harness can't drive `input()` values, so we test
 // the component's real responsibility — each button fires the right output — by
@@ -77,5 +78,31 @@ describe('SelectionBarComponent', () => {
     const fixture = TestBed.createComponent(SelectionBarComponent);
     expect(fixture.componentInstance.preserve).toBeDefined();
     expect(fixture.componentInstance.canPreserve).toBeDefined();
+  });
+});
+
+// #2012: the bar's ⋯ opens the same bulk menu a selected row does.
+describe('SelectionBarComponent more menu', () => {
+  it('opens the given actions anchored on its button', () => {
+    const fixture = setup();
+    const open = vi.spyOn(TestBed.inject(EntityMenuService), 'open').mockImplementation(() => {});
+    const actions = [{ label: 'Like all', action: () => {} }];
+    const bar = fixture.componentInstance as unknown as {
+      moreActions: () => typeof actions | null;
+    };
+    const anchor = document.createElement('button');
+
+    bar.moreActions = () => null;
+    fixture.componentInstance.openMore(anchor);
+    expect(open).not.toHaveBeenCalled();
+
+    bar.moreActions = () => actions;
+    fixture.componentInstance.openMore(anchor);
+    expect(open).toHaveBeenCalledWith({ actions, anchor });
+  });
+
+  it('has no ⋯ on a page that passes no bulk menu', () => {
+    const el = setup().nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="selection-more"]')).toBeNull();
   });
 });

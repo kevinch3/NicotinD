@@ -415,6 +415,7 @@
           @if (selection.active()) {
             <app-selection-bar
               [count]="selection.count()"
+              [moreActions]="songMenu.buildMany(menuSelection)"
               [total]="visibleSongs().length"
               [canPlay]="true"
               [canQueue]="true"
@@ -441,7 +442,8 @@
                 [offline]="preserve.isPreserved(song.id)"
                 [selectable]="selection.active()"
                 [selected]="selection.isSelected(song.id)"
-                [actions]="songMenu.build(song, { hideGoToArtist: true })"
+                [selectionCount]="selection.count()"
+                [actions]="songMenu.forRow(song, { hideGoToArtist: true }, menuSelection)"
                 (play)="playSong(i)"
                 (selectedChange)="selection.toggleRange(song.id, songOrderedIds(), $event.shiftKey)"
               />
