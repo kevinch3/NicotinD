@@ -96,7 +96,7 @@ describe('TrackRowComponent — current-track indicator', () => {
     expect(row().getAttribute('data-playback-state')).toBe('paused');
     expect(row().querySelector('.eq-bars.eq-paused')).not.toBeNull();
     const title = row().querySelector('[data-testid="track-row-title"] p') as HTMLElement;
-    expect(title.classList.contains('text-theme-accent-text')).toBe(true);
+    expect(title.classList.contains('text-theme-accent-2-text')).toBe(true);
   });
 
   // The JIT harness does not land a nested component's signal inputs (see

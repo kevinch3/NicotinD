@@ -20,7 +20,7 @@
       } @else if (playbackState() !== null) {
         <span class="w-6 flex items-center justify-end flex-shrink-0">
           @if (playbackState() === 'buffering') {
-            <span class="inline-block w-3.5 h-3.5 border-2 border-theme border-t-[var(--theme-accent)] rounded-full animate-spin"></span>
+            <span class="inline-block w-3.5 h-3.5 border-2 border-theme border-t-[var(--theme-accent-2)] rounded-full animate-spin"></span>
           } @else {
             <span class="eq-bars" [class.eq-paused]="playbackState() === 'paused'" aria-hidden="true">
               <span></span><span></span><span></span>
@@ -60,7 +60,7 @@
       </ng-template>
       <div class="flex-1 min-w-0">
         <button type="button" appTvNavItem data-testid="track-row-title" (click)="play.emit()" class="w-full text-left">
-          <p appOverflowReveal class="text-sm truncate" [class.text-theme-accent-text]="isCurrent()" [class.text-theme-primary]="!isCurrent()">{{ track().title }}</p>
+          <p appOverflowReveal class="text-sm truncate" [class.text-theme-accent-2-text]="isCurrent()" [class.text-theme-primary]="!isCurrent()">{{ track().title }}</p>
         </button>
         <!-- Second line reads "Artist · Album · subtitle": credits and the album
              are entity links (docs/web-ui.md "Track rows"); subtitle is plain text. -->
