@@ -12,7 +12,7 @@ import { PlaylistService } from '../../services/playlist.service';
 import { TransferService } from '../../services/transfer.service';
 import { LibraryEventsService } from '../../services/library-events.service';
 import { CoverRevisionsService } from '../../services/cover-revisions.service';
-import { SongMenuService } from '../../services/song-menu.service';
+import { SongMenuService, songSelection } from '../../services/song-menu.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
@@ -315,6 +315,12 @@ export class AlbumDetailComponent implements OnInit {
 
   // ─── Multi-select ─────────────────────────────────────────────────
   readonly selection = createSelection();
+  /** The selection as the song menu reads it: a selected row's menu acts on all of it (#2012). */
+  readonly menuSelection = songSelection(
+    this.selection,
+    () => this.detailControls.filtered(),
+    (s) => this.toSong(s),
+  );
 
   selectAllSongs(): void {
     this.selection.selectAll(this.detailControls.filtered().map((s) => s.id));

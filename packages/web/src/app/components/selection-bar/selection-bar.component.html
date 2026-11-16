@@ -45,6 +45,15 @@
         <app-icon name="delete" [size]="16" />
       </button>
     }
+    @if (moreActions(); as more) {
+      <button #moreButton type="button" (click)="openMore(moreButton)" [disabled]="count() === 0 || more.length === 0"
+        data-testid="selection-more" aria-label="More actions" title="More actions" aria-haspopup="menu"
+        class="w-8 h-8 flex items-center justify-center rounded-lg bg-theme-surface text-theme-secondary hover:bg-theme-hover transition disabled:opacity-40 disabled:pointer-events-none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
+        </svg>
+      </button>
+    }
   </div>
   <button type="button" (click)="cancel.emit()"
     data-testid="selection-cancel" aria-label="Cancel" title="Cancel"

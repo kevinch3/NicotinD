@@ -4,16 +4,18 @@
     data-testid="menu-header"
     class="mb-1 flex items-center gap-3 border-b border-theme px-4 pb-3 pt-1"
   >
-    <app-cover-art
-      [src]="header.coverSrc ?? undefined"
-      [artist]="header.artist ?? header.subtitle ?? ''"
-      [album]="header.album ?? header.title"
-      [size]="40"
-      rounded="rounded"
-    />
+    @if (!header.plain) {
+      <app-cover-art
+        [src]="header.coverSrc ?? undefined"
+        [artist]="header.artist ?? header.subtitle ?? ''"
+        [album]="header.album ?? header.title"
+        [size]="40"
+        rounded="rounded"
+      />
+    }
     <div class="min-w-0">
       <p appOverflowReveal class="truncate text-sm font-medium text-theme-primary">
-        {{ header.title }}
+        {{ header.titleKey ? (header.titleKey | t: header.titleParams) : header.title }}
       </p>
       @if (header.subtitle) {
         <p appOverflowReveal class="truncate text-xs text-theme-muted">{{ header.subtitle }}</p>

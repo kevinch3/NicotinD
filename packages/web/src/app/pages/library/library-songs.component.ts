@@ -22,7 +22,7 @@ import { PlayerService, type Track } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { PreserveService } from '../../services/preserve.service';
 import { TransferService } from '../../services/transfer.service';
-import { SongMenuService } from '../../services/song-menu.service';
+import { SongMenuService, songSelection } from '../../services/song-menu.service';
 import {
   TrackRowComponent,
   type TrackAction,
@@ -166,6 +166,12 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
   private songsObserver?: IntersectionObserver;
 
   readonly selection = createSelection();
+  /** The selection as the song menu reads it: a selected row's menu acts on all of it (#2012). */
+  readonly menuSelection = songSelection(
+    this.selection,
+    () => this.visibleSongs(),
+    (s) => s,
+  );
   readonly songOrderedIds = computed(() => this.visibleSongs().map((s) => s.id));
   private selectedSongs(): Song[] {
     return this.visibleSongs().filter((s) => this.selection.isSelected(s.id));

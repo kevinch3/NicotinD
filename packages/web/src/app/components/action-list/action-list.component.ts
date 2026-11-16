@@ -74,6 +74,11 @@ const isQuick = (action: TrackAction): boolean => !!action.quick && !!action.ico
 /** The song, album or artist a menu acts on. */
 export interface MenuHeader {
   title: string;
+  /** i18n key rendered in place of `title` when set, with its placeholder values. */
+  titleKey?: string;
+  titleParams?: Record<string, string | number>;
+  /** No artwork: the header names a count, not one thing. */
+  plain?: boolean;
   subtitle?: string;
   coverSrc?: string | null;
   /** Placeholder art is drawn from these when there is no cover. */

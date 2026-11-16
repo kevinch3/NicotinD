@@ -199,6 +199,33 @@ group. Hidden offline, because every entry writes to the server.
   That option is gone: removal is global (listings filter through `deletedSongIds()`), so no page
   had to opt in.
 
+## Several songs at once (#2012)
+
+With more than one song selected, a **selected** row's `⋯` (and its right-click) opens the menu for
+the whole selection, and the selection bar has a `⋯` that opens the same one. An unselected row,
+and a lone selected one, keep their own menu.
+
+| Bulk item | Does |
+| --- | --- |
+| Play next | queues the selection after the current track, in its own order |
+| Add to queue | appends each |
+| Like all | likes the ones not liked yet; unlikes nothing |
+| Add to playlist ▸ | the same submenu, adding or creating with every selected song |
+| Save offline | saves the selection as one collection |
+| Don't recommend these | vetoes each |
+| Remove from library | curators only; **one** confirm for the count |
+
+- `SongMenuService.buildMany(selection)` builds it; `forRow(song, ctx, selection)` picks between it
+  and `build()` for a row. A page makes its `SongSelection` once with `songSelection(selection,
+  list, toSong)`.
+- The songs are read **when an action runs**, not when the menu is built: a menu is rebuilt on
+  every render, for every row.
+- Every bulk action ends select mode. Offline only Play next and Add to queue remain.
+- On a phone the sheet's header reads "3 songs selected" (`MenuHeader.plain`, no artwork).
+- The bar's own icon buttons stay as the fast path; they still call each page's handlers.
+  "Remove from playlist" for a selection is only on the bar.
+- Shift-click range selection already existed (`createSelection().toggleRange`).
+
 ## Entity menus: albums, artists, genres, playlists (#1298)
 
 The same rule, one level up. `EntityMenuService.build(ref, ctx)` is the single source of a

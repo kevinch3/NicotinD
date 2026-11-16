@@ -178,7 +178,10 @@ function setup(
           addDeletedIds: (ids: string[]) => ids.forEach((i) => deleted.add(i)),
         },
       },
-      { provide: SongMenuService, useValue: { build: () => [] } },
+      {
+        provide: SongMenuService,
+        useValue: { build: () => [], forRow: () => [], buildMany: () => [] },
+      },
     ],
   });
 

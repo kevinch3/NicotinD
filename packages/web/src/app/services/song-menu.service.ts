@@ -24,6 +24,32 @@ import { SearchService } from './search.service';
 import type { NotOwnedRelatedArtist } from './api/api-types';
 import type { TrackAction } from '../components/track-row/track-row.component';
 
+/** The songs a bulk menu acts on (#2012). Read lazily: a menu is built on every render. */
+export interface SongSelection {
+  count(): number;
+  isSelected(id: string): boolean;
+  songs(): BaseSong[];
+  /** Runs after a bulk action, to leave select mode. */
+  done(): void;
+}
+
+/** A page's selection and its song list, as what the bulk menu needs. */
+export function songSelection<T>(
+  selection: { count(): number; isSelected(id: string): boolean; exit(): void },
+  all: () => readonly T[],
+  toSong: (item: T) => BaseSong,
+): SongSelection {
+  return {
+    count: () => selection.count(),
+    isSelected: (id) => selection.isSelected(id),
+    songs: () =>
+      all()
+        .map(toSong)
+        .filter((s) => selection.isSelected(s.id)),
+    done: () => selection.exit(),
+  };
+}
+
 /** How many not-owned artists Similar artists ▸ lists. */
 export const SIMILAR_ARTISTS_SHOWN = 5;
 
@@ -310,6 +336,111 @@ export class SongMenuService {
     if (ctx.extraActions?.length) actions.push(...ctx.extraActions);
 
     return actions;
+  }
+
+  /**
+   * A row's menu: the whole selection's when the row is one of several
+   * selected songs, its own otherwise (#2012).
+   */
+  forRow(song: BaseSong, ctx: SongContext, selection?: SongSelection): TrackAction[] {
+    return selection && selection.count() > 1 && selection.isSelected(song.id)
+      ? this.buildMany(selection)
+      : this.build(song, ctx);
+  }
+
+  /**
+   * The menu for several selected songs: only what makes sense in bulk. A
+   * selected row's `⋯` and the selection bar's `⋯` both open this, so bulk
+   * actions come from one place. Every action ends select mode.
+   */
+  buildMany(selection: SongSelection): TrackAction[] {
+    const each = (run: (song: BaseSong) => void) => () => {
+      for (const song of selection.songs()) run(song);
+      selection.done();
+    };
+    const actions: TrackAction[] = [
+      {
+        label: 'Play next',
+        labelKey: 'song.playNext',
+        icon: 'play-next',
+        group: 'play',
+        quick: true,
+        // Each one is queued right after the current track, so the last goes
+        // in first for the selection to play in its own order.
+        action: () => {
+          for (const song of selection.songs().reverse()) this.player.queueNext(toTrack(song));
+          selection.done();
+        },
+      },
+      {
+        label: 'Add to queue',
+        labelKey: 'song.addToQueue',
+        icon: 'queue',
+        group: 'play',
+        quick: true,
+        action: each((song) => this.player.addToQueue(toTrack(song))),
+      },
+    ];
+    // The rest writes to the server.
+    if (this.offline()) return actions;
+    actions.push(
+      {
+        label: 'Like all',
+        labelKey: 'song.likeAll',
+        icon: 'heart',
+        group: 'play',
+        quick: true,
+        action: each((song) => {
+          if (!this.likes.isLiked(song.id)) void this.likes.toggle(song.id);
+        }),
+      },
+      addToPlaylistAction(
+        this.playlists,
+        () => selection.songs().map((s) => s.id),
+        () => selection.done(),
+      ),
+      {
+        label: 'Save offline',
+        labelKey: 'song.saveOffline',
+        icon: 'download',
+        group: 'keep',
+        action: () => {
+          const tracks = selection.songs().map((s) => toTrack(s));
+          void this.preserve.preserveCollection('selection', 'Selected songs', tracks);
+          selection.done();
+        },
+      },
+      {
+        label: "Don't recommend these",
+        labelKey: 'song.dontRecommendMany',
+        icon: 'thumbs-down',
+        group: 'feedback',
+        action: each((song) => {
+          if (!this.exclusions.isExcluded(song.id)) void this.exclusions.exclude(song.id);
+        }),
+      },
+    );
+    if (this.auth.canCurate()) {
+      actions.push({
+        label: 'Remove from library',
+        labelKey: 'song.removeFromLibrary',
+        icon: 'delete',
+        group: 'remove',
+        destructive: true,
+        action: () => void this.removeManyFromLibrary(selection),
+      });
+    }
+    return actions;
+  }
+
+  /** One confirm for the whole selection. */
+  private async removeManyFromLibrary(selection: SongSelection): Promise<void> {
+    const ids = selection.songs().map((s) => s.id);
+    if (ids.length === 0) return;
+    if (!(await this.confirm.ask(`Remove ${ids.length} songs from library?`))) return;
+    await firstValueFrom(this.api.deleteSongs(ids));
+    this.transfers.addDeletedIds(ids);
+    selection.done();
   }
 
   private readonly similar = new Map<string, Promise<NotOwnedRelatedArtist[]>>();

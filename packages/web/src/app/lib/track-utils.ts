@@ -85,7 +85,14 @@ export function offlineTrackAction(preserve: PreserveService, track: Track): Tra
  * picker (mounted in the layout) for a single song. Shared so every track list
  * (album, search, genre, playlist) surfaces the same affordance.
  */
-export function addToPlaylistAction(playlists: PlaylistService, songId: string): TrackAction {
+export function addToPlaylistAction(
+  playlists: PlaylistService,
+  /** One song, or the songs of a selection, read when the action runs. */
+  songs: string | (() => string[]),
+  /** Runs after the songs were handed over, e.g. to leave select mode. */
+  after: () => void = () => {},
+): TrackAction {
+  const ids = () => (typeof songs === 'string' ? [songs] : songs());
   return {
     label: 'Add to playlist',
     labelKey: 'song.addToPlaylist',
@@ -94,12 +101,21 @@ export function addToPlaylistAction(playlists: PlaylistService, songId: string):
     quick: true,
     // The dialog, for a caller that runs the action directly. A menu opens the
     // submenu below instead (#2009).
-    action: () => playlists.openPicker([songId]),
+    action: () => {
+      playlists.openPicker(ids());
+      after();
+    },
     children: async () => {
       if (!playlists.loaded()) await playlists.refresh();
       return playlistSubmenu(playlists.playlists(), {
-        add: (playlistId) => void playlists.addSongs(playlistId, [songId]),
-        create: (name) => void playlists.create(name, [songId]),
+        add: (playlistId) => {
+          void playlists.addSongs(playlistId, ids());
+          after();
+        },
+        create: (name) => {
+          void playlists.create(name, ids());
+          after();
+        },
       });
     },
   };

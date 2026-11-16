@@ -4,7 +4,12 @@ import { startsGroup } from '../lib/menu-groups';
 import { Router } from '@angular/router';
 import { SearchService } from './search.service';
 import type { RelatedArtistsResponse } from './api/api-types';
-import { SongMenuService, type SongContext } from './song-menu.service';
+import {
+  SongMenuService,
+  songSelection,
+  type SongContext,
+  type SongSelection,
+} from './song-menu.service';
 import { PlayerService } from './player.service';
 import { PlaylistService } from './playlist.service';
 import { PreserveService } from './preserve.service';
@@ -54,10 +59,23 @@ function setup(role: Role = 'user', excluded = false, acquisitionOn = true, iden
       PlayerService,
       { provide: Router, useValue: router },
       { provide: AuthService, useValue: auth },
-      { provide: PlaylistService, useValue: { openPicker: vi.fn() } },
+      {
+        provide: PlaylistService,
+        useValue: {
+          openPicker: vi.fn(),
+          loaded: () => true,
+          playlists: () => [{ id: 'p1', name: 'Road Trip', kind: 'user', modifiedAt: 1 }],
+          addSongs: vi.fn(async () => {}),
+          create: vi.fn(async () => {}),
+        },
+      },
       {
         provide: PreserveService,
-        useValue: { isPreserved: () => false, isPreserving: () => false },
+        useValue: {
+          isPreserved: () => false,
+          isPreserving: () => false,
+          preserveCollection: vi.fn(async () => {}),
+        },
       },
       {
         provide: LibraryApiService,
@@ -583,5 +601,193 @@ describe('SongMenuService.build — every item is translated', () => {
     expect(labelsByKey['song.addToQueue']).toBe('Add to queue');
     expect(en['song.addToQueue']).toBe('Add to queue');
     expect(es['song.addToQueue']).toBe('Añadir a la cola');
+  });
+});
+
+// #2012: with several songs selected, the menu acts on all of them.
+describe('SongMenuService.buildMany', () => {
+  const songs = [
+    song({ id: 'a', title: 'A' }),
+    song({ id: 'b', title: 'B' }),
+    song({ id: 'c', title: 'C' }),
+  ];
+  function selection(picked = ['a', 'c']) {
+    const exit = vi.fn();
+    const state = {
+      count: () => picked.length,
+      isSelected: (id: string) => picked.includes(id),
+      exit,
+    };
+    return {
+      sel: songSelection(
+        state,
+        () => songs,
+        (s) => s,
+      ),
+      exit,
+    };
+  }
+  const run = (svc: SongMenuService, sel: SongSelection, label: string) =>
+    svc.buildMany(sel).find((a) => a.label === label)!;
+
+  it('offers only what makes sense in bulk', () => {
+    const { sel } = selection();
+    expect(
+      setup('user')
+        .svc.buildMany(sel)
+        .map((a) => a.label),
+    ).toEqual([
+      'Play next',
+      'Add to queue',
+      'Like all',
+      'Add to playlist',
+      'Save offline',
+      "Don't recommend these",
+    ]);
+    expect(setup('refiner').svc.buildMany(sel).at(-1)).toMatchObject({
+      label: 'Remove from library',
+      destructive: true,
+    });
+  });
+
+  it('offline, keeps only what the player can do alone', () => {
+    const { svc } = setup('admin');
+    TestBed.inject(OfflineModeService).serverUnreachable.set(true);
+    expect(svc.buildMany(selection().sel).map((a) => a.label)).toEqual([
+      'Play next',
+      'Add to queue',
+    ]);
+  });
+
+  it('reads the selection when an action runs, not when the menu is built', () => {
+    const picked = ['a'];
+    const state = {
+      count: () => picked.length,
+      isSelected: (id: string) => picked.includes(id),
+      exit: vi.fn(),
+    };
+    const { svc } = setup('user');
+    const player = TestBed.inject(PlayerService);
+    const add = vi.spyOn(player, 'addToQueue').mockImplementation(() => {});
+    const action = run(
+      svc,
+      songSelection(
+        state,
+        () => songs,
+        (s) => s,
+      ),
+      'Add to queue',
+    );
+    picked.push('b');
+    action.action();
+    expect(add.mock.calls.map(([t]) => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('Play next queues the selection so it plays in its own order', () => {
+    const { sel, exit } = selection(['a', 'b', 'c']);
+    const { svc } = setup('user');
+    const next = vi.spyOn(TestBed.inject(PlayerService), 'queueNext').mockImplementation(() => {});
+    run(svc, sel, 'Play next').action();
+    // Each lands right after the current track, so the last goes in first.
+    expect(next.mock.calls.map(([t]) => t.id)).toEqual(['c', 'b', 'a']);
+    expect(exit).toHaveBeenCalled();
+  });
+
+  it('Like all likes the ones not liked yet, and unlikes nothing', () => {
+    const { sel, exit } = selection();
+    const { svc } = setup('user');
+    const likes = TestBed.inject(LikeService) as unknown as {
+      isLiked: (id: string) => boolean;
+      toggle: ReturnType<typeof vi.fn>;
+    };
+    likes.isLiked = (id) => id === 'a';
+    run(svc, sel, 'Like all').action();
+    expect(likes.toggle.mock.calls).toEqual([['c']]);
+    expect(exit).toHaveBeenCalled();
+  });
+
+  it('Add to playlist adds every selected song to the picked playlist', async () => {
+    const { sel, exit } = selection();
+    const { svc } = setup('user');
+    const rows = await run(svc, sel, 'Add to playlist').children!();
+    rows.find((r) => r.label === 'Road Trip')!.action();
+    expect(TestBed.inject(PlaylistService).addSongs).toHaveBeenCalledWith('p1', ['a', 'c']);
+    expect(exit).toHaveBeenCalled();
+  });
+
+  it('Add to playlist creates a playlist holding the whole selection', async () => {
+    const { sel } = selection();
+    const { svc } = setup('user');
+    const rows = await run(svc, sel, 'Add to playlist').children!();
+    rows.find((r) => r.label === 'New playlist')!.field!.submit!('Sunday');
+    expect(TestBed.inject(PlaylistService).create).toHaveBeenCalledWith('Sunday', ['a', 'c']);
+  });
+
+  it('Save offline saves the selection as one collection', () => {
+    const { sel } = selection();
+    const { svc } = setup('user');
+    run(svc, sel, 'Save offline').action();
+    const [, , tracks] = (
+      TestBed.inject(PreserveService).preserveCollection as unknown as ReturnType<typeof vi.fn>
+    ).mock.calls[0]!;
+    expect((tracks as { id: string }[]).map((t) => t.id)).toEqual(['a', 'c']);
+  });
+
+  it("Don't recommend these vetoes each song once", () => {
+    const { sel } = selection();
+    const { svc } = setup('user');
+    run(svc, sel, "Don't recommend these").action();
+    expect(
+      (TestBed.inject(RecommendationExclusionsService).exclude as ReturnType<typeof vi.fn>).mock
+        .calls,
+    ).toEqual([['a'], ['c']]);
+  });
+
+  it('Remove from library asks once for the whole selection, then deletes it', async () => {
+    const { sel, exit } = selection();
+    const { svc } = setup('admin');
+    run(svc, sel, 'Remove from library').action();
+    await vi.waitFor(() =>
+      expect(TestBed.inject(TransferService).addDeletedIds).toHaveBeenCalledWith(['a', 'c']),
+    );
+    const ask = TestBed.inject(ConfirmService).ask as ReturnType<typeof vi.fn>;
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(ask.mock.calls[0]![0]).toContain('2 songs');
+    expect(exit).toHaveBeenCalled();
+  });
+
+  it('Remove from library keeps the selection when the confirm is declined', async () => {
+    const { sel, exit } = selection();
+    const { svc } = setup('admin');
+    (TestBed.inject(ConfirmService).ask as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+    run(svc, sel, 'Remove from library').action();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(TestBed.inject(TransferService).addDeletedIds).not.toHaveBeenCalled();
+    expect(exit).not.toHaveBeenCalled();
+  });
+
+  it('carries a key in en and es for every bulk item', async () => {
+    const en = (await import('../../../public/i18n/en.json')).default as Record<string, string>;
+    const es = (await import('../../../public/i18n/es.json')).default as Record<string, string>;
+    for (const action of setup('admin').svc.buildMany(selection().sel)) {
+      expect(en[action.labelKey!], `${action.label} missing from en.json`).toBeTruthy();
+      expect(es[action.labelKey!], `${action.label} missing from es.json`).toBeTruthy();
+    }
+    expect(en['song.selectionCount']).toContain('{count}');
+    expect(es['song.selectionCount']).toContain('{count}');
+  });
+
+  describe('forRow', () => {
+    it('gives a selected row the bulk menu once more than one song is selected', () => {
+      const { svc } = setup('user');
+      const labels = (id: string, picked: string[]) =>
+        svc.forRow(song({ id }), {}, selection(picked).sel).map((a) => a.label);
+      expect(labels('a', ['a', 'c'])).toContain('Like all');
+      // An unselected row keeps its own menu, and so does a lone selected one.
+      expect(labels('b', ['a', 'c'])).toContain('Song info');
+      expect(labels('a', ['a'])).toContain('Song info');
+      expect(svc.forRow(song({ id: 'a' }), {}).map((a) => a.label)).toContain('Song info');
+    });
   });
 });

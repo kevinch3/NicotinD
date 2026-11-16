@@ -26,7 +26,7 @@ import { SelectionBarComponent } from '../../components/selection-bar/selection-
 import { IconComponent } from '../../components/icon/icon.component';
 import { PreserveService } from '../../services/preserve.service';
 import { PlaylistService } from '../../services/playlist.service';
-import { SongMenuService } from '../../services/song-menu.service';
+import { SongMenuService, songSelection } from '../../services/song-menu.service';
 import { PullToRefreshService } from '../../services/pull-to-refresh.service';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -172,6 +172,12 @@ export class GenreDetailComponent implements OnInit, OnDestroy {
 
   // ─── Multi-select ─────────────────────────────────────────────────
   readonly selection = createSelection();
+  /** The selection as the song menu reads it: a selected row's menu acts on all of it (#2012). */
+  readonly menuSelection = songSelection(
+    this.selection,
+    () => this.filteredGenreSongs(),
+    (s) => s,
+  );
 
   selectAllSongs(): void {
     this.selection.selectAll(this.filteredGenreSongs().map((s) => s.id));
