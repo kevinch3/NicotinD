@@ -57,6 +57,16 @@ import {
 } from '../../lib/mosaic-tiles';
 import { packMosaic, type PackedTile, type Packing } from '../../lib/mosaic-packing';
 import {
+  NO_PREVIEW,
+  PREVIEW_COUNT,
+  focusSide,
+  focusTagKey,
+  rotateLead,
+  tapIntent,
+  type FocusPreview,
+} from '../../lib/mosaic-focus';
+import { MosaicFocusComponent } from './mosaic-focus.component';
+import {
   CENTER_SCALE,
   TILE_BASE,
   decayVelocity,
@@ -151,6 +161,25 @@ interface TileContent {
   kind: string;
 }
 
+/** The tile a tap brought forward (#2019), with everything its face shows resolved once. */
+export interface FocusedTile {
+  /** Fresh per focus, so a second tile mounts a new face rather than rebinding the first. */
+  seq: number;
+  tile: MosaicTile;
+  /** Where the tapped face sat on screen, for the grow-in. */
+  from: DOMRect | null;
+  /** The tapped copy's centre on the plane: where Play anchors the field. */
+  x: number;
+  y: number;
+  title: string;
+  subtitle: string;
+  background: string;
+  gradientClass: string;
+  emoji: string;
+  tagKey: string | null;
+  hasMenu: boolean;
+}
+
 /**
  * The landing: one infinite, pannable mosaic where **every tile starts a radio**.
  *
@@ -181,7 +210,7 @@ interface TileContent {
 @Component({
   selector: 'app-mosaic-home',
   standalone: true,
-  imports: [SkeletonComponent, EmptyLibraryComponent],
+  imports: [SkeletonComponent, EmptyLibraryComponent, MosaicFocusComponent],
   templateUrl: './mosaic-home.component.html',
 })
 export class MosaicHomeComponent implements OnInit {
@@ -224,6 +253,26 @@ export class MosaicHomeComponent implements OnInit {
   /** The rim blur stands down under the sheet (#1649): on at once, off only
    *  once the sheet has slid away, so it never fades in under the band. */
   readonly covered = signal(false);
+
+  // --- The tile brought forward (#2019) ---
+  readonly focused = signal<FocusedTile | null>(null);
+  /** A list of zero or one, so the template's `@for` remounts the face per focus. */
+  readonly focusedList = computed(() => {
+    const f = this.focused();
+    return f ? [f] : [];
+  });
+  readonly preview = signal<FocusPreview>(NO_PREVIEW);
+  readonly focusSidePx = signal(190);
+  readonly focusTop = computed(
+    () => `calc((100% - ${this.chromeInset()}px) / 2 - ${this.focusSidePx() / 2}px)`,
+  );
+  private focusSeq = 0;
+  private previewToken = 0;
+  private previewPending: Promise<void> | null = null;
+  /** A playlist's name, for the radio heading Play gives it. */
+  private previewName = '';
+  /** Ids a vibe or genre has already listed, so Shuffle draws others. */
+  private previewShown = new Set<string>();
 
   /** Vibe titles are i18n keys; everything else is already a display string. */
   label(tile: MosaicTile): string {
@@ -324,6 +373,7 @@ export class MosaicHomeComponent implements OnInit {
       if (this.moved > TAP_SLOP_PX) {
         this.cancelPress();
         this.setMoving(true);
+        this.blurFocus();
       }
       if (this.lockHeld && this.anchor) {
         this.lockX += dx;
@@ -381,6 +431,7 @@ export class MosaicHomeComponent implements OnInit {
     effect((onCleanup) => {
       if (this.sheetOver()) {
         this.covered.set(true);
+        untracked(() => this.blurFocus());
         return;
       }
       if (!untracked(this.covered)) return;
@@ -484,6 +535,7 @@ export class MosaicHomeComponent implements OnInit {
    */
   private async load(): Promise<void> {
     const token = ++this.loadToken;
+    this.blurFocus();
     const next = this.setup.isOffline() ? await this.offlineTiles() : await this.onlineTiles();
     if (token !== this.loadToken) return;
     this.tiles.set(next);
@@ -708,33 +760,187 @@ export class MosaicHomeComponent implements OnInit {
       }
       return;
     }
-    if (this.moved > TAP_SLOP_PX) return;
     const tile = this.tileFromEvent(e);
-    if (!tile) return;
-    const el = this.tileElement(e);
-    const focused = el !== null && this.focusElement(el, tile);
-    void this.start(tile, focused);
+    switch (tapIntent(tile, this.focused()?.tile.key ?? null, this.moved, TAP_SLOP_PX)) {
+      case 'focus':
+        if (tile) this.focus(tile, this.tileElement(e));
+        break;
+      case 'navigate':
+        if (tile) void this.start(tile);
+        break;
+      case 'blur':
+        this.blurFocus();
+        break;
+    }
   }
 
-  /** Glide the exact copy that was tapped to the centre. */
-  private focusElement(el: HTMLElement, tile: MosaicTile): boolean {
+  /** The plane centre of the exact copy that was tapped. */
+  private copyCentre(el: HTMLElement): { x: number; y: number } | null {
     const packed = this.byId.get(Number(el.dataset['tileId']));
     const W = this.packing?.W;
-    if (!packed || !W) return false;
+    if (!packed || !W) return null;
     const [i, j] = (el.dataset['cell'] ?? HOME_CELL).split(',').map(Number);
-    this.anchorOn(packed.x + i * W, packed.y + j * W, tile);
-    return true;
+    return { x: packed.x + i * W, y: packed.y + j * W };
   }
 
-  /** From the accessible list: the home copy of the tile nearest the camera. */
-  private focusTile(tile: MosaicTile): void {
+  /** The plane centre of the home copy of a tile nearest the camera. */
+  private nearestCopy(tile: MosaicTile): { x: number; y: number } | null {
     const packing = this.packing;
     const packed = packing?.tiles.find((p) => p.tile.key === tile.key);
-    if (!packing || !packed) return;
+    if (!packing || !packed) return null;
     const W = packing.W;
     const i = Math.round((this.cx - packed.x) / W);
     const j = Math.round((this.cy - packed.y) / W);
-    this.anchorOn(packed.x + i * W, packed.y + j * W, tile);
+    return { x: packed.x + i * W, y: packed.y + j * W };
+  }
+
+  /** From the accessible list: centre the nearest copy of the tile it started. */
+  private focusTile(tile: MosaicTile): void {
+    const at = this.nearestCopy(tile);
+    if (at) this.anchorOn(at.x, at.y, tile);
+  }
+
+  // -------------------------------------------------------------------------
+  // The tile brought forward (#2019): a tap centres it, only its Play starts it
+  // -------------------------------------------------------------------------
+
+  focus(tile: MosaicTile, el: HTMLElement | null): void {
+    const at = (el && this.copyCentre(el)) ?? this.nearestCopy(tile);
+    // The centre is this tile's now; a playing tile no longer holds it.
+    this.anchor = null;
+    if (at) this.glideTo(at.x, at.y, GLIDE_MS);
+    const a = tile.action;
+    const track = a.type === 'song' || a.type === 'offline' ? a.track : null;
+    const gradient =
+      tile.kind === 'vibe' || tile.kind === 'downloads'
+        ? `bg-gradient-to-br ${tile.gradient ?? ''} text-white`
+        : tile.kind === 'genre'
+          ? 'bg-theme-surface-2 text-theme-secondary'
+          : '';
+    this.focused.set({
+      seq: ++this.focusSeq,
+      tile,
+      from: (el?.firstElementChild ?? el)?.getBoundingClientRect() ?? null,
+      x: at?.x ?? this.cx,
+      y: at?.y ?? this.cy,
+      title: this.label(tile),
+      subtitle: track?.album ? `${tile.subtitle} · ${track.album}` : tile.subtitle,
+      background: gradient ? '' : this.faceBackground(tile, this.focusSidePx()),
+      gradientClass: gradient,
+      emoji: tile.emoji ?? '',
+      tagKey: focusTagKey(tile),
+      hasMenu: this.tileActions(tile).length > 0,
+    });
+    this.previewShown.clear();
+    this.previewPending = this.loadPreview(tile, []);
+  }
+
+  blurFocus(): void {
+    if (this.focused() === null) return;
+    this.previewToken++;
+    this.previewPending = null;
+    this.previewShown.clear();
+    this.focused.set(null);
+    this.preview.set(NO_PREVIEW);
+  }
+
+  /**
+   * List what a playlist, genre or vibe would start with. The token drops a
+   * fetch that lands after the focus moved on.
+   */
+  private async loadPreview(tile: MosaicTile, exclude: string[]): Promise<void> {
+    const token = ++this.previewToken;
+    const a = tile.action;
+    if (a.type !== 'filter' && a.type !== 'playlist') {
+      this.preview.set(NO_PREVIEW);
+      return;
+    }
+    this.preview.set({ status: 'loading', tracks: [] });
+    try {
+      let tracks: Track[];
+      if (a.type === 'filter') {
+        let songs = await firstValueFrom(this.api.getFilterRadio(a.filter, exclude, 20));
+        if (songs.length === 0 && exclude.length > 0) {
+          // Every track has had its turn: start the draw over.
+          if (token !== this.previewToken) return;
+          this.previewShown.clear();
+          songs = await firstValueFrom(this.api.getFilterRadio(a.filter, [], 20));
+        }
+        tracks = songs.map((s) => toTrack(s));
+      } else {
+        const detail = await firstValueFrom(this.playlistsApi.getPlaylist(a.playlistId));
+        this.previewName = detail.name;
+        tracks = detail.songs.map((s) => toTrack(s));
+      }
+      if (token !== this.previewToken) return;
+      this.showPreview(tracks);
+    } catch {
+      if (token !== this.previewToken) return;
+      this.blurFocus();
+      this.toast.show({ message: "Couldn't start radio — try again", kind: 'error' });
+    }
+  }
+
+  private showPreview(tracks: Track[]): void {
+    for (const t of tracks.slice(0, PREVIEW_COUNT)) this.previewShown.add(t.id);
+    this.preview.set(tracks.length ? { status: 'ready', tracks } : { status: 'empty', tracks: [] });
+  }
+
+  async shuffleFocused(): Promise<void> {
+    const f = this.focused();
+    if (!f || this.preview().status !== 'ready') return;
+    if (f.tile.action.type === 'playlist') {
+      this.showPreview(rotateLead(this.preview().tracks));
+      return;
+    }
+    this.previewPending = this.loadPreview(f.tile, [...this.previewShown]);
+    await this.previewPending;
+  }
+
+  /** Start what the tile brought forward lists, then hand the centre back to it as the playing tile. */
+  async playFocused(): Promise<void> {
+    const f = this.focused();
+    if (!f || this.starting()) return;
+    this.starting.set(f.tile.key);
+    try {
+      await this.previewPending;
+      if (this.focused() !== f) return;
+      const a = f.tile.action;
+      const tracks = this.preview().tracks;
+      switch (a.type) {
+        case 'song':
+          this.player.startRadio(a.track);
+          break;
+        case 'offline':
+          this.playDownloaded(a.track);
+          break;
+        case 'filter':
+          if (!tracks.length) return;
+          this.player.startRadioWithFilter(tracks, a.filter);
+          break;
+        case 'playlist':
+          if (!tracks.length) return;
+          this.player.startRadioWithTracks(tracks, {
+            seedIds: tracks.map((t) => t.id),
+            name: this.previewName,
+          });
+          break;
+        default:
+          return;
+      }
+      this.anchorOn(f.x, f.y, f.tile);
+      this.blurFocus();
+    } catch {
+      this.toast.show({ message: "Couldn't start radio — try again", kind: 'error' });
+    } finally {
+      this.starting.set(null);
+    }
+  }
+
+  openFocusedMenu(anchor: HTMLElement): void {
+    const f = this.focused();
+    const actions = f ? this.tileActions(f.tile) : [];
+    if (actions.length > 0) this.entityMenu.open({ actions, anchor });
   }
 
   private anchorOn(x: number, y: number, tile: MosaicTile): void {
@@ -877,6 +1083,8 @@ export class MosaicHomeComponent implements OnInit {
   // -------------------------------------------------------------------------
 
   private repack(): void {
+    // The geometry under a tile brought forward is about to change.
+    this.blurFocus();
     const stage = this.stageRef()?.nativeElement;
     const list = this.tiles();
     if (!stage || list.length === 0) {
@@ -887,6 +1095,7 @@ export class MosaicHomeComponent implements OnInit {
     if (stageMin <= 1) return;
 
     const ref = sizingReference(stageMin);
+    this.focusSidePx.set(focusSide(stageMin));
     this.packing = packMosaic(list, (t) => tileSize(t.score, ref) * TILE_BASE);
     this.lensRadius = stageMin;
     this.cx = this.packing.W / 2;
@@ -938,21 +1147,26 @@ export class MosaicHomeComponent implements OnInit {
     // Song, resume and playlist faces: cover behind a bottom scrim. The
     // placeholder gradient sits underneath, so a missing or slow cover still
     // reads as a deliberate tile rather than a hole.
-    const fallback = placeholderGradient(t.subtitle, t.title);
-    // Sized for the centre, where the fisheye draws it largest; at the live rev (#1666).
-    const rel = this.coverRevisions.url(
-      songCover(t),
-      coverSizeBucket(s * CENTER_SCALE),
-      this.auth.mediaToken(),
-    );
-    const cover = rel ? this.server.apiUrl(rel) : null;
-    const bg = cover
-      ? `background-image:url('${encodeURI(cover)}'),${fallback};background-size:cover;background-position:center`
-      : `background-image:${fallback}`;
+    // Sized for the centre, where the fisheye draws it largest.
+    const image = this.faceBackground(t, s * CENTER_SCALE);
+    const bg = image.startsWith('url(')
+      ? `background-image:${image};background-size:cover;background-position:center`
+      : `background-image:${image}`;
     return `<div class="mosaic-face text-white" style="${faceVars};${bg}">
       <div class="mosaic-scrim"><b class="mosaic-name" data-overflow-reveal style="font-size:${titleSize}px">${title}</b><span class="mosaic-name" data-overflow-reveal>${subtitle}</span></div>
       ${MORE_BUTTON}
     </div>`;
+  }
+
+  /** A cover face's `background-image`: the cover at the live rev (#1666) over its placeholder. */
+  private faceBackground(t: MosaicTile, sizePx: number): string {
+    const fallback = placeholderGradient(t.subtitle, t.title);
+    const rel = this.coverRevisions.url(
+      songCover(t),
+      coverSizeBucket(sizePx),
+      this.auth.mediaToken(),
+    );
+    return rel ? `url('${encodeURI(this.server.apiUrl(rel))}'),${fallback}` : fallback;
   }
 
   /**

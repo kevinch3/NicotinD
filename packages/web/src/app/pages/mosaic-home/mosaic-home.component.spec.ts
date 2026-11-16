@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { MosaicHomeComponent, TILE_INSET } from './mosaic-home.component';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
@@ -28,6 +28,7 @@ import type { Track } from '../../services/player.service';
 import { LANE_MIX, type MosaicTile } from '../../lib/mosaic-tiles';
 import type { PackedTile, Packing } from '../../lib/mosaic-packing';
 import { haptic } from '../../lib/haptics';
+import { NO_PREVIEW } from '../../lib/mosaic-focus';
 import { OverflowReveal } from '../../lib/overflow-reveal';
 
 vi.mock('../../lib/haptics', async (importOriginal) => ({
@@ -509,6 +510,8 @@ interface MosaicInternals {
   html: Map<string, string>;
   reveals: Map<HTMLElement, OverflowReveal[]>;
   tileHtml(p: PackedTile, t: MosaicTile): string;
+  repack(): void;
+  moved: number;
 }
 
 const preservedMeta = (over: Partial<PreservedTrackMeta> = {}): PreservedTrackMeta => ({
@@ -810,8 +813,8 @@ describe('mosaic depth (#1638)', () => {
       }
     };
 
-    it('a tap centres the tapped copy with a glide, and starts it without raising the sheet', async () => {
-      const { c, el, player } = await drawn();
+    it('a tap centres the tapped copy with a glide and brings it forward, and starts nothing (#2019)', async () => {
+      const { component, c, el, player } = await drawn();
       c.byId.set(0, c.packing!.tiles[0]);
       c.cells.set('1,0', 'base');
       el.dataset['cell'] = '1,0';
@@ -819,7 +822,8 @@ describe('mosaic depth (#1638)', () => {
       const click = new MouseEvent('click', { bubbles: true });
       Object.defineProperty(click, 'target', { value: el });
       c.onStageClick(click);
-      expect(player.startRadio).toHaveBeenCalled();
+      expect(component.focused()?.tile.key).toBe('slot:0');
+      expect(player.startRadio).not.toHaveBeenCalled();
       expect(player.nowPlayingOpen()).toBe(false);
       // Copy (1,0) of a tile at plane (0,0) sits one patch width (500) along.
       c.now = () => 120;
@@ -1183,5 +1187,306 @@ describe('offline', () => {
     )?.textContent;
     expect(text).toContain("You're offline");
     expect(text).not.toContain('add some music');
+  });
+});
+
+describe('a tile brought forward (#2019)', () => {
+  const songs = (prefix: string, n: number): Song[] =>
+    Array.from({ length: n }, (_, i) => song({ id: `${prefix}${i + 1}`, title: `T${i + 1}` }));
+  const ids = (tracks: Array<{ id: string }>): string[] => tracks.map((t) => t.id);
+
+  it("Play starts a song's radio, lets the focus go, and anchors the field on it", async () => {
+    const { component, player, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+    await settle(fixture);
+    const tile = component.tiles().find((t) => t.kind === 'song')!;
+    component.focus(tile, null);
+    expect(component.focused()?.tile).toBe(tile);
+    expect(component.preview()).toEqual(NO_PREVIEW);
+    expect(player.startRadio).not.toHaveBeenCalled();
+    await component.playFocused();
+    expect(player.startRadio).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
+    expect(component.focused()).toBeNull();
+    expect(internals(component).anchor).toEqual(expect.objectContaining({ trackId: 'a' }));
+    expect(player.nowPlayingOpen()).toBe(false);
+  });
+
+  it('a vibe lists what it starts with, and Play starts exactly that list from one fetch', async () => {
+    const { component, player, libraryApi, fixture } = setup({ filterRadio: songs('f', 5) });
+    await settle(fixture);
+    component.focus(
+      component.tiles().find((t) => t.key === 'vibe:happy')!,
+      null,
+    );
+    expect(component.preview().status).toBe('loading');
+    await settle(fixture);
+    expect(component.preview().status).toBe('ready');
+    expect(ids(component.preview().tracks)).toEqual(['f1', 'f2', 'f3', 'f4', 'f5']);
+    await component.playFocused();
+    expect(libraryApi.getFilterRadio).toHaveBeenCalledTimes(1);
+    expect(player.startRadioWithFilter).toHaveBeenCalledTimes(1);
+    const [list, filter] = player.startRadioWithFilter.mock.calls[0];
+    expect(ids(list)).toEqual(['f1', 'f2', 'f3', 'f4', 'f5']);
+    expect(filter).toEqual({ moods: ['happy'] });
+    expect(component.focused()).toBeNull();
+  });
+
+  it('a playlist starts in the order shown, anchored on the playlist', async () => {
+    const { component, player, fixture } = setup({
+      playlists: [playlist({ id: 'p7' })],
+      playlistSongs: songs('ps', 5),
+    });
+    await settle(fixture);
+    component.focus(
+      component.tiles().find((t) => t.kind === 'playlist')!,
+      null,
+    );
+    await settle(fixture);
+    await component.playFocused();
+    const [list, opts] = player.startRadioWithTracks.mock.calls[0];
+    expect(ids(list)).toEqual(['ps1', 'ps2', 'ps3', 'ps4', 'ps5']);
+    expect(opts).toEqual(expect.objectContaining({ seedIds: ['ps1', 'ps2', 'ps3', 'ps4', 'ps5'] }));
+  });
+
+  it("bringing a tile forward releases a playing tile's hold", async () => {
+    const { component, player, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+    await settle(fixture);
+    const c = internals(component);
+    c.anchor = { x: 0, y: 0, trackId: null };
+    player.isPlaying.set(true);
+    component.focus(
+      component.tiles().find((t) => t.kind === 'song')!,
+      null,
+    );
+    expect(c.anchor).toBeNull();
+  });
+
+  it('Shuffle on a vibe fetches again without the tracks already shown', async () => {
+    const { component, libraryApi, fixture } = setup({ filterRadio: songs('f', 5) });
+    await settle(fixture);
+    component.focus(
+      component.tiles().find((t) => t.key === 'vibe:happy')!,
+      null,
+    );
+    await settle(fixture);
+    libraryApi.getFilterRadio.mockReturnValueOnce(of(songs('g', 4)));
+    await component.shuffleFocused();
+    expect(libraryApi.getFilterRadio).toHaveBeenLastCalledWith(
+      { moods: ['happy'] },
+      ['f1', 'f2', 'f3'],
+      20,
+    );
+    expect(ids(component.preview().tracks)).toEqual(['g1', 'g2', 'g3', 'g4']);
+  });
+
+  it('Shuffle starts over once every track has been shown', async () => {
+    const { component, libraryApi, fixture } = setup({ filterRadio: songs('f', 5) });
+    await settle(fixture);
+    component.focus(
+      component.tiles().find((t) => t.key === 'vibe:happy')!,
+      null,
+    );
+    await settle(fixture);
+    libraryApi.getFilterRadio.mockReturnValueOnce(of([]));
+    await component.shuffleFocused();
+    expect(libraryApi.getFilterRadio).toHaveBeenLastCalledWith({ moods: ['happy'] }, [], 20);
+    expect(component.preview().status).toBe('ready');
+  });
+
+  it('Shuffle on a playlist rotates the list it already has', async () => {
+    const { component, playlistsApi, fixture } = setup({
+      playlists: [playlist({ id: 'p7' })],
+      playlistSongs: songs('ps', 5),
+    });
+    await settle(fixture);
+    component.focus(
+      component.tiles().find((t) => t.kind === 'playlist')!,
+      null,
+    );
+    await settle(fixture);
+    await component.shuffleFocused();
+    expect(ids(component.preview().tracks)).toEqual(['ps4', 'ps5', 'ps1', 'ps2', 'ps3']);
+    expect(playlistsApi.getPlaylist).toHaveBeenCalledTimes(1);
+  });
+
+  it('an empty vibe says so and Play starts nothing', async () => {
+    const { component, player, toast, fixture } = setup({ filterRadio: [] });
+    await settle(fixture);
+    component.focus(
+      component.tiles().find((t) => t.kind === 'vibe')!,
+      null,
+    );
+    await settle(fixture);
+    expect(component.preview().status).toBe('empty');
+    await component.playFocused();
+    expect(player.startRadioWithFilter).not.toHaveBeenCalled();
+    expect(toast.show).not.toHaveBeenCalled();
+  });
+
+  it('a preview that cannot be fetched lets the tile go and says so', async () => {
+    const { component, toast, fixture } = setup({ filterRadioFails: true });
+    await settle(fixture);
+    component.focus(
+      component.tiles().find((t) => t.kind === 'vibe')!,
+      null,
+    );
+    await settle(fixture);
+    expect(component.focused()).toBeNull();
+    expect(toast.show).toHaveBeenCalledWith({
+      message: "Couldn't start radio — try again",
+      kind: 'error',
+    });
+  });
+
+  it('a preview that lands after the focus moved on is dropped', async () => {
+    const { component, libraryApi, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+    await settle(fixture);
+    const late = new Subject<Song[]>();
+    libraryApi.getFilterRadio.mockReturnValueOnce(late);
+    component.focus(
+      component.tiles().find((t) => t.kind === 'vibe')!,
+      null,
+    );
+    component.focus(
+      component.tiles().find((t) => t.kind === 'song')!,
+      null,
+    );
+    late.next(songs('f', 5));
+    late.complete();
+    await settle(fixture);
+    expect(component.preview()).toEqual(NO_PREVIEW);
+    expect(component.focused()?.tile.kind).toBe('song');
+  });
+
+  it('Play pressed before the preview lands waits for it and starts once, with that list', async () => {
+    const { component, player, libraryApi, fixture } = setup();
+    await settle(fixture);
+    const late = new Subject<Song[]>();
+    libraryApi.getFilterRadio.mockReturnValueOnce(late);
+    component.focus(
+      component.tiles().find((t) => t.key === 'vibe:happy')!,
+      null,
+    );
+    const playing = component.playFocused();
+    expect(player.startRadioWithFilter).not.toHaveBeenCalled();
+    late.next(songs('f', 2));
+    late.complete();
+    await playing;
+    expect(player.startRadioWithFilter).toHaveBeenCalledTimes(1);
+    expect(ids(player.startRadioWithFilter.mock.calls[0][0])).toEqual(['f1', 'f2']);
+  });
+
+  it('a tap on empty space, a pan, a repack and a connectivity swap each let the focus go', async () => {
+    const { component, fixture, isOffline } = setup({ tasteBreakers: [song({ id: 'a' })] });
+    await settle(fixture);
+    const c = internals(component);
+    const tile = component.tiles().find((t) => t.kind === 'song')!;
+
+    component.focus(tile, null);
+    c.moved = 0;
+    c.onStageClick(new MouseEvent('click'));
+    expect(component.focused()).toBeNull();
+
+    component.focus(tile, null);
+    const move = (type: string, x: number): void => {
+      const e = new MouseEvent(type, { clientX: x, clientY: 0, bubbles: true });
+      if (type === 'pointerdown') component.drag.start(e as unknown as PointerEvent);
+      else document.dispatchEvent(e);
+    };
+    move('pointerdown', 0);
+    move('pointermove', 3);
+    expect(component.focused()).not.toBeNull();
+    move('pointermove', 40);
+    expect(component.focused()).toBeNull();
+    move('pointerup', 40);
+
+    component.focus(tile, null);
+    c.repack();
+    expect(component.focused()).toBeNull();
+
+    component.focus(tile, null);
+    isOffline.set(true);
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(component.focused()).toBeNull();
+  });
+
+  it('Now Playing rising over the field lets the focus go', async () => {
+    const { component, player, fixture } = setup({ tasteBreakers: [song({ id: 'a' })] });
+    await settle(fixture);
+    component.focus(
+      component.tiles().find((t) => t.kind === 'song')!,
+      null,
+    );
+    player.nowPlayingOpen.set(true);
+    fixture.detectChanges();
+    expect(component.focused()).toBeNull();
+  });
+
+  it('the downloads shortcut still navigates on the first tap', async () => {
+    const { component, router, fixture } = setup({
+      offline: true,
+      preserved: [preservedMeta({ id: 'd1' })],
+    });
+    await settle(fixture);
+    const c = internals(component);
+    vi.spyOn(c, 'tileFromEvent').mockReturnValue(
+      component.tiles().find((t) => t.kind === 'downloads')!,
+    );
+    c.moved = 0;
+    c.onStageClick(new MouseEvent('click'));
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/library');
+    expect(component.focused()).toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  it('offline, a downloaded tile comes forward with no tag and no fetch, and plays from the device', async () => {
+    const { component, player, libraryApi, playlistsApi, fixture } = setup({
+      offline: true,
+      preserved: [preservedMeta({ id: 'd1' }), preservedMeta({ id: 'd2' })],
+    });
+    await settle(fixture);
+    component.focus(
+      component.tiles().find((t) => t.key === 'song:d2')!,
+      null,
+    );
+    expect(component.focused()?.tagKey).toBeNull();
+    expect(component.preview()).toEqual(NO_PREVIEW);
+    await component.playFocused();
+    expect(libraryApi.getFilterRadio).not.toHaveBeenCalled();
+    expect(playlistsApi.getPlaylist).not.toHaveBeenCalled();
+    expect(player.playWithContext).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: 'd1' }), expect.objectContaining({ id: 'd2' })],
+      1,
+      { type: 'saved-offline', name: 'Downloaded' },
+    );
+    expect(player.startRadio).not.toHaveBeenCalled();
+  });
+
+  it('a song says where it came from, and reads artist and album once forward', async () => {
+    const { component, fixture } = setup({
+      recentPlays: [recent({ songId: 'r9', artist: 'Ana', album: 'Mar' })],
+    });
+    await settle(fixture);
+    component.focus(
+      component.tiles().find((t) => t.key === 'song:r9')!,
+      null,
+    );
+    expect(component.focused()?.tagKey).toBe('mosaic.tag.recent');
+    expect(component.focused()?.subtitle).toBe('Ana · Mar');
+  });
+
+  it("⋯ on the tile brought forward opens that tile's own menu at the button", async () => {
+    const { component, entityMenu, songMenu, fixture } = setup({
+      tasteBreakers: [song({ id: 'a' })],
+    });
+    await settle(fixture);
+    component.focus(
+      component.tiles().find((t) => t.kind === 'song')!,
+      null,
+    );
+    const anchor = document.createElement('button');
+    component.openFocusedMenu(anchor);
+    expect(songMenu.build).toHaveBeenCalled();
+    expect(entityMenu.open).toHaveBeenCalledWith(expect.objectContaining({ anchor }));
   });
 });

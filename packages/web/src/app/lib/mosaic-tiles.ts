@@ -18,6 +18,9 @@ import { VIBE_PRESETS, type VibePreset } from './vibe-presets';
 
 export type MosaicTileKind = 'song' | 'playlist' | 'vibe' | 'genre' | 'downloads';
 
+/** Which home lane drew a song tile; discovery and offline tiles have none. */
+export type MosaicLane = 'recent' | 'keepVibe' | 'tasteBreaker';
+
 /**
  * What tapping a tile does.
  *
@@ -40,6 +43,7 @@ export interface MosaicTile {
   /** Stable identity across reloads — also the dedupe key and the jitter seed. */
   key: string;
   kind: MosaicTileKind;
+  lane?: MosaicLane;
   title: string;
   subtitle: string;
   /** 0..1; drives tile size through `tileSize`. */
@@ -285,11 +289,12 @@ export function tileSize(score: number, stageMin: number): number {
 
 /** One library song as a mosaic tile — the shape both the home patch and the
  *  discovery cells build from. */
-export function songToTile(s: Song, w: PlayWeights): MosaicTile {
+export function songToTile(s: Song, w: PlayWeights, lane?: MosaicLane): MosaicTile {
   const key = `song:${s.id}`;
   return {
     key,
     kind: 'song',
+    ...(lane ? { lane } : {}),
     title: s.title,
     subtitle: s.artist,
     score: scoreSong(key, s.id, s.artist, s.popularity, w),
@@ -320,6 +325,7 @@ function recentToTile(p: RecentPlay, w: PlayWeights): MosaicTile {
   return {
     key,
     kind: 'song',
+    lane: 'recent',
     title: p.title ?? 'Unknown title',
     subtitle: p.artist ?? 'Unknown artist',
     // A recent play carries no popularity — the history row is a snapshot,
@@ -353,7 +359,7 @@ export function buildMosaicTiles(
   const recent = drawFrom(sources.recentPlays, LANE_MIX.recent.tiles, rng);
   const keepVibe = drawFrom(sources.keepVibe, LANE_MIX.keepVibe.tiles, rng);
   for (const p of recent) tiles.push(recentToTile(p, w));
-  for (const s of keepVibe) tiles.push(songToTile(s, w));
+  for (const s of keepVibe) tiles.push(songToTile(s, w, 'keepVibe'));
 
   // Breakers fill what the two draws left, and never re-admit a song either
   // *pool* holds: a recent play that lost its draw must not walk back in as
@@ -365,7 +371,7 @@ export function buildMosaicTiles(
     if (room <= 0) break;
     if (held.has(s.id)) continue;
     held.add(s.id);
-    tiles.push(songToTile(s, w));
+    tiles.push(songToTile(s, w, 'tasteBreaker'));
     room--;
   }
 

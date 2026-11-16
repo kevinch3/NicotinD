@@ -1,0 +1,88 @@
+<div
+  class="mosaic-focus-face {{ gradientClass() }}"
+  [class.mosaic-focus-face-cover]="background() !== ''"
+  [style.width.px]="side()"
+  [style.height.px]="side()"
+  [style.background-image]="background() || null"
+>
+  @if (tagKey(); as key) {
+    <span class="mosaic-focus-tag" data-testid="mosaic-focus-tag">{{ key | t }}</span>
+  }
+  @if (hasMenu()) {
+    <button
+      #moreButton
+      type="button"
+      class="mosaic-focus-more"
+      data-testid="mosaic-focus-more"
+      [attr.aria-label]="'mosaic.focus.more' | t"
+      (click)="$event.stopPropagation(); more.emit(moreButton)"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <circle cx="5" cy="12" r="2" />
+        <circle cx="12" cy="12" r="2" />
+        <circle cx="19" cy="12" r="2" />
+      </svg>
+    </button>
+  }
+  @if (emoji()) {
+    <span class="mosaic-focus-emoji" aria-hidden="true">{{ emoji() }}</span>
+  }
+  <div class="mosaic-focus-label">
+    <b appOverflowReveal="always" class="truncate" data-testid="mosaic-focus-title">{{ title() }}</b>
+    <span appOverflowReveal="always" class="truncate" data-testid="mosaic-focus-subtitle">{{ subtitle() }}</span>
+  </div>
+  <button
+    type="button"
+    class="mosaic-focus-play"
+    data-testid="mosaic-focus-play"
+    [disabled]="!canPlay()"
+    [attr.aria-label]="'mosaic.focus.play' | t: { name: title() }"
+    (click)="play.emit()"
+  >
+    <svg width="18" height="18" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true">
+      <path d="M1.5 0.8v8.4L9 5z" />
+    </svg>
+  </button>
+</div>
+
+@if (preview().status !== 'none') {
+  <div class="mosaic-focus-preview" data-testid="mosaic-focus-preview">
+    @if (preview().status === 'empty') {
+      <p class="mosaic-focus-empty" data-testid="mosaic-focus-empty">
+        {{ 'mosaic.focus.empty' | t }}
+      </p>
+    } @else {
+      <div class="mosaic-focus-preview-head">
+        <span>{{ 'mosaic.focus.startsWith' | t }}</span>
+        @if (canShuffle()) {
+          <button
+            type="button"
+            class="mosaic-focus-shuffle"
+            data-testid="mosaic-focus-shuffle"
+            [disabled]="busy()"
+            (click)="shuffle.emit()"
+          >
+            {{ 'mosaic.focus.shuffle' | t }}
+          </button>
+        }
+      </div>
+      @if (preview().status === 'loading') {
+        @for (row of skeletonRows; track row) {
+          <div
+            class="skeleton-block mosaic-focus-skeleton"
+            data-testid="mosaic-focus-loading"
+          ></div>
+        }
+      } @else {
+        <ul class="mosaic-focus-rows">
+          @for (track of lead(); track track.id) {
+            <li data-testid="mosaic-focus-preview-row">
+              <b appOverflowReveal class="truncate">{{ track.title }}</b>
+              <span appOverflowReveal class="truncate">{{ track.artist }}</span>
+            </li>
+          }
+        </ul>
+      }
+    }
+  </div>
+}

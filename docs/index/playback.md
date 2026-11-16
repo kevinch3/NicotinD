@@ -126,10 +126,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   user chose (`HOME_VIEW_LOADERS`, `homeViewOf`) — the mosaic by default or the classic shelves —
   with a `HomeViewSwitchComponent` top-left, remembered per user as `homeView`.
   → [web-ui.md](../web-ui.md)
-- **Mosaic home — one surface, one verb**: the default home view is an infinite pannable tile field
-  over every landing source where every tile starts a radio; pure `mosaic-tiles`/`mosaic-packing`/
-  `mosaic-lens` under a pooled rAF shell. `patchSide`, `cellCount`, `visiblePlacements`,
-  `SCORE_WEIGHTS`, `LANE_MIX`. The shelf landing lives on at `/classic`. → [web-ui.md](../web-ui.md)
+- **Mosaic home — tap to look, Play to start**: the default home view is an infinite pannable tile
+  field over every landing source; a tap brings a tile forward and only that tile starts its radio.
+  Pure `mosaic-tiles`/`mosaic-packing`/`mosaic-lens`/`mosaic-focus` under a pooled rAF shell.
+  `visiblePlacements`, `LANE_MIX`, `tapIntent`, `MosaicFocusComponent`. → [web-ui.md](../web-ui.md)
 - **One tile, two tones**: `VibeTileComponent` renders the classic landing's vibe row and genre row
   so they cannot drift — `tone`/`wide` carry the whole difference, and the vibe gradients are fixed
   pairs, never `--theme-*`. → [web-ui.md](../web-ui.md)

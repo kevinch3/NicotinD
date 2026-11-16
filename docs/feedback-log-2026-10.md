@@ -25,6 +25,16 @@
 
 ## Entries
 
+### 2026-11-16
+
+Observed second-hand: a person using the mosaic home for the first time.
+
+- **(Medium) A tap on a mosaic tile replaced the music when the person only wanted to look.** _Use:_
+  they panned the mosaic and tapped a cover expecting more information, as a cover behaves in
+  Spotify or Tidal; a radio started instead. _Cause:_ tap-to-play is the mosaic's rule, and the
+  look-first gestures (hold, right-click, hover ⋯) are undiscoverable. **✅ Fixed** (#2019): a tap centres and grows the tile, and only the centred tile offers Play
+  ([mosaic-tile-focus-design.md](mosaic-tile-focus-design.md)).
+
 ### 2026-10-23
 
 Walkthrough on prod (v0.8.113, user `claude-e2e`): find and download albums of **Damian Lazarus** and
