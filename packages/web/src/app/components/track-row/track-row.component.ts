@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ActionListComponent } from '../action-list/action-list.component';
+import { ActionListComponent, type MenuHeader } from '../action-list/action-list.component';
 import { isTvUi } from '../../lib/platform';
 import type { MenuGroup } from '../../lib/menu-groups';
 import type { IconName } from '../icon/icon.component';
@@ -34,6 +34,8 @@ export interface TrackAction {
   label: string;
   /** i18n key rendered in place of `label` when set. */
   labelKey?: string;
+  /** One of the most-used actions: a phone sheet leads with these as large buttons (#2008). */
+  quick?: boolean;
   /** Values for the placeholders in `labelKey`'s text, e.g. an artist's name. */
   labelParams?: Record<string, string | number>;
   /** Drawn before the label by the shared menu row (`MenuItemComponent`). */
@@ -136,6 +138,14 @@ export class TrackRowComponent {
   readonly coverSrc = computed(() =>
     this.coverRevisions.url(songCover(this.track()), 40, this.auth.mediaToken()),
   );
+
+  readonly menuHeader = computed<MenuHeader>(() => ({
+    title: this.track().title,
+    subtitle: this.track().artist,
+    coverSrc: this.coverSrc(),
+    artist: this.track().artist,
+    album: this.track().album ?? '',
+  }));
 
   // Menu open/close/positioning is delegated to MenuPanelComponent (viewport-safe
   // + bottom-chrome aware); the row only runs the chosen action. The template

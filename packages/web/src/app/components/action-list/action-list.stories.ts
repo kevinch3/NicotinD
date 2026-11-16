@@ -20,12 +20,13 @@ const PLAYLISTS: TrackAction[] = [
   },
 ];
 const MENU: TrackAction[] = [
-  { label: 'Like', labelKey: 'song.like', icon: 'heart', group: 'play', action: noop },
+  { label: 'Like', labelKey: 'song.like', icon: 'heart', group: 'play', quick: true, action: noop },
   {
     label: 'Add to queue',
     labelKey: 'song.addToQueue',
     icon: 'queue',
     group: 'play',
+    quick: true,
     action: noop,
   },
   {
@@ -40,6 +41,7 @@ const MENU: TrackAction[] = [
     labelKey: 'song.addToPlaylist',
     icon: 'list-music',
     group: 'keep',
+    quick: true,
     action: noop,
     children: () => PLAYLISTS,
   },
@@ -68,8 +70,15 @@ const meta: Meta = {
 export default meta;
 type Story = StoryObj;
 
-const menu = (drillIn: boolean) => ({
-  props: { actions: MENU, drillIn },
+const HEADER = {
+  title: 'Midnight City',
+  subtitle: 'M83',
+  artist: 'M83',
+  album: "Hurry Up, We're Dreaming",
+};
+
+const menu = (drillIn: boolean, sheet = false) => ({
+  props: { actions: MENU, drillIn, sheet, header: HEADER },
   moduleMetadata: { imports: [ActionListComponent] },
   template: `
     <div class="p-4" [style.padding-left.px]="drillIn ? 16 : 16">
@@ -79,6 +88,8 @@ const menu = (drillIn: boolean) => ({
         class="w-64 rounded-xl border border-theme bg-theme-surface py-1 shadow-xl"
         [actions]="actions"
         [drillIn]="drillIn"
+        [sheet]="sheet"
+        [header]="header"
         [tall]="drillIn"
       />
     </div>`,
@@ -98,3 +109,9 @@ export const Flyout: Story = { render: () => menu(false), play: open };
 
 /** Phone sheet and TV: the submenu replaces the list, under a Back row. */
 export const DrillIn: Story = { render: () => menu(true), play: open };
+
+/** Phone sheet: the song it acts on leads, then the most-used actions as large buttons. */
+export const Sheet: Story = {
+  render: () => menu(true, true),
+  parameters: { viewport: { defaultViewport: 'mobile' } },
+};

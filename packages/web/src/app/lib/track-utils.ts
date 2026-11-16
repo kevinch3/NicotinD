@@ -91,6 +91,7 @@ export function addToPlaylistAction(playlists: PlaylistService, songId: string):
     labelKey: 'song.addToPlaylist',
     icon: 'list-music',
     group: 'keep',
+    quick: true,
     // The dialog, for a caller that runs the action directly. A menu opens the
     // submenu below instead (#2009).
     action: () => playlists.openPicker([songId]),

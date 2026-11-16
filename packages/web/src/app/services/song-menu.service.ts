@@ -64,6 +64,7 @@ export class SongMenuService {
         labelKey: this.likes.isLiked(song.id) ? 'song.unlike' : 'song.like',
         icon: this.likes.isLiked(song.id) ? 'heart-filled' : 'heart',
         group: 'play',
+        quick: true,
         action: () => void this.likes.toggle(song.id),
       },
       {
@@ -71,6 +72,7 @@ export class SongMenuService {
         labelKey: 'song.addToQueue',
         icon: 'queue',
         group: 'play',
+        quick: true,
         action: () => this.player.addToQueue(track),
       },
       {
@@ -78,6 +80,7 @@ export class SongMenuService {
         labelKey: 'song.playNext',
         icon: 'play-next',
         group: 'play',
+        quick: true,
         action: () => this.player.queueNext(track),
       },
       {

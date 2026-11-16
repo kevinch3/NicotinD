@@ -1,3 +1,48 @@
+@if (sheet && header && !parent()) {
+  <!-- A sheet covers the row that opened it, so it says what it acts on. -->
+  <div
+    data-testid="menu-header"
+    class="mb-1 flex items-center gap-3 border-b border-theme px-4 pb-3 pt-1"
+  >
+    <app-cover-art
+      [src]="header.coverSrc ?? undefined"
+      [artist]="header.artist ?? header.subtitle ?? ''"
+      [album]="header.album ?? header.title"
+      [size]="40"
+      rounded="rounded"
+    />
+    <div class="min-w-0">
+      <p appOverflowReveal class="truncate text-sm font-medium text-theme-primary">
+        {{ header.title }}
+      </p>
+      @if (header.subtitle) {
+        <p appOverflowReveal class="truncate text-xs text-theme-muted">{{ header.subtitle }}</p>
+      }
+    </div>
+  </div>
+}
+@if (quickRow(); as quick) {
+  @if (quick.length > 0) {
+    <div
+      data-testid="menu-quick-row"
+      class="mb-1 grid auto-cols-fr grid-flow-col gap-1 border-b border-theme px-2 pb-2"
+    >
+      @for (action of quick; track action.label) {
+        <button
+          type="button"
+          [attr.data-testid]="testidPrefix + action.label"
+          [attr.data-icon]="action.icon"
+          [attr.aria-haspopup]="action.children ? 'menu' : null"
+          class="flex min-h-14 flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-center text-xs leading-tight text-theme-secondary transition-colors hover:bg-theme-hover"
+          (click)="activate(action, $any($event.currentTarget))"
+        >
+          <app-icon [name]="action.icon!" [size]="22" />
+          <span>{{ action.labelKey ? (action.labelKey | t) : action.label }}</span>
+        </button>
+      }
+    </div>
+  }
+}
 @if (parent(); as p) {
   <!-- Drilled in: the way back comes first, named after the submenu it leaves. -->
   <button

@@ -120,6 +120,20 @@ menu costs nothing for a submenu nobody opens, and it may be async.
   The open submenu is kept across that; a menu is created afresh each time it opens, which is what
   returns it to the top.
 
+**Sheet header (#2007).** With `sheet` set and a `header` (`MenuHeader`), the list starts with the
+cover, title and artist of what the menu acts on. Track rows and the Now Playing menus pass the
+song; the entity menu does not yet.
+
+**Quick row (#2008).** In a sheet, the actions flagged `quick: true` (Like, Add to queue, Play next,
+Add to playlist) leave the list and become its first row: four large icon buttons over short
+labels. It is driven by the flag, never by a label, and needs the action's icon. The buttons keep
+their `track-action-<label>` test ids, and one with a submenu drills in like any row. The popover
+and TV stay plain lists.
+
+The two were built together for a measured reason: on a 390×844 phone with the mini player up, the
+header on top of twelve rows put the last one under the player. The quick row takes four rows out
+of the list, and every item shows without scrolling again (`reachable-menu.spec.ts`).
+
 **Field rows.** An action with `field` is a text input, not a button: `filter` narrows the rows
 beside it as you type (`filterRows`), `submit` runs with the typed text on Enter. Enter is always
 consumed: submitting closes the menu, focus returns to the menu's trigger button during the same
