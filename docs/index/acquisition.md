@@ -174,3 +174,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   carries fpcalc's stderr). → [acoustid-identify.md](../acoustid-identify.md)
 - **Release-type model (singles & EPs)**: every album carries a `classification`, set metadata-first
   with a track-count heuristic fallback. → [download-pipeline.md](../download-pipeline.md)
+- **One hunt scheduler, priority lanes**: the picker, both Gets and auto-complete take turns at one
+  gate in front of the source: picker, then Get, then auto-complete; first in, first out within a
+  lane; a running search is never interrupted. `HuntScheduler`, `HuntLane`, `HuntTicket`.
+  → [album-hunt.md](../album-hunt.md)

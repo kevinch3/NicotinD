@@ -31,6 +31,7 @@ import { INTERACTIVE_HUNT_TIMEOUT_MS } from '../middleware/idle-budget.js';
 import { mapAddonJob } from '../services/addons/job-poller.js';
 import { onDiskTitles } from '../services/library-completeness.js';
 import { HuntQueue, HuntQueueFullError } from '../services/hunt-queue.js';
+import type { HuntScheduler } from '../services/hunt-scheduler.js';
 import { AlbumGetService } from '../services/album-get.service.js';
 import {
   albumEditions,
@@ -98,6 +99,8 @@ function wireCandidate(c: AddonAlbumCandidate, wanted?: WantedTracks) {
 }
 
 export interface DiscographyRoutesOptions {
+  /** The source's shared gate (#1945); the picker takes its top lane. */
+  huntScheduler?: HuntScheduler;
   discography: DiscographyService;
   /**
    * Source-agnostic hunt across the metadata sources (archive.org, Spotify, …).
@@ -126,10 +129,12 @@ export function discographyRoutes({
   getAddon,
   provisioning,
   albumGet: sharedAlbumGet,
+  huntScheduler,
 }: DiscographyRoutesOptions) {
   const app = new Hono<AuthEnv>();
   const coverCacheDir = dataDir ? join(dataDir, 'cover-cache') : undefined;
-  const albumGet = sharedAlbumGet ?? new AlbumGetService({ db, lidarr, getAddon, coverCacheDir });
+  const albumGet =
+    sharedAlbumGet ?? new AlbumGetService({ db, lidarr, getAddon, coverCacheDir, huntScheduler });
 
   // Discography hunt is acquisition — hidden from listeners, gated server-side.
   app.use('*', async (c, next) => {
@@ -416,8 +421,11 @@ export function discographyRoutes({
     return titles.length ? { titles, canonical } : undefined;
   }
 
+  // The copy picker: a person is waiting on it, so it is the top lane (#1945).
   const huntQueue = new HuntQueue<Awaited<ReturnType<typeof runAlbumHunt>>>({
     isTimeout: (err) => err instanceof HuntTimedOutError,
+    scheduler: huntScheduler,
+    lane: 'picker',
   });
 
   // POST /api/discography/albums/:lidarrAlbumId/hunt/base

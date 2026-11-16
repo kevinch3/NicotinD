@@ -592,6 +592,29 @@ Now the wait is free and only the running hunt spends a budget:
 - `POST …/hunt/base`, the synchronous hunt, stays for installed apps that carry an older web
   bundle. Nothing in the current web calls it.
 
+## One scheduler in front of the source, with priority lanes (#1945)
+
+Core has four queues that search the same source: the copy picker (`routes/discography.ts`), album
+Get (`AlbumGetService`), track Get (`TrackGetService`) and auto-complete (`AutoCompleteService`).
+Each ran one search at a time, but the four ran side by side, so unattended auto-complete searches
+competed with someone's click for the source's search lanes. Measured on prod on 2026-11-15: 8
+auto-complete searches ran alongside 35 Get attempts in one hour, and a Get search took 15 to 28 s.
+
+They now share one `HuntScheduler` (`services/hunt-scheduler.ts`), created once in `index.ts`:
+
+- **Lanes, highest first:** `picker`, `get` (album and track Gets), `auto`.
+- **First in, first out within a lane.**
+- **A running search is never interrupted.** Priority decides who goes next, not who is stopped.
+- **One number for the source's concurrency:** the scheduler's `concurrency` (1), and nowhere else.
+
+A `HuntQueue` given a scheduler asks for a turn in its lane when a hunt reaches the head of its own
+queue, and searches only once the turn is granted. Until then the hunt reads `queued`, not
+`searching`, and its `position` and `etaMs` count the searches ahead of it in every queue
+(`HuntTicket.ahead`), so the place in line the Activity card shows (#1938) is the real one. A hunt
+waiting for its turn can still be cancelled. A failed search releases the turn. A queue built
+without a scheduler runs alone, which is what unit tests of the four owners do.
+
+
 ## A Get is a server job
 
 A one-click Get used to be driven by the browser: queue a hunt, poll it, pick, count down 3 s, then

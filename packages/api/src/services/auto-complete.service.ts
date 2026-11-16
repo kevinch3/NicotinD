@@ -7,6 +7,7 @@ import {
   recordAutoResourceAttempt,
 } from './acquisition-job-store.js';
 import { HuntQueue } from './hunt-queue.js';
+import type { HuntScheduler } from './hunt-scheduler.js';
 import { resolveResourceTarget, searchAlternates, switchToPeer } from './job-resource.js';
 
 const log = createLogger('auto-complete');
@@ -22,6 +23,8 @@ export type AutoCompleteOutcome =
   'switched' | 'no-alternate' | 'source-unavailable' | 'not-eligible' | 'failed';
 
 export interface AutoCompleteDeps {
+  /** The source's shared gate (#1945); without one this queue runs alone. */
+  huntScheduler?: HuntScheduler;
   db: Database;
   /** The registry lookup the routes use: an addon id to its plugin. */
   getPlugin: (addonId: string) => unknown;
@@ -41,9 +44,10 @@ export interface AutoCompleteDeps {
  * → docs/download-pipeline.md "A partial completes itself".
  */
 export class AutoCompleteService {
-  // Its own queue, one search at a time: a burst of closing partials must not
-  // flood the source's search lanes ahead of someone's click (#1625).
-  private readonly queue = new HuntQueue<AutoCompleteOutcome>({ maxQueued: 500 });
+  // Its own queue, one search at a time, in the lowest lane of the shared gate:
+  // a burst of closing partials never searches ahead of someone's click
+  // (#1625, #1945).
+  private readonly queue: HuntQueue<AutoCompleteOutcome>;
   private readonly inFlight = new Map<string, Promise<void>>();
   private readonly maxAttempts: number;
   private readonly retryDelayMs: (attempt: number) => number | null;
@@ -51,6 +55,11 @@ export class AutoCompleteService {
   private readonly now: () => number;
 
   constructor(private readonly deps: AutoCompleteDeps) {
+    this.queue = new HuntQueue<AutoCompleteOutcome>({
+      maxQueued: 500,
+      scheduler: deps.huntScheduler,
+      lane: 'auto',
+    });
     this.maxAttempts = deps.maxAttempts ?? AUTO_RESOURCE_MAX_ATTEMPTS;
     this.retryDelayMs = deps.retryDelayMs ?? albumGetRetryDelayMs;
     this.schedule =
