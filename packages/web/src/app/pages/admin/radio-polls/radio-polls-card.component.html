@@ -68,7 +68,7 @@
           @for (s of pinnedSeeds(); track s.id) {
             <span class="inline-flex items-center gap-1 rounded-full bg-theme-surface-2 px-2.5 py-1 text-xs text-theme-secondary">
               {{ s.title }} — {{ s.artist }}
-              <button type="button" (click)="removePinnedSeed(s.id)" class="hover:text-red-400 transition" aria-label="Remove">✕</button>
+              <button type="button" (click)="removePinnedSeed(s.id)" class="hover:text-status-error transition" aria-label="Remove">✕</button>
             </span>
           }
         </div>
@@ -136,7 +136,7 @@
                 </button>
               }
               <button type="button" data-testid="radio-polls-delete"
-                class="text-xs rounded border border-theme px-2.5 py-1.5 text-red-400 hover:bg-theme-hover transition"
+                class="text-xs rounded border border-theme px-2.5 py-1.5 text-status-error hover:bg-theme-hover transition"
                 (click)="remove(row)">
                 {{ 'admin.radioPollsDelete' | t }}
               </button>
@@ -167,7 +167,7 @@
                               </span>
                             } @else {
                               <span class="text-emerald-500 flex-shrink-0">👍 {{ c.up }}</span>
-                              <span class="text-red-400 flex-shrink-0">👎 {{ c.down }}</span>
+                              <span class="text-status-error flex-shrink-0">👎 {{ c.down }}</span>
                             }
                           </div>
                           @if (res.poll.voteScale === 'stars5') {

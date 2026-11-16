@@ -543,3 +543,25 @@ Tracked under the `storybook` label.
 | ~~[#476](https://github.com/kevinch3/NicotinD/issues/476)~~ | ✅ i18n toolbar global (en/es) driving `TranslateService` |
 | ~~[#477](https://github.com/kevinch3/NicotinD/issues/477)~~ | ✅ Catalog the shared directives and pipes |
 | [#478](https://github.com/kevinch3/NicotinD/issues/478) | Migrate to a Vite builder when `@storybook/angular` ships one |
+
+## The accessibility gate scans two presets (#1686)
+
+`storybook-gates.mjs --a11y` runs axe on every story under **Midnight and Daylight**
+(`A11Y_THEMES`). A story loads in Midnight; Daylight is switched on the loaded page by setting
+`data-theme`, which is how the app changes preset. That is the "stories per theme" the visual
+refresh asked for: the theme is a Storybook global, so there are no per-theme story files, and
+before this the gate judged contrast on the dark preset only.
+
+- **Transitions are frozen for the scan.** A colour caught mid-transition after the switch is
+  neither preset's colour: one button read 1.03:1 with its text and fill both halfway across.
+  With transitions frozen, two consecutive runs reported the same ten elements.
+- **What the first Daylight scan found** (all fixed): `text-red-400` error text at 2.88:1 on a
+  white card (the album hunt modal, and 22 uses in 15 themed templates, now `text-status-error`),
+  and the Spotify source chip's label at 4.34:1 (`.chip-tone-spotify` now mixes 45% hue, not 60%).
+  `theme-holdouts.spec.ts` keeps hardcoded red text out of themed templates.
+- Violations are reported per rule **and preset** (`color-contrast (daylight)`), because a miss on
+  one preset is a different defect from one on the other.
+- `--verbose` prints every failing element with its story and the colours axe measured.
+- The other five presets are not scanned. Their tokens are held to the same targets by the
+  contrast table in `theme.spec.ts`; what a story scan adds is hardcoded colour, and a hardcoded
+  colour that fails does so on the light or the dark side.

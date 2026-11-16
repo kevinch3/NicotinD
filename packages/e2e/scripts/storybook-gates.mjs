@@ -33,6 +33,8 @@ import { readStories, storyUrl, visitStories } from './lib/storybook-runner.mjs'
 const SMOKE = process.argv.includes('--smoke');
 const A11Y = process.argv.includes('--a11y');
 const STRICT = process.argv.includes('--strict');
+/** Print every failing element with its story, for fixing them one by one. */
+const VERBOSE = process.argv.includes('--verbose');
 
 if (!SMOKE && !A11Y) {
   console.error('Nothing to do: pass --smoke, --a11y, or both.');
@@ -134,6 +136,30 @@ async function analyzeWithRetry(page, story) {
   }
 }
 
+/**
+ * The presets axe scans each story under (#1686). A story loads in the default
+ * (`midnight`); the others are switched on the loaded page, which is how the app
+ * itself changes preset. `daylight` is the light preset, so between them every
+ * token is exercised against both a dark and a light surface.
+ */
+const A11Y_THEMES = ['midnight', 'daylight'];
+
+async function switchTheme(page, theme) {
+  await page.evaluate((t) => {
+    // A colour caught mid-transition is neither preset's colour: measured as
+    // 1.03:1 on a button whose text and fill were both halfway across. Freeze
+    // transitions for the rest of this story's scan.
+    if (!document.querySelector('[data-a11y-freeze]')) {
+      const style = document.createElement('style');
+      style.setAttribute('data-a11y-freeze', '');
+      style.textContent = '*, *::before, *::after { transition: none !important; }';
+      document.head.appendChild(style);
+    }
+    document.documentElement.setAttribute('data-theme', t);
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  }, theme);
+}
+
 const stories = readStories();
 const failures = [];
 /** rule id -> { impact, help, helpUrl, stories:Set, nodes:number, sample:string } */
@@ -186,20 +212,37 @@ const { errors: visitErrors } = await visitStories({
     if (A11Y) {
       // Listeners are detached above, so axe's own console output cannot pollute the
       // smoke error list for this story.
-      const { violations } = await analyzeWithRetry(page, story);
+      for (const theme of A11Y_THEMES) {
+        if (theme !== A11Y_THEMES[0]) await switchTheme(page, theme);
+        const { violations } = await analyzeWithRetry(page, story);
 
-      for (const v of violations) {
-        const entry = byRule.get(v.id) ?? {
-          impact: v.impact,
-          help: v.help,
-          helpUrl: v.helpUrl,
-          stories: new Set(),
-          nodes: 0,
-          sample: v.nodes[0]?.html?.slice(0, 120) ?? '',
-        };
-        entry.stories.add(story.title);
-        entry.nodes += v.nodes.length;
-        byRule.set(v.id, entry);
+        for (const v of violations) {
+          // One entry per rule and preset: a contrast miss on Daylight is a
+          // different defect from one on Midnight.
+          const key = `${v.id} (${theme})`;
+          const entry = byRule.get(key) ?? {
+            impact: v.impact,
+            help: v.help,
+            helpUrl: v.helpUrl,
+            stories: new Set(),
+            nodes: 0,
+            sample: v.nodes[0]?.html?.slice(0, 120) ?? '',
+          };
+          entry.stories.add(story.title);
+          entry.nodes += v.nodes.length;
+          byRule.set(key, entry);
+          if (VERBOSE) {
+            for (const n of v.nodes) {
+              const d = n.any?.[0]?.data ?? {};
+              const measured = d.contrastRatio
+                ? ` | ${d.fgColor} on ${d.bgColor} = ${d.contrastRatio} (needs ${d.expectedContrastRatio})`
+                : '';
+              console.log(
+                `${key} | ${story.id} | ${n.html.slice(0, 160).replace(/\s+/g, ' ')}${measured}`,
+              );
+            }
+          }
+        }
       }
     }
   },
@@ -231,7 +274,9 @@ if (A11Y) {
       a[0].localeCompare(b[0]),
   );
 
-  console.log(`\naxe over ${stories.length} stories — ${rules.length} distinct rule(s) violated\n`);
+  console.log(
+    `\naxe over ${stories.length} stories × ${A11Y_THEMES.length} presets (${A11Y_THEMES.join(', ')}) — ${rules.length} distinct rule(s) violated\n`,
+  );
   for (const [id, r] of rules) {
     console.log(`[${r.impact}] ${id} — ${r.help}`);
     console.log(

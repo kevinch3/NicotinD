@@ -127,7 +127,7 @@
                     [attr.data-testid]="'album-action-' + action.label"
                     [disabled]="action.destructive && deleting()"
                     class="w-full min-h-11 text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover disabled:opacity-50"
-                    [class.text-red-400]="action.destructive"
+                    [class.text-status-error]="action.destructive"
                     [class.text-theme-secondary]="!action.destructive"
                     (click)="albumMenuPanel.close(); action.action()">
                     {{ action.labelKey ? (action.labelKey | t) : action.label }}

@@ -232,7 +232,7 @@
               }
             </div>
             @if (linkJob()?.state === 'failed') {
-              <p class="truncate text-xs text-red-400 mt-0.5">
+              <p class="truncate text-xs text-status-error mt-0.5">
                 {{ linkJob()?.error ?? ('getLink.failed' | t) }}
               </p>
             } @else if (linkJob()?.state === 'done' && linkJob()?.error) {
@@ -240,7 +240,7 @@
                 {{ linkJob()?.error }}
               </p>
             } @else if (linkSubmitError()) {
-              <p class="truncate text-xs text-red-400 mt-0.5">{{ linkSubmitError() }}</p>
+              <p class="truncate text-xs text-status-error mt-0.5">{{ linkSubmitError() }}</p>
             }
           </div>
 

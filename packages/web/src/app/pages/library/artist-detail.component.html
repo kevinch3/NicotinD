@@ -250,7 +250,7 @@
             class="w-full pt-2 flex items-center gap-2 text-xs text-theme-muted md:w-auto md:min-w-0 md:ml-auto md:pt-0 md:justify-end"
           >
             @if (provisionError(); as err) {
-              <span class="text-red-400" data-testid="discography-provision-error">{{ err }}</span>
+              <span class="text-status-error" data-testid="discography-provision-error">{{ err }}</span>
             }
             <button
               type="button"

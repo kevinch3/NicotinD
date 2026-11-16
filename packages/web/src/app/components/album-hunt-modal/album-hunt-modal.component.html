@@ -195,7 +195,7 @@
 
       @if (state() === 'error') {
         <div class="p-6 text-center">
-          <p class="text-red-400 text-sm">{{ errorMsg() }}</p>
+          <p class="text-status-error text-sm">{{ errorMsg() }}</p>
         </div>
       }
 
@@ -267,7 +267,7 @@
                   </ul>
                 }
               } @else if (trackHuntState() === 'error') {
-                <p class="text-red-400">Track hunt failed. Try again.</p>
+                <p class="text-status-error">Track hunt failed. Try again.</p>
               } @else {
                 <button
                   (click)="huntIndividualTracks()"

@@ -148,7 +148,7 @@
           type="button"
           [attr.data-testid]="'track-action-' + action.label"
           class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
-          [class.text-red-400]="action.destructive"
+          [class.text-status-error]="action.destructive"
           [class.text-theme-secondary]="!action.destructive"
           (click)="closeMenu(); action.action()"
         >
@@ -278,7 +278,7 @@
                 type="button"
                 [attr.data-testid]="'track-action-' + action.label"
                 class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
-                [class.text-red-400]="action.destructive"
+                [class.text-status-error]="action.destructive"
                 [class.text-theme-secondary]="!action.destructive"
                 (click)="menu.close(); action.action()"
               >

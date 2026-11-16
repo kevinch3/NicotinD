@@ -63,3 +63,34 @@ describe('no hardcoded zinc/indigo outside the fixed-dark surfaces (#1685)', () 
     expect(unused).toEqual([]);
   });
 });
+
+// Error text is `text-status-error`, which each preset sets for its own
+// surfaces. A hardcoded `text-red-400` read 2.88:1 on Daylight's white card
+// (found by the Storybook gate's light-preset scan, #1686).
+describe('no hardcoded red text outside the fixed-dark surfaces (#1686)', () => {
+  const RED_TEXT = /(?<![\w-])(?:[a-z-]+:)*!?text-red-\d{2,3}(?![\w/-])/g;
+  /** Text over a surface that is dark on every preset. */
+  const RED_ALLOWED = new Set([
+    ...Object.keys(ALLOWED),
+    'components/now-playing/now-playing-karaoke-fullscreen/now-playing-karaoke-fullscreen.component.html',
+  ]);
+
+  it('every red text utility sits on a fixed-dark surface', () => {
+    const stray = files(src).flatMap((file) => {
+      const rel = file.slice(src.length + 1);
+      if (RED_ALLOWED.has(rel)) return [];
+      return readFileSync(file, 'utf8')
+        .split('\n')
+        .flatMap((line, i) => [...line.matchAll(RED_TEXT)].map((m) => `${rel}:${i + 1} ${m[0]}`));
+    });
+    expect(stray).toEqual([]);
+  });
+
+  it('the pattern catches the forms that were in use', () => {
+    const hit = (s: string) => [...s.matchAll(RED_TEXT)].map((m) => m[0]);
+    expect(hit('class="text-red-400 text-sm"')).toEqual(['text-red-400']);
+    expect(hit('hover:!text-red-400')).toEqual(['hover:!text-red-400']);
+    expect(hit('[class.text-red-400]="x"')).toEqual(['text-red-400']);
+    expect(hit('text-status-error bg-red-500')).toEqual([]);
+  });
+});

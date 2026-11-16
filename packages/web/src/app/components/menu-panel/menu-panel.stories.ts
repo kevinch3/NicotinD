@@ -8,7 +8,7 @@ const ITEMS = `
     <button class="block w-full px-3 py-2 text-left text-sm hover:bg-theme-surface-2">Play next</button>
     <button class="block w-full px-3 py-2 text-left text-sm hover:bg-theme-surface-2">Add to queue</button>
     <button class="block w-full px-3 py-2 text-left text-sm hover:bg-theme-surface-2">Add to playlist…</button>
-    <button class="block w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-theme-surface-2">Remove</button>
+    <button class="block w-full px-3 py-2 text-left text-sm text-status-error hover:bg-theme-surface-2">Remove</button>
   </div>`;
 
 const meta: Meta<MenuPanelComponent> = {

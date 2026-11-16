@@ -116,7 +116,7 @@ describe('EntityMenuHostComponent', () => {
     });
     fixture.detectChanges();
     expect(el.querySelector('[data-testid="entity-action-Remove"]')!.className).toContain(
-      'text-red-400',
+      'text-status-error',
     );
   });
 
