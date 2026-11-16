@@ -3,7 +3,7 @@
 The token proposal of the visual refresh (#1662, sub-issue #1683). It turns the owner's answers to
 the theme audit ([theme-audit.md](theme-audit.md), Q1–Q5, answered 2026-11-09) into a token set for
 **all seven presets**, maps the old names onto it, and measures every pair against WCAG AA. It is a
-proposal: **no token changes here**. #1684 lands it, #1685 migrates the holdouts, #1686 and #1687
+proposal: **no token changes here**. #1684 lands it (done: `styles.css` carries these values), #1685 migrates the holdouts, #1686 and #1687
 restyle components and surfaces.
 
 Already in `styles.css` from #1818 (slice a of #1684): `--theme-accent-2`/`-2-text`/`on-accent-2`

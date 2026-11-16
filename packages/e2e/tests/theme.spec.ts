@@ -56,9 +56,9 @@ test.describe('theme utilities + contrast', () => {
 
     // text-theme-on-accent → daylight --theme-on-accent (#ffffff), not a no-op.
     expect(r.onAccent.color).toBe('rgb(255, 255, 255)');
-    // border-theme-surface-2 → daylight --theme-surface-2 (#e4e4e7), not the
+    // border-theme-surface-2 → daylight --theme-surface-2 (#e0e0e8), not the
     // transparent/currentColor fallback the unregistered class produced.
-    expect(r.borderSurface2.border).toBe('rgb(228, 228, 231)');
+    expect(r.borderSurface2.border).toBe('rgb(224, 224, 232)');
     // status-warn pill: bg + text both resolve from tokens and are legible
     // (dark amber text on light amber bg — the old text-amber-400 was invisible).
     expect(r.statusWarn.bg).toBe('rgb(254, 243, 199)'); // #fef3c7
@@ -103,6 +103,8 @@ test.describe('theme contrast table', () => {
     'surface',
     'surface-1',
     'surface-2',
+    'surface-3',
+    'border',
     'text-primary',
     'text-secondary',
     'text-muted',
@@ -120,6 +122,8 @@ test.describe('theme contrast table', () => {
   const PAIRS: Pair[] = [
     ['text-primary', 'bg', 4.5],
     ['text-primary', 'surface-2', 4.5],
+    // surface-3 carries the three text levels, never accent text (palette proposal).
+    ...['text-primary', 'text-secondary', 'text-muted'].map((fg): Pair => [fg, 'surface-3', 4.5]),
     ...['text-secondary', 'text-muted', 'accent-text', 'accent-2-text'].flatMap((fg) =>
       ['bg', 'surface', 'surface-2'].map((on): Pair => [fg, on, 4.5]),
     ),
@@ -136,6 +140,10 @@ test.describe('theme contrast table', () => {
     ]),
     ['status-error-text', 'bg', 4.5],
   ];
+
+  /** Smallest step the proposal's table holds (OLED bg → surface, 1.06). */
+  const RAMP_STEP = 1.05;
+  const BORDER_ON_SURFACE_2 = 1.3;
 
   test('every pair meets its target on every preset', async ({ page }) => {
     await page.goto('/library');
@@ -161,6 +169,22 @@ test.describe('theme contrast table', () => {
           failures.push(`${preset}: ${fg} on ${on} = ${ratio.toFixed(2)} < ${target}`);
       }
       expect(raw['surface-1'], `${preset}: surface-1 aliases surface`).toBe(raw['surface']);
+      // The ramp: each level is told apart from the one below it, and a control's
+      // border shows on the control. E-Ink keeps surface-3 equal to surface-2.
+      const ramp = ['bg', 'surface', 'surface-2', 'surface-3'];
+      for (let i = 1; i < ramp.length; i++) {
+        if (preset === 'eink' && ramp[i] === 'surface-3') continue;
+        const step = contrast(opaque(ramp[i]!), opaque(ramp[i - 1]!));
+        if (step < RAMP_STEP)
+          failures.push(
+            `${preset}: ${ramp[i - 1]} → ${ramp[i]} = ${step.toFixed(2)} < ${RAMP_STEP}`,
+          );
+      }
+      const border = contrast(opaque('border'), opaque('surface-2'));
+      if (border < BORDER_ON_SURFACE_2)
+        failures.push(
+          `${preset}: border on surface-2 = ${border.toFixed(2)} < ${BORDER_ON_SURFACE_2}`,
+        );
     }
     expect(failures).toEqual([]);
   });
