@@ -8,6 +8,7 @@ import {
   inject,
   OnInit,
 } from '@angular/core';
+import { themeHue } from '../../lib/theme-hue';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import type {
@@ -407,6 +408,9 @@ export class TrackInfoSheetComponent implements OnInit {
       error: () => this.fetchingLyrics.set(false),
     });
   }
+
+  /** A genre chip's tint: the genre's own hue, as on the Library's genre tiles (#1686). */
+  readonly genreHue = themeHue;
 
   startEditLyrics(): void {
     this.lyricsDraft.set(this.lyricsText());
