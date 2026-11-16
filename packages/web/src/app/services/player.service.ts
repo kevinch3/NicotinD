@@ -805,6 +805,23 @@ export class PlayerService {
     this.seekTo.set(time);
   }
 
+  private elementClock: (() => number | null) | null = null;
+
+  /** The player component hands over a read of its active `<audio>` element's clock. */
+  registerElementClock(read: (() => number | null) | null): void {
+    this.elementClock = read;
+  }
+
+  /**
+   * The audio element's own `currentTime`, in seconds, at this instant. The
+   * `currentTime` signal follows `timeupdate` and lags by up to about 250 ms,
+   * which is too coarse to stamp a lyric line with (#1675). Falls back to the
+   * signal when no element is mounted.
+   */
+  elementTime(): number {
+    return this.elementClock?.() ?? this.currentTime();
+  }
+
   clearSeek(): void {
     this.seekTo.set(null);
   }

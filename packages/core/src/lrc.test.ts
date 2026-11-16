@@ -4,6 +4,7 @@ import {
   parseLrcDetailed,
   applyLyricsOffset,
   bakeLyricsOffset,
+  serializeLrc,
   lrcOverrunSec,
   findActiveLine,
   type LyricLine,
@@ -243,5 +244,57 @@ describe('bakeLyricsOffset', () => {
         applyLyricsOffset(parseLrc(raw), offset),
       );
     }
+  });
+});
+
+describe('serializeLrc (#1675)', () => {
+  it('writes one centisecond stamp per line, in time order', () => {
+    expect(
+      serializeLrc([
+        { timeMs: 23_100, text: 'second' },
+        { timeMs: 19_260, text: 'first' },
+      ]),
+    ).toBe('[00:19.26]first\n[00:23.10]second');
+  });
+
+  it('round-trips through parseLrc', () => {
+    const lines = [
+      { timeMs: 500, text: 'opening line' },
+      { timeMs: 9_000, text: 'second line' },
+      { timeMs: 61_230, text: 'a third, with [brackets] in it' },
+    ];
+    expect(parseLrc(serializeLrc(lines))).toEqual(lines);
+  });
+
+  it('keeps millisecond precision when a stamp is off the centisecond grid', () => {
+    const lrc = serializeLrc([{ timeMs: 19_263, text: 'x' }]);
+    expect(lrc).toBe('[00:19.263]x');
+    expect(parseLrc(lrc)).toEqual([{ timeMs: 19_263, text: 'x' }]);
+  });
+
+  it('writes a stamp past 99:59 that parseLrc reads back', () => {
+    const at = 101 * 60_000 + 5_000;
+    const lrc = serializeLrc([{ timeMs: at, text: 'long live set' }]);
+    expect(lrc).toBe('[101:05.00]long live set');
+    expect(parseLrc(lrc)).toEqual([{ timeMs: at, text: 'long live set' }]);
+  });
+
+  it('rounds fractional ms, clamps below zero, and keeps a line on one row', () => {
+    expect(serializeLrc([{ timeMs: -40, text: 'a\nb' }])).toBe('[00:00.00]a b');
+    expect(serializeLrc([{ timeMs: 1_000.4, text: 'x' }])).toBe('[00:01.00]x');
+  });
+
+  it('keeps a repeated line as one row per stamp, and an empty line as a bare stamp', () => {
+    expect(
+      serializeLrc([
+        { timeMs: 1_000, text: 'chorus' },
+        { timeMs: 5_000, text: '' },
+        { timeMs: 9_000, text: 'chorus' },
+      ]),
+    ).toBe('[00:01.00]chorus\n[00:05.00]\n[00:09.00]chorus');
+  });
+
+  it('returns an empty string for no lines', () => {
+    expect(serializeLrc([])).toBe('');
   });
 });

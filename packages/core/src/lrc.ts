@@ -103,6 +103,24 @@ function formatStamp(ms: number, fracDigits: 0 | 2 | 3): string {
 }
 
 /**
+ * Write timed lines as LRC, one `[mm:ss.xx]text` per line in time order: the
+ * inverse of `parseLrc` for what the timing editor produces (#1675). Times are
+ * rounded to the millisecond and clamped to what a stamp can say; a stamp is
+ * written in centiseconds unless that would lose precision. No ID tags and no
+ * `[offset:]`: the times are absolute, so the stored offset belongs at 0.
+ */
+export function serializeLrc(lines: readonly LyricLine[]): string {
+  return [...lines]
+    .map((l) => ({
+      timeMs: Math.min(MAX_STAMP_MS, Math.max(0, Math.round(l.timeMs))),
+      text: l.text.replace(/[\r\n]+/g, ' ').trim(),
+    }))
+    .sort((a, b) => a.timeMs - b.timeMs)
+    .map((l) => `[${formatStamp(l.timeMs, 2)}]${l.text}`)
+    .join('\n');
+}
+
+/**
  * Rewrite `raw` so its timestamps already carry `offsetMs` (positive = later)
  * **and** the file's own `[offset:]` tag, which is removed — the result needs
  * no offset at all to play as the listener heard it. For handing a corrected

@@ -72,6 +72,8 @@ import { LyricsService } from '../../services/lyrics.service';
 import { ConfirmService } from '../../services/confirm.service';
 import { TranslateService } from '../../services/translate.service';
 import type { LyricsTryState } from './lyrics-options-sheet/lyrics-options-sheet.component';
+import { LyricsTimingEditorComponent } from './lyrics-timing-editor/lyrics-timing-editor.component';
+import { rowsFromLyrics, type TimingRow } from '../../lib/lyrics-timing-draft';
 import { KaraokeBrowseMode } from '../../lib/karaoke-browse';
 import { resolveLyricsScrollContainer } from '../../lib/lyrics-scroll-container';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
@@ -96,6 +98,7 @@ function isDesktopSheet(): boolean {
     NowPlayingPanelTabsComponent,
     NowPlayingQueuePanelComponent,
     NowPlayingLyricsPanelComponent,
+    LyricsTimingEditorComponent,
     NowPlayingKaraokeFullscreenComponent,
     TranslatePipe,
     TvNavGroupDirective,
@@ -844,6 +847,42 @@ export class NowPlayingComponent {
    */
   fetchLyricsManually(): void {
     this.lyricsSvc.fetchManually(this.player.currentTrack()?.id);
+  }
+
+  /** The timing editor (#1675): an overlay over the sheet, curators only. */
+  readonly timingEditorOpen = signal(false);
+  readonly timingSaving = signal(false);
+  /** The draft's starting rows, taken once when the editor opens. */
+  readonly timingRows = signal<TimingRow[]>([]);
+  private timingSongId: string | null = null;
+  /** The element's clock on this device; the remote clock when casting. */
+  readonly timingClock = (): number =>
+    (this.isActiveDevice() ? this.player.elementTime() : this.displayTime()) * 1000;
+
+  openTimingEditor(): void {
+    const id = this.player.currentTrack()?.id;
+    if (!id || !this.auth.canCurate()) return;
+    this.timingSongId = id;
+    this.timingRows.set(rowsFromLyrics(this.lyrics()));
+    this.timingEditorOpen.set(true);
+  }
+
+  closeTimingEditor(): void {
+    this.timingEditorOpen.set(false);
+  }
+
+  /** Saves against the song the editor opened on, even if playback moved on. */
+  saveTiming(body: { plain: string; synced: string }): void {
+    const id = this.timingSongId;
+    if (!id || this.timingSaving()) return;
+    this.timingSaving.set(true);
+    this.lyricsSvc.save(id, body.plain, body.synced).subscribe({
+      next: () => {
+        this.timingSaving.set(false);
+        this.timingEditorOpen.set(false);
+      },
+      error: () => this.timingSaving.set(false),
+    });
   }
 
   tryAnotherLyricsSource(): void {

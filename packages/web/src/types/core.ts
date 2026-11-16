@@ -72,6 +72,7 @@ export { LYRICS_OFFSET_MAX_MS, LYRICS_OFFSET_STEP_MS } from '../../../core/src/t
 export {
   parseLrc,
   parseLrcDetailed,
+  serializeLrc,
   applyLyricsOffset,
   findActiveLine,
 } from '../../../core/src/lrc';

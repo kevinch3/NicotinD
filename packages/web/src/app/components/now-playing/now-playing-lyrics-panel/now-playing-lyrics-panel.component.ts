@@ -35,6 +35,7 @@ export class NowPlayingLyricsPanelComponent {
   readonly optionsOpen = signal(false);
 
   readonly tryAnotherSource = output<void>();
+  readonly editTimingRequested = output<void>();
   readonly fullscreenRequested = output<void>();
   readonly fetchRequested = output<void>();
   /** Emits the delta in ms, not the new absolute value — the panel doesn't own the state. */

@@ -204,6 +204,7 @@
                 [lyricsEdited]="!!lyrics()?.customized"
                 [lyricsTry]="lyricsTry()"
                 (tryAnotherSource)="tryAnotherLyricsSource()"
+                (editTimingRequested)="openTimingEditor()"
                 (fullscreenRequested)="toggleKaraokeFullscreen()"
                 (fetchRequested)="fetchLyricsManually()"
                 (offsetNudged)="nudgeLyricsOffset($event)"
@@ -261,6 +262,7 @@
         [lyricsEdited]="!!lyrics()?.customized"
         [lyricsTry]="lyricsTry()"
         (tryAnotherSource)="tryAnotherLyricsSource()"
+        (editTimingRequested)="openTimingEditor()"
         (exit)="toggleKaraokeFullscreen()"
         (offsetNudged)="nudgeLyricsOffset($event)"
         (offsetReset)="resetLyricsOffset()"
@@ -274,6 +276,20 @@
         (prevClicked)="handlePrev()"
       />
       </div>
+    }
+    @if (timingEditorOpen()) {
+      <app-lyrics-timing-editor
+        [initial]="timingRows()"
+        [positionMs]="displayTime() * 1000"
+        [durationMs]="safeDuration() * 1000"
+        [playing]="showPlaying()"
+        [saving]="timingSaving()"
+        [clock]="timingClock"
+        (cancelled)="closeTimingEditor()"
+        (saved)="saveTiming($event)"
+        (seek)="onSeek($event / 1000)"
+        (playToggled)="handlePlayPause()"
+      />
     }
   </div>
 }

@@ -274,6 +274,8 @@
       [edited]="lyricsEdited()"
       [tryState]="lyricsTry()"
       (tryAnother)="tryAnotherSource.emit()"
+      [canEditTiming]="canSync()"
+      (editTiming)="optionsOpen.set(false); editTimingRequested.emit()"
       [offsetMs]="offsetMs()"
       (closed)="optionsOpen.set(false)"
       (nudged)="offsetNudged.emit($event)"

@@ -537,16 +537,20 @@ export class LyricsService {
   }
 
   /**
-   * Save an edited body for `id`. The server stores it without timings (an
-   * edited text no longer matches the LRC) and clears the offset, and the
-   * entry follows what the server answered.
+   * Save an edited body for `id`. Without `synced` the server stores it untimed
+   * (an edited text no longer matches the LRC). With it, as the timing editor
+   * sends, the LRC is kept verbatim (#1675). Either way the offset is cleared,
+   * and the entry follows what the server answered.
    */
-  save(id: string, plain: string): Observable<LyricsDto> {
+  save(id: string, plain: string, synced?: string): Observable<LyricsDto> {
     const token = this.begin(id, { inFlight: 'write' });
     return this.written(
       id,
       token,
-      this.api.saveLyrics(id, plain).pipe(
+      (synced === undefined
+        ? this.api.saveLyrics(id, plain)
+        : this.api.saveLyrics(id, plain, synced)
+      ).pipe(
         tap((l) => {
           this.settle(id, token, { dto: l, inFlight: null });
           this.remember(id, l);
