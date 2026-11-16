@@ -12,9 +12,14 @@ import {
   RELATED_RELATIVE_CUT,
   type RelatedCandidate,
   NOT_OWNED_LIMIT,
+  RELATIONSHIP_SLOTS,
 } from './related-artists.js';
 import { bumpCoverRev } from './cover-rev.js';
-import { storeSimilarArtists } from './artist-relations.js';
+import {
+  storeSimilarArtists,
+  storeArtistRelationships,
+  relationshipNeighbours,
+} from './artist-relations.js';
 import { normalizeArtistForGrouping } from './album-grouping.js';
 
 let db: Database;
@@ -281,6 +286,59 @@ describe('relatedArtists with cultural relations (#1486)', () => {
       cultural: { score: 0.6, source: 'listenbrainz' },
     });
     expect('reason' in res).toBe(false);
+  });
+
+  it('puts a stated relationship first, found from either end, and says which kind', () => {
+    plainArtist('band', 'The Band', 'mb-band');
+    plainArtist('member', 'A Member', 'mb-member');
+    plainArtist('listeners', 'Shared Listeners', 'mb-listeners');
+    storeSimilarArtists(db, 'mb-band', [
+      { mbid: 'mb-listeners', name: 'Shared Listeners', score: 9 },
+    ]);
+    storeSimilarArtists(db, 'mb-member', []);
+    // Stored once, from the band's side.
+    storeArtistRelationships(db, 'mb-band', [
+      { mbid: 'mb-member', name: 'A Member', kind: 'member' },
+      { mbid: 'mb-not-owned', name: 'Not Owned', kind: 'member' },
+    ]);
+
+    const fromBand = relatedArtists(db, 'band');
+    expect(fromBand.artists.map((a) => a.id)).toEqual(['member', 'listeners']);
+    expect(fromBand.artists[0]!.signals.relationship).toEqual({
+      kind: 'member',
+      source: 'musicbrainz',
+    });
+    // The member finds its band through the same row.
+    expect(relatedArtists(db, 'member').artists.map((a) => a.id)).toEqual(['band']);
+  });
+
+  it('answers from a stated relationship alone, and keeps the strongest kind per artist', () => {
+    plainArtist('seed', 'Seed Artist', 'mb-seed');
+    plainArtist('other', 'Other', 'mb-other');
+    storeArtistRelationships(db, 'mb-seed', [
+      { mbid: 'mb-other', name: 'Other', kind: 'support' },
+      { mbid: 'mb-other', name: 'Other', kind: 'member' },
+    ]);
+    const res = relatedArtists(db, 'seed');
+    expect('reason' in res).toBe(false);
+    expect(relationshipNeighbours(db, 'seed')).toEqual([{ id: 'other', kind: 'member' }]);
+  });
+
+  it('gives relationships a fixed number of places, so a long member list cannot fill the row', () => {
+    plainArtist('seed', 'Seed Artist', 'mb-seed');
+    const members = Array.from({ length: RELATIONSHIP_SLOTS + 2 }, (_, i) => `m${i}`);
+    for (const m of members) plainArtist(m, `Member ${m}`, `mb-${m}`);
+    plainArtist('listeners', 'Shared Listeners', 'mb-listeners');
+    storeArtistRelationships(
+      db,
+      'mb-seed',
+      members.map((m) => ({ mbid: `mb-${m}`, name: `Member ${m}`, kind: 'member' as const })),
+    );
+    storeSimilarArtists(db, 'mb-seed', [
+      { mbid: 'mb-listeners', name: 'Shared Listeners', score: 9 },
+    ]);
+    const ids = relatedArtists(db, 'seed').artists.map((a) => a.id);
+    expect(ids).toEqual([...members.slice(0, RELATIONSHIP_SLOTS), 'listeners']);
   });
 
   it('still says no-signal when neither source has been able to answer', () => {

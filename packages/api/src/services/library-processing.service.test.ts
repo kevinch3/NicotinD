@@ -55,6 +55,7 @@ function fakeCtx(counters: { analyzed: number; genreLookups: number }) {
     resolveArtistIdentity: null,
     lookupPopularity: async () => new Map(),
     lookupSimilarArtists: async () => null,
+    lookupArtistRelationships: async () => null,
     lookupArtistOrigin: null,
     lookupArtistReleaseGroups: null,
     fileExists: () => true,

@@ -70,3 +70,14 @@ export const WithNotOwned: Story = {
     ],
   },
 };
+
+/** A stated relationship takes a front place and says what it is (#1486). */
+export const WithRelationships: Story = {
+  args: {
+    artists: [
+      { ...demo[0]!, signals: { relationship: { kind: 'member', source: 'musicbrainz' } } },
+      { ...demo[1]!, signals: { relationship: { kind: 'collab', source: 'musicbrainz' } } },
+      ...demo.slice(2, 5),
+    ],
+  },
+};

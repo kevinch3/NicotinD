@@ -11,7 +11,8 @@
 
 import type { Database } from 'bun:sqlite';
 import { audioNeighbours, MIN_RELATED_COSINE, type AudioNeighbour } from './artist-centroids.js';
-import { culturalNeighbours } from './artist-relations.js';
+import { culturalNeighbours, relationshipNeighbours } from './artist-relations.js';
+import type { MbRelationshipKind } from './musicbrainz-client.js';
 
 export const RELATED_LIMIT_DEFAULT = 12;
 export const RELATED_LIMIT_MAX = 24;
@@ -24,6 +25,8 @@ export interface RelatedSignals {
   audio?: Omit<AudioNeighbour, 'id'>;
   /** Shared listeners (#1486): 0–1 against the seed's strongest relation. */
   cultural?: { score: number; source: string };
+  /** A stated link (#1486): a member, a collaboration, a supporting musician. */
+  relationship?: { kind: MbRelationshipKind; source: string };
 }
 
 export interface RelatedCandidate {
@@ -39,6 +42,13 @@ export interface RelatedCandidate {
 export const RELATED_RELATIVE_CUT = 0.1;
 
 /**
+ * Places at the front of the row for stated relationships. They are facts, not
+ * a score, so they cannot be ranked against a cosine; a small fixed number
+ * shows them without letting a long member list push the sound-alikes out.
+ */
+export const RELATIONSHIP_SLOTS = 3;
+
+/**
  * Turn the visible candidates for one artist into the row the page shows:
  * which survive and in what order. Candidates arrive in the order the sources
  * produced them (audio: cosine, highest first), the seed already excluded.
@@ -48,6 +58,22 @@ export const RELATED_RELATIVE_CUT = 0.1;
  * discount — a thin candidate already scores low (measured ~0.2/n).
  */
 export function rankRelated(
+  candidates: readonly RelatedCandidate[],
+  limit: number,
+): { id: string; score: number }[] {
+  const stated = candidates
+    .filter((c) => c.signals.relationship)
+    .slice(0, Math.min(RELATIONSHIP_SLOTS, limit))
+    .map((c) => ({ id: c.id, score: 1 }));
+  const statedIds = new Set(stated.map((c) => c.id));
+  limit -= stated.length;
+  if (limit <= 0) return stated;
+  candidates = candidates.filter((c) => !statedIds.has(c.id));
+  const ranked = rankBySound(candidates, limit);
+  return [...stated, ...ranked];
+}
+
+function rankBySound(
   candidates: readonly RelatedCandidate[],
   limit: number,
 ): { id: string; score: number }[] {
@@ -116,6 +142,14 @@ export function notOwnedRelated(db: Database, artistId: string): NotOwnedRelated
 function gather(db: Database, artistId: string): Map<string, RelatedSignals> | null {
   const merged = new Map<string, RelatedSignals>();
   let anySource = false;
+  // Stated relationships first: insertion order is what `rankRelated` reads.
+  const stated = relationshipNeighbours(db, artistId);
+  if (stated.length > 0) {
+    anySource = true;
+    for (const n of stated) {
+      merged.set(n.id, { relationship: { kind: n.kind, source: 'musicbrainz' } });
+    }
+  }
   const audio = audioNeighbours(db, artistId, SOURCE_POOL);
   if (audio) {
     anySource = true;

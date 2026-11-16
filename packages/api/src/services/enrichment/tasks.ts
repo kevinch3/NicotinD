@@ -57,6 +57,8 @@ import {
   RELATION_TTL_MS,
   pendingRelationArtists,
   storeSimilarArtists,
+  storeArtistRelationships,
+  RELATIONSHIP_SOURCE,
 } from '../artist-relations.js';
 import {
   getMbid,
@@ -68,7 +70,11 @@ import {
 } from '../mbid-store.js';
 import { upsertArtistMeta } from '../artist-meta-store.js';
 import { upsertArtistOrigin } from '../artist-origins.js';
-import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
+import {
+  MusicBrainzClient,
+  MB_USER_AGENT,
+  type MbArtistRelationship,
+} from '../musicbrainz-client.js';
 import { isMbidShape } from '@nicotind/core';
 import type { ArtistInfoResult, GenreQuery, GenreResult } from '@nicotind/core';
 import {
@@ -174,6 +180,11 @@ export interface EnrichmentContext {
    * a confident "nothing known"; `null` is a failed request, retried next window.
    */
   lookupSimilarArtists: (artistMbid: string) => Promise<SimilarArtist[] | null>;
+  /**
+   * MusicBrainz artist relationships for one artist MBID (#1486): members,
+   * collaborations. Same contract: `[]` is "none", `null` a failed request.
+   */
+  lookupArtistRelationships: (artistMbid: string) => Promise<MbArtistRelationship[] | null>;
   /**
    * MB artist-origin lookup (docs/artist-origin.md). `ok:false` = transient
    * failure (retry next window, write nothing); `ok:true, country:null` = MB
@@ -554,6 +565,8 @@ export function createEnrichmentContext(deps: {
   lookupArtistReleaseGroups?: ((mbid: string) => Promise<readonly string[]>) | null;
   /** ListenBrainz similar-artists override (tests); defaults to a rate-limited client. */
   lookupSimilarArtists?: (mbid: string) => Promise<SimilarArtist[] | null>;
+  /** MusicBrainz artist-relationships override (tests); defaults to the shared-cache client. */
+  lookupArtistRelationships?: (mbid: string) => Promise<MbArtistRelationship[] | null>;
   /** Data dir — locates the ListenBrainz popularity cache (issue #220). */
   dataDir?: string;
 }): EnrichmentContext {
@@ -609,6 +622,8 @@ export function createEnrichmentContext(deps: {
     },
     lookupPopularity: makePopularityLookup(deps.dataDir ?? null),
     lookupSimilarArtists: deps.lookupSimilarArtists ?? makeSimilarArtistsLookup(),
+    lookupArtistRelationships:
+      deps.lookupArtistRelationships ?? makeArtistRelationshipsLookup(deps.dataDir ?? null),
     lookupArtistOrigin: deps.lookupArtistOrigin ?? makeArtistOriginLookup(deps.dataDir ?? null),
     lookupArtistReleaseGroups:
       deps.lookupArtistReleaseGroups ?? makeArtistReleaseGroupsLookup(deps.dataDir ?? null),
@@ -1410,6 +1425,17 @@ const artistInfoTask: EnrichmentTask = {
     return { applied, labels, failed: tally.failed, errorSample: tally.sample };
   },
 };
+
+/** Build the MB artist-relationships lookup (#1486) on the shared, rate-limited client. */
+export function makeArtistRelationshipsLookup(
+  dataDir: string | null,
+): (mbid: string) => Promise<MbArtistRelationship[] | null> {
+  const client = new MusicBrainzClient(
+    dataDir ? join(dataDir, 'musicbrainz-cache.json') : 'musicbrainz-cache.json',
+    MB_USER_AGENT,
+  );
+  return (mbid) => client.getArtistRelationships(mbid).catch(() => null);
+}
 
 /** Build the MB origin lookup over the shared on-disk MB cache. */
 export function makeArtistOriginLookup(
@@ -2316,7 +2342,10 @@ const artistRelationsTask: EnrichmentTask = {
   id: 'artist-relations',
   label: 'Artist relations',
   available: () => true,
-  countPending: (db) => pendingRelationArtists(db, Date.now() - RELATION_TTL_MS).length,
+  // Two sources, each asked once per artist: the count is requests still to make.
+  countPending: (db) =>
+    pendingRelationArtists(db, Date.now() - RELATION_TTL_MS).length +
+    pendingRelationArtists(db, Date.now() - RELATION_TTL_MS, undefined, RELATIONSHIP_SOURCE).length,
   run: async (db, ctx, limit, albumId) => {
     // Nothing here belongs to one album's landing.
     if (albumId) return { applied: 0, labels: [], failed: 0, errorSample: null };
@@ -2339,6 +2368,23 @@ const artistRelationsTask: EnrichmentTask = {
       storeSimilarArtists(db, artist.mbid, similar);
       applied++;
       labels.push(`${names.get(artist.id) ?? artist.id} → ${similar.length} related`);
+    }
+    // Stated relationships (members, collaborations) from MusicBrainz, in what
+    // is left of this run's budget. Its own ledger row, so one source failing
+    // does not make the other ask again.
+    const left = Math.max(0, limit - pending.length);
+    const pendingLinks = left
+      ? pendingRelationArtists(db, Date.now() - RELATION_TTL_MS, left, RELATIONSHIP_SOURCE)
+      : [];
+    for (const artist of pendingLinks) {
+      const links = await ctx.lookupArtistRelationships(artist.mbid);
+      if (links === null) {
+        recordFailure(tally, new Error('MusicBrainz artist-relationships request failed'));
+        continue;
+      }
+      storeArtistRelationships(db, artist.mbid, links);
+      applied++;
+      labels.push(`${names.get(artist.id) ?? artist.id} → ${links.length} relationships`);
     }
     return { applied, labels, failed: tally.failed, errorSample: tally.sample };
   },

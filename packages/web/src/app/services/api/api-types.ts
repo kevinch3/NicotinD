@@ -493,6 +493,8 @@ export interface RelatedArtistSignals {
   audio?: { cosine: number; members: number; coherence: number };
   /** Shared listeners (#1486): 0–1 against the seed's strongest relation. */
   cultural?: { score: number; source: string };
+  /** A stated link (#1486): member, collaboration, supporting musician, same person. */
+  relationship?: { kind: 'member' | 'collab' | 'support' | 'alias'; source: string };
 }
 
 export interface RelatedArtist {
