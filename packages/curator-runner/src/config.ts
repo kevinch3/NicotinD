@@ -26,6 +26,12 @@ export interface RunnerConfig {
   stateDb: string;
   cooldownDays: number;
   cardLanguage: CardLanguage;
+  /** SearXNG root URL; null means the runner never searches the web. */
+  searchUrl: string | null;
+  /** Web searches a run may send. */
+  searchBudget: number;
+  /** How long a search answer is reused. */
+  searchCacheDays: number;
 }
 
 export class ConfigError extends Error {
@@ -95,7 +101,13 @@ export function loadConfig(env: Record<string, string | undefined>): RunnerConfi
     stateDb: get('CURATOR_STATE_DB') ?? 'curator-state.sqlite',
     cooldownDays: num('CURATOR_COOLDOWN_DAYS', 30, 0, 3650),
     cardLanguage: oneOf<CardLanguage>('CURATOR_CARD_LANGUAGE', ['en', 'es'], 'en'),
+    searchUrl: get('CURATOR_SEARCH_URL')?.replace(/\/+$/, '') ?? null,
+    searchBudget: Math.round(num('CURATOR_SEARCH_BUDGET', 10, 0, 1000)),
+    searchCacheDays: num('CURATOR_SEARCH_CACHE_DAYS', 30, 0, 3650),
   };
+  if (config.searchUrl && !/^https?:\/\//.test(config.searchUrl)) {
+    problems.push(`CURATOR_SEARCH_URL must be an http(s) URL (got "${config.searchUrl}")`);
+  }
   if (provider === 'anthropic' && !config.modelApiKey) {
     problems.push('CURATOR_MODEL_API_KEY is required for the anthropic provider');
   }

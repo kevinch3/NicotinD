@@ -6,6 +6,7 @@ import { anthropicModel, openAiCompatModel } from './model.js';
 import { renderReport } from './report.js';
 import { runCuration } from './run.js';
 import { AttemptStore } from './state.js';
+import { BudgetedSearch, searxngSearch } from './search.js';
 
 const USAGE = `Usage: nicotind-curator [--dry-run] [--report <file>]
 
@@ -39,6 +40,13 @@ async function main(argv: string[]): Promise<number> {
       ? anthropicModel({ ...cfg, baseUrl: cfg.modelBaseUrl, apiKey: cfg.modelApiKey! })
       : openAiCompatModel({ ...cfg, baseUrl: cfg.modelBaseUrl, apiKey: cfg.modelApiKey });
   const store = new AttemptStore(cfg.stateDb);
+  const search = cfg.searchUrl
+    ? new BudgetedSearch(searxngSearch(cfg.searchUrl), store.database, {
+        budget: cfg.searchBudget,
+        cacheDays: cfg.searchCacheDays,
+        now: Date.now,
+      })
+    : undefined;
   try {
     const report = await runCuration(
       cfg,
@@ -48,6 +56,7 @@ async function main(argv: string[]): Promise<number> {
         store,
         now: Date.now,
         log: (line) => console.error(line),
+        search,
       },
       { dryRun: argv.includes('--dry-run') },
     );
