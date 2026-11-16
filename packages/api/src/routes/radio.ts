@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { culturalAffinityFor } from '../services/artist-relations.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import {
   parseLibraryFilter,
@@ -18,6 +19,7 @@ import {
   type ScoredSong,
   type ScoringWeights,
   type SongFeatures,
+  type CulturalAffinityFn,
 } from '../services/radio.service.js';
 import {
   dominantEmbeddingModel,
@@ -305,6 +307,8 @@ export interface RadioResult {
    * (poll snapshots, the diagnostic dump) scores the genre axis the same way.
    */
   genreAffinity?: GenreAffinityFn;
+  /** The shared-listener lookup the ranking used, when that axis was on (#1486). */
+  culturalAffinity?: CulturalAffinityFn;
 }
 
 /** Extract the ranked candidates as full Song rows (the route's response shape). */
@@ -640,14 +644,19 @@ export function buildSeedRadio(
     opts.now,
   );
   const genreAffinity = resolveGenreAffinity(db, opts, seedGenres, candidates);
+  const weights = opts.weights ?? resolveWeights(strategy);
+  // Loaded only when the axis is switched on: it is off by default (#1486).
+  const culturalAffinity =
+    (weights.cultural ?? 0) > 0 ? (culturalAffinityFor(db, seed.artistId) ?? undefined) : undefined;
   const ranked = rankCandidates(seed, pool, {
     count,
     maxPerArtist: strategy.maxPerArtist,
-    weights: opts.weights ?? resolveWeights(strategy),
+    weights,
     quota: outOfGenreQuota(strategy, seedGenres),
     genreAffinity,
+    culturalAffinity,
   });
-  return { seed, pool, ranked, genreAffinity };
+  return { seed, pool, ranked, genreAffinity, culturalAffinity };
 }
 
 /**

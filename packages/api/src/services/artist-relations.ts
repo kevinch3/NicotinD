@@ -247,3 +247,19 @@ export function relationshipNeighbours(db: Database, artistId: string): Relation
         a.id.localeCompare(b.id),
     );
 }
+
+/**
+ * The seed artist's shared-listener scores as a lookup by library artist id,
+ * for radio's cultural axis (#1486). Null when the source was never asked about
+ * this artist, so the axis is skipped rather than scored as "unrelated".
+ */
+export function culturalAffinityFor(
+  db: Database,
+  seedArtistId: string,
+): ((candidateArtistId: string) => number | null) | null {
+  const neighbours = culturalNeighbours(db, seedArtistId, 200);
+  if (!neighbours) return null;
+  const scores = new Map<string, number>();
+  for (const n of neighbours) if (n.id) scores.set(n.id, n.score);
+  return (id) => scores.get(id) ?? null;
+}

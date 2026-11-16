@@ -602,7 +602,10 @@ function renderDump(
   axis: ReturnType<typeof chooseGenreAxis>,
 ): string {
   const { seed, pool, ranked } = result;
-  const ctx: ScoringContext = { genreAffinity: result.genreAffinity };
+  const ctx: ScoringContext = {
+    genreAffinity: result.genreAffinity,
+    culturalAffinity: result.culturalAffinity,
+  };
   const lines: string[] = [];
   lines.push(`# Radio diagnostic dump`);
   lines.push('');

@@ -65,10 +65,32 @@ person is a member of that band.
   facts, not a score, so they are not ranked against a cosine; the cap keeps a long member list from
   pushing the sound-alikes out. The tile says which kind it is under the name.
 
+## The radio axis (off by default)
+
+Radio scores a candidate on a `cultural` axis: how strongly the seed's artist shares listeners with
+the candidate's artist (`culturalAffinityFor`, the same 0–1 relative score Related artists uses).
+
+- **`DEFAULT_WEIGHTS.cultural` is 0**, so served radio is unchanged and the formula version did not
+  move. The lookup is not even loaded while the weight is 0.
+- **No lookup, no axis.** If the source was never asked about the seed's artist, the axis is skipped.
+- **With a lookup, an unrelated artist scores 0** on this axis rather than being skipped. The
+  score is a weighted mean: were strangers skipped, a weakly related artist (0.3) would have its
+  mean pulled down and rank below them.
+- Stated relationships (member, collaboration) are not part of this axis.
+
+**To calibrate it** (the step that needs the host):
+
+1. Turn on Admin → Library processing → Artist relations and let it finish a pass.
+2. `bun run packages/api/src/scripts/dump-radio.ts <seed> --weights cultural=N` for a few values of
+   N, on five or more seeds per value. The dump scores with the lookup the served result used.
+3. Put the chosen N in `DEFAULT_WEIGHTS` and bump `RADIO_FORMULA_VERSION`, as every weight change
+   does.
+
 ## What is not built
 
-- **Radio.** A cultural-affinity axis beside the embedding cosine needs calibration of the kind
-  #1119 did for genre affinity, on prod. Until then radio does not read these rows.
+- **A weight for the radio axis.** The axis exists and is off (see below); the number is not
+  chosen. It needs relation data on the production library, which exists only once the
+  `artist-relations` task is turned on, and then a `dump-radio` comparison on the host.
 - **A dump.** The labs API is the only source used; whether ListenBrainz publishes this dataset for
   offline use is still unanswered.
 

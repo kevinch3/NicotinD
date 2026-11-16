@@ -101,6 +101,12 @@ export interface ScoringWeights {
   timbre: number;
   groove: number;
   spectralBalance: number;
+  /**
+   * Shared listeners between the seed's artist and the candidate's (#1486).
+   * Optional and 0 by default: the axis exists so it can be measured with
+   * `dump-radio.ts --weights cultural=N`; nothing has calibrated it yet.
+   */
+  cultural?: number;
 }
 
 export const DEFAULT_WEIGHTS: ScoringWeights = {
@@ -164,6 +170,8 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   timbre: 6,
   groove: 5,
   spectralBalance: 3,
+  // Shared listeners (#1486): off until measured. See docs/artist-relations.md.
+  cultural: 0,
   // Applied post-normalization as a delta on the 0..1 fit score.
   artistPenalty: 0.15,
   // Slightly above artistPenalty: hearing the *same track* again soon is more
@@ -473,8 +481,13 @@ export const MISSING_ORIGIN_FLOOR = 0.2;
  * nor a weight. Today: the learned genre affinity (docs/genre-affinity.md),
  * absent = lexical genre axis, exactly as before it existed.
  */
+/** 0..1 for an artist the seed's artist shares listeners with, null for one it does not. */
+export type CulturalAffinityFn = (candidateArtistId: string) => number | null;
+
 export interface ScoringContext {
   genreAffinity?: GenreAffinityFn;
+  /** Present only when the cultural weight is above zero (#1486). */
+  culturalAffinity?: CulturalAffinityFn;
 }
 
 export function explainSimilarity(
@@ -546,6 +559,19 @@ export function explainSimilarity(
     add('origin', MISSING_ORIGIN_FLOOR, weights.origin);
   } else {
     add('origin', originValue, weights.origin);
+  }
+
+  // Shared listeners (#1486). With no lookup the seed's artist was never
+  // asked about, and the axis is skipped. With one, an artist it does not name
+  // is floored at 0 rather than skipped: the score is a weighted mean, so a
+  // skipped stranger would outrank a weakly related artist whose 0.3 pulled
+  // its own mean down.
+  if (ctx.culturalAffinity) {
+    const shared = ctx.culturalAffinity(candidate.artistId);
+    if (shared === null) floored.push('cultural');
+    add('cultural', shared ?? 0, weights.cultural ?? 0);
+  } else {
+    add('cultural', null, weights.cultural ?? 0);
   }
 
   // BPM proximity: ±5% ≈ near-full score, scaled linearly.
@@ -669,12 +695,16 @@ export function rankCandidates<T extends SongFeatures>(
     quota?: RankQuota<T>;
     /** Learned genre affinity for this pool (docs/genre-affinity.md); absent = lexical. */
     genreAffinity?: GenreAffinityFn;
+    culturalAffinity?: CulturalAffinityFn;
   } = {},
 ): ScoredSong<T>[] {
   const weights = opts.weights ?? DEFAULT_WEIGHTS;
   const maxPerArtist = opts.maxPerArtist ?? 2;
   const count = opts.count ?? 10;
-  const ctx: ScoringContext = { genreAffinity: opts.genreAffinity };
+  const ctx: ScoringContext = {
+    genreAffinity: opts.genreAffinity,
+    culturalAffinity: opts.culturalAffinity,
+  };
 
   const scored = candidates.map((song) => ({
     song,
