@@ -59,8 +59,10 @@ These are documented in full elsewhere; `CLAUDE.md` links straight to them.
   Activity, `current="page"` because each tab is a URL, with the activity count as the Activity
   tab's `badge` under `badgeTestid`); and the Now Playing panel tabs (`variant="tabs"`, the queue
   count as a number and the lyrics dot as `''`, and `[fill]="false"` so the bar is only as wide as
-  its tabs: the empty space on that row is where a pull up to full height starts, #1679). Pending under #1668: the Shelves | Mosaic switch and the
-  artist tabs. One that the patterns do not see is also recorded there in prose: the TV browse tabs (10-foot
+  its tabs: the empty space on that row is where a pull up to full height starts, #1679); and
+  the artist tabs (`variant="tabs"`, icons from `ARTIST_TAB_ICONS`). The Shelves | Mosaic switch is an exception too: it already follows the rule (icon always, label
+  on the active option) in its own markup, as a floating control over the mosaic with a translucent
+  track and 44px targets, which the shared bar's geometry does not give. Nothing is pending. One that the patterns do not see is also recorded there in prose: the TV browse tabs (10-foot
   text pills, exempt).
   Because the web unit harness does not bind inputs to a nested component, the markup is pinned in
   `icon-tabs.component.spec.ts` and a page's spec asserts only what it hands the bar.
