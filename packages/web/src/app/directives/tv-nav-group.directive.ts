@@ -81,12 +81,15 @@ function isInDomOrder<T extends DomPositioned>(entries: readonly T[]): boolean {
     // items; `aria-orientation` only accepts "horizontal"/"vertical", so it
     // is omitted (null) on the grid axis rather than emitting an invalid
     // `aria-orientation="grid"`.
-    '[attr.role]': "axis === 'grid' ? 'grid' : 'toolbar'",
+    '[attr.role]': "navRole ?? (axis === 'grid' ? 'grid' : 'toolbar')",
     '[attr.aria-orientation]': "axis === 'grid' ? null : axis",
   },
 })
 export class TvNavGroupDirective {
   @Input() axis: TvNavAxis = 'vertical';
+  /** Replaces the default `toolbar` role, for a group that is a `tablist` or a
+   *  `radiogroup` (#1668). Classic `@Input()` for the same reason as `axis`. */
+  @Input() navRole: string | null = null;
 
   private readonly hostElementRef = inject(ElementRef<HTMLElement>);
 

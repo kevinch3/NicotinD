@@ -1,0 +1,51 @@
+<div
+  appTvNavGroup
+  [axis]="'horizontal'"
+  [attr.data-testid]="testid()"
+  [navRole]="groupRole()"
+  [attr.aria-label]="label() ? (label()! | t) : null"
+  class="flex w-full gap-0.5 rounded-xl bg-theme-surface-2 p-1 sm:w-fit"
+>
+  @for (item of items(); track item.value) {
+    @let isActive = active() === item.value;
+    <button
+      type="button"
+      appTvNavItem
+      [attr.data-mode]="item.value"
+      [attr.data-testid]="item.testid ?? null"
+      [navRole]="itemRole()"
+      [attr.aria-current]="variant() === 'nav' && isActive ? 'true' : null"
+      [attr.aria-selected]="variant() === 'tabs' ? isActive : null"
+      [attr.aria-checked]="variant() === 'radio' ? isActive : null"
+      [title]="item.label | t"
+      class="flex h-9 items-center justify-center gap-1.5 rounded-lg px-2 text-[13px] transition-colors sm:flex-none sm:px-3"
+      [class.flex-1]="!isActive"
+      [class.min-w-8]="!isActive"
+      [class.flex-initial]="isActive"
+      [class.min-w-0]="isActive"
+      [class.bg-theme-surface]="isActive"
+      [class.font-medium]="isActive"
+      [class.text-theme-primary]="isActive"
+      [class.text-theme-muted]="!isActive"
+      (click)="selected.emit(item.value)"
+    >
+      <span class="relative flex shrink-0">
+        <app-icon [name]="item.icon" [size]="18" class="flex" />
+        <!-- A hidden label must not hide the count: it rides the icon instead. -->
+        @if (!isActive && hasBadge(item)) {
+          <span
+            data-testid="icon-tab-badge"
+            class="absolute -right-2 -top-1.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-theme-accent px-0.5 text-[9px] font-bold leading-none text-theme-on-accent"
+          >{{ item.badge }}</span>
+        }
+      </span>
+      <span [attr.data-testid]="labelTestid()" [class.truncate]="isActive" [class.sr-only]="!isActive">{{ item.label | t }}</span>
+      @if (isActive && hasBadge(item)) {
+        <span
+          data-testid="icon-tab-badge"
+          class="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-theme-accent px-1 text-[10px] font-bold text-theme-on-accent"
+        >{{ item.badge }}</span>
+      }
+    </button>
+  }
+</div>

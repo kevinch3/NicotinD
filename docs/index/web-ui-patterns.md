@@ -38,6 +38,10 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   on the server's `localAlbumId`; the unowned non-studio tail collapses behind a toggle.
   `buildArtistAlbumTiles`, `albumCompleteness`, `partitionTiles`, `AlbumTileComponent`.
   → [web-ui.md](../web-ui.md)
+- **Icon tabs**: the shared tab bar, icon on every tab and a label only on the active one, with
+  `nav` / `tabs` / `radio` roles, badges and a sweep that fails a hand-rolled tab bar.
+  `IconTabsComponent`, `IconTabItem`, `IconTabsVariant`.
+  → [design-patterns.md](../design-patterns.md)
 - **Library cross-type find bar**: one box above the Library tabs searching everything you own at once
   (`LibraryFindComponent`); a non-empty query *replaces* the tab content rather than filtering the
   active tab, debounced into `?find=` so it is linkable. → [web-ui.md](../web-ui.md)
