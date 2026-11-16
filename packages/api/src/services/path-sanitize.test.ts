@@ -99,6 +99,19 @@ describe('stripTrackPrefix', () => {
     expect(stripTrackPrefix('Plain Title')).toBe('Plain Title');
     expect(stripTrackPrefix('1989')).toBe('1989'); // no separator
   });
+
+  // #866: DJ-pool uploads number their tracks in brackets.
+  it('strips a bracketed index', () => {
+    expect(stripTrackPrefix('[99] TE VAS')).toBe('TE VAS');
+    expect(stripTrackPrefix('[7]Title')).toBe('Title');
+    expect(stripTrackPrefix('(07) Title')).toBe('Title');
+  });
+
+  it('keeps a name that only starts with a number in brackets', () => {
+    expect(stripTrackPrefix('(500) Days of Summer')).toBe('(500) Days of Summer');
+    expect(stripTrackPrefix('[1989] Reissue')).toBe('[1989] Reissue');
+    expect(stripTrackPrefix('(hed) p.e.')).toBe('(hed) p.e.');
+  });
 });
 
 describe('isTrackNumberFragment', () => {
@@ -110,6 +123,13 @@ describe('isTrackNumberFragment', () => {
 
   it('is false when there is non-numeric content after the number', () => {
     expect(isTrackNumberFragment('01 Track')).toBe(false);
+    expect(isTrackNumberFragment('[99] TE VAS')).toBe(false);
+  });
+
+  it('is true for a bare bracketed index (#866)', () => {
+    expect(isTrackNumberFragment('[99]')).toBe(true);
+    expect(isTrackNumberFragment(' (07) ')).toBe(true);
+    expect(isTrackNumberFragment('(500)')).toBe(false);
   });
 
   it('is false for numbers wider than 3 digits (real album names like "1989")', () => {

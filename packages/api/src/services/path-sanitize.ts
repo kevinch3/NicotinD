@@ -86,19 +86,26 @@ export function stripAudioExt(s: string): string {
   return s.replace(AUDIO_EXT_SUFFIX, '');
 }
 
-const TRACK_NUM_PREFIX = /^\s*\d{1,3}\s*[.)\-_]\s*/;
 /**
- * Strip a leading track-number prefix (`"01. "`, `"3) "`, `"04 - "`). Returns
- * the bare value or empty string if nothing remains. Used to detect/clean
- * fragment-shaped artist values like `"01. Sailor & I"`.
+ * A bare index with a separator (`01. `, `3) `, `04 - `), or a bracketed one
+ * (`[99] `, `(07) `) as DJ-pool uploads number their tracks (#866). Round
+ * brackets take at most two digits, so `(500) Days of Summer` stays a name.
+ */
+const TRACK_NUM_PREFIX = /^\s*(?:\d{1,3}\s*[.)\-_]|\[\d{1,3}\]|\(\d{1,2}\))\s*/;
+/** The same shapes with nothing after them. */
+const TRACK_NUM_ONLY = /^\s*(?:\d{1,3}\s*[.)\-_]?|\[\d{1,3}\]|\(\d{1,2}\))\s*$/;
+/**
+ * Strip a leading track-number prefix (`"01. "`, `"3) "`, `"04 - "`, `"[99] "`).
+ * Returns the bare value or empty string if nothing remains. Used to
+ * detect/clean fragment-shaped artist values like `"01. Sailor & I"`.
  */
 export function stripTrackPrefix(s: string): string {
   return s.replace(TRACK_NUM_PREFIX, '').trim();
 }
 
-/** True if the string is *just* a track-number fragment (`"01"`, `"03."`, `" 006"`). */
+/** True if the string is *just* a track-number fragment (`"01"`, `"03."`, `" 006"`, `"[99]"`). */
 export function isTrackNumberFragment(s: string): boolean {
-  return /^\s*\d{1,3}\s*[.)\-_]?\s*$/.test(s);
+  return TRACK_NUM_ONLY.test(s);
 }
 
 /**
