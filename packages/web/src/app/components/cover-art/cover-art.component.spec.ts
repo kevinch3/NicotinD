@@ -4,12 +4,15 @@ import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CoverArtComponent, COVER_HOLD_FADE_MS } from './cover-art.component';
+import { THEME_HUE_COUNT } from '../../lib/theme-hue';
 import { changeInputValue } from '../../../testing/signal-input';
 import { ServerConfigService } from '../../services/server-config.service';
 import {
   hashCode,
   placeholderGradient,
+  placeholderHue,
   placeholderInitial,
+  placeholderInk,
   placeholderFontSize,
   coverLoadingAttr,
 } from './cover-art.component';
@@ -229,12 +232,32 @@ describe('hashCode', () => {
 });
 
 describe('placeholderGradient (themed coverless fallback)', () => {
-  it('builds the gradient from theme tokens, not a fixed palette', () => {
+  it('mixes one of the eight hue tokens into the surface, and never the accent', () => {
     const g = placeholderGradient('Maná', 'Sueños Líquidos');
-    expect(g).toContain('var(--theme-accent)');
-    expect(g).toContain('var(--theme-surface-2)');
-    // No hardcoded hex colors leaking from the old rainbow palette.
+    expect(g).toMatch(/var\(--theme-hue-[1-8]\)/);
+    expect(g).toContain('var(--theme-surface)');
+    // The accent says "press me"; a coverless tile is not a control (theme audit).
+    expect(g).not.toContain('--theme-accent');
     expect(g).not.toMatch(/#[0-9a-f]{6}/i);
+  });
+
+  it('gives the same item the same hue everywhere, and spreads items over all eight', () => {
+    expect(placeholderHue('Maná', 'Sueños Líquidos')).toBe(
+      placeholderHue('Maná', 'Sueños Líquidos'),
+    );
+    const seen = new Set(
+      Array.from({ length: 200 }, (_, i) => placeholderHue(`artist ${i}`, `album ${i * 7}`)),
+    );
+    expect(seen.size).toBe(THEME_HUE_COUNT);
+    for (const hue of seen) expect(hue).toMatch(/^var\(--theme-hue-[1-8]\)$/);
+  });
+
+  it('colours the initial from the same hue, pulled toward the text colour', () => {
+    const hue = placeholderHue('A', '1');
+    expect(placeholderInk('A', '1')).toBe(
+      `color-mix(in srgb, ${hue} 50%, var(--theme-text-primary))`,
+    );
+    expect(placeholderGradient('A', '1')).toContain(hue);
   });
 
   it('is deterministic and varies the angle per item', () => {

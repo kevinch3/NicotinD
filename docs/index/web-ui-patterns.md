@@ -38,6 +38,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   on the server's `localAlbumId`; the unowned non-studio tail collapses behind a toggle.
   `buildArtistAlbumTiles`, `albumCompleteness`, `partitionTiles`, `AlbumTileComponent`.
   → [web-ui.md](../web-ui.md)
+- **Theme hues for things with no colour of their own**: coverless artwork and genre tiles take one
+  of eight fixed hues by a stable hash, mixed into the preset's surface, with a per-preset contrast
+  gate. `themeHue`, `placeholderGradient`, `placeholderInk`. → [web-ui.md](../web-ui.md)
 - **Icon tabs**: the shared tab bar, icon on every tab and a label only on the active one, with
   `nav` / `tabs` / `radio` roles, badges and a sweep that fails a hand-rolled tab bar.
   `IconTabsComponent`, `IconTabItem`, `IconTabsVariant`.
