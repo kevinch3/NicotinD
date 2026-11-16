@@ -253,7 +253,7 @@ describe('GenreDetailComponent — Add to playlist', () => {
   it('exposes an "Add to playlist" track action that opens the picker', () => {
     const { component, openPicker } = setup();
     const action = component.songMenu
-      .build(MOCK_SONGS[0], { removable: true })
+      .build(MOCK_SONGS[0], {})
       .find((a) => a.label === 'Add to playlist');
     expect(action).toBeDefined();
     action!.action();

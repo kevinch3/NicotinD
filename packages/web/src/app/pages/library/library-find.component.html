@@ -99,7 +99,7 @@
               [subtitle]="song.artists?.length ? undefined : song.artist"
               [artists]="song.artists"
               [duration]="song.duration"
-              [actions]="songMenu.build(song, { removable: true })"
+              [actions]="songMenu.build(song, {})"
               (play)="playSong(i)"
             />
           }

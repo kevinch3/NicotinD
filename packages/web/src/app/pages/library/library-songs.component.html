@@ -175,7 +175,7 @@
           [offline]="preserve.isPreserved(song.id)"
           [selectable]="selection.active()"
           [selected]="selection.isSelected(song.id)"
-          [actions]="songMenu.build(song, { removable: true })"
+          [actions]="songMenu.build(song, {})"
           (play)="playSong(i)"
           (selectedChange)="selection.toggleRange(song.id, songOrderedIds(), $event.shiftKey)"
         />

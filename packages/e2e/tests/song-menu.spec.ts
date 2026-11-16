@@ -121,7 +121,9 @@ test.describe('song row menu', () => {
     const row = rows.filter({ hasText: removedTitle });
     await expect(row).toHaveCount(1);
     await row.getByTestId('track-row-menu-toggle').click();
-    await row.getByTestId('track-action-Remove from library').click();
+    // Remove lives in the Curate submenu (#2017).
+    await row.getByTestId('track-action-Curate').click();
+    await page.getByTestId('menu-flyout').getByTestId('track-action-Remove from library').click();
 
     // Scoped to the global ConfirmHost overlay — the legacy per-page
     // app-confirm-dialog also exposes a confirm-ok testid, so anchor on the
@@ -144,5 +146,24 @@ test.describe('song row menu', () => {
     await page.goto('/library');
     await openAlbumCard(page, FIXTURE.album.title);
     await expect(rows).toHaveCount(countBefore);
+  });
+
+  // #2017: a curator reaches the tag editor in two taps, not several scrolls.
+  test('Curate ▸ Edit tags opens Song info with the tag editor open', async ({ page }) => {
+    await page.goto('/library');
+    await openAlbumCard(page, FIXTURE.album.title);
+    const row = page.getByTestId('track-row').first();
+    await row.getByTestId('track-row-menu-toggle').click();
+    await row.getByTestId('track-action-Curate').click();
+    const flyout = page.getByTestId('menu-flyout');
+    await expect(flyout.getByTestId('track-action-Set genre')).toBeVisible();
+    await flyout.getByTestId('track-action-Edit tags').click();
+
+    const sheet = page.getByTestId('track-info-sheet');
+    await expect(sheet).toBeVisible();
+    // The editor is open: its Edit button is gone and the section is on screen.
+    await expect(sheet.getByTestId('edit-tags-button')).toHaveCount(0);
+    await expect(sheet.getByTestId('tags-section')).toBeInViewport();
+    await expect(sheet.getByTestId('tags-section').locator('input').first()).toBeVisible();
   });
 });
