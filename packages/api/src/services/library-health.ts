@@ -16,6 +16,7 @@ import { folderArtBelongsToAlbum } from './album-folder.js';
 import { findFolderCoverName } from './cover-sources.js';
 import { losslessSuffixSql } from './library-track-select.js';
 import { lowInformationOnlyGenreSql, unresolvedGenreSql } from './genre-split.js';
+import { genreLaneReport, type GenreLaneReport } from './genre-lanes.js';
 import { countOpenCurationFlags } from './curation-flags.js';
 import { jointCreditFacts, type JointCreditFacts } from './joint-credits.js';
 import { albumAlreadyComplete, matchingLocalAlbums, onDiskTitles } from './library-completeness.js';
@@ -212,6 +213,11 @@ export interface LibraryHealthReport {
       worklist: SongRef[];
       /** Artist-grouped, biggest amortisation first. See {@link LowInformationGenreArtist}. */
       lowInformationWorklist: LowInformationGenreArtist[];
+      /**
+       * Genre-less songs a deterministic lane has an answer for (#1516 P3).
+       * A measurement: nothing applies these yet.
+       */
+      deterministicLanes: GenreLaneReport;
       remediation: string;
     };
     years: {
@@ -860,6 +866,7 @@ export function libraryHealth(
           genre: r.genre,
           songs: r.songs,
         })),
+        deterministicLanes: genreLaneReport(db, sample),
         remediation:
           'genre → genre-discogs → genre-audio enrichment chain; residuals via set_song_genre. ' +
           'lowInformation is per-ARTIST work: one subgenre judgement for an artist whose subgenre ' +

@@ -1349,6 +1349,19 @@ export interface LibraryHealthReport {
       metric: { songs: number; missing: number; lowInformation: number };
       worklist: { songId: string; title: string; artist: string }[];
       lowInformationWorklist: { artistId: string; artist: string; genre: string; songs: number }[];
+      /** Genre-less songs a deterministic lane has an answer for (#1516 P3); not applied. */
+      deterministicLanes?: {
+        counts: { title: number; siblings: number };
+        siblingArtists: number;
+        sample: {
+          lane: 'title' | 'siblings';
+          songId: string;
+          title: string;
+          artist: string;
+          genres: string[];
+          evidence: string;
+        }[];
+      };
       remediation: string;
     };
     years: {

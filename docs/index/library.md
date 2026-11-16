@@ -194,3 +194,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   enrichment task and stored locally with a per-artist relative score; fills Related artists where
   audio has nothing. `storeSimilarArtists`, `culturalNeighbours`, `artistMbidIndex`,
   `getSimilarArtists`. → [artist-relations.md](../artist-relations.md)
+- **Deterministic genre lanes**: genres a genre-less song could take with no model, from a title's
+  bracketed list or the artist's other albums agreeing; a read-only measurement in the health
+  report. `genreLaneCandidates`, `titleDeclaredGenres`, `agreedSiblingGenre`.
+  → [genre-lanes.md](../genre-lanes.md)
