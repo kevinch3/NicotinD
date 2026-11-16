@@ -41,24 +41,36 @@
     }
   }
 
-  /* Midnight (default — values match current hardcoded zinc classes) */
+  /* Midnight (default). Values are the palette proposal's (docs/palette-proposal.md). */
   /* Names added by the token pass (#1684) that only rename an existing level. */
   :root {
     --theme-surface-1: var(--theme-surface);
+    /* One fixed set for coverless placeholders and genre tiles (theme audit Q2):
+       the eight vibe-gradient hues. A call site mixes one into a surface the way
+       `.chip-tone-*` does, so it follows each preset's lightness. */
+    --theme-hue-1: #fbbf24;
+    --theme-hue-2: #38bdf8;
+    --theme-hue-3: #d946ef;
+    --theme-hue-4: #ef4444;
+    --theme-hue-5: #8b5cf6;
+    --theme-hue-6: #facc15;
+    --theme-hue-7: #f97316;
+    --theme-hue-8: #10b981;
   }
 
   :root,
   [data-theme="midnight"] {
-    --theme-bg:           #09090b;
-    --theme-surface:      #18181b;
-    --theme-surface-2:    #27272a;
-    --theme-hover:        rgba(39,39,42,0.5);
-    --theme-border:       #27272a;
+    --theme-bg:           #0a0a0f;
+    --theme-surface:      #18181f;
+    --theme-surface-2:    #25252f;
+    --theme-surface-3:    #31313d;
+    --theme-hover:        rgba(37,37,47,0.5);
+    --theme-border:       #3a3a46;
     --theme-text-primary: #f4f4f5;
-    --theme-text-secondary: #a1a1aa;
-    --theme-text-muted:   #8d8d96;
+    --theme-text-secondary: #a8a8b4;
+    --theme-text-muted:   #9a9aa6;
     --theme-accent:       #6164f1;
-    --theme-accent-text:  #7f82f4;
+    --theme-accent-text:  #8a8cf7;
     --theme-on-accent:    #ffffff;
     --theme-accent-2:     #f0806a;
     --theme-accent-2-text: #f39a87;
@@ -76,16 +88,17 @@
   }
 
   [data-theme="daylight"] {
-    --theme-bg:           #f4f4f5;
+    --theme-bg:           #ececf1;
     --theme-surface:      #ffffff;
-    --theme-surface-2:    #e4e4e7;
-    --theme-hover:        rgba(228,228,231,0.6);
-    --theme-border:       #d4d4d8;
+    --theme-surface-2:    #e0e0e8;
+    --theme-surface-3:    #d3d3dd;
+    --theme-hover:        rgba(224,224,232,0.6);
+    --theme-border:       #c0c0cc;
     --theme-text-primary: #18181b;
-    --theme-text-secondary: #52525b;
-    --theme-text-muted:   #65656d;
-    --theme-accent:       #6164f1;
-    --theme-accent-text:  #4b4eef;
+    --theme-text-secondary: #4b4b56;
+    --theme-text-muted:   #585863;
+    --theme-accent:       #5457e8;
+    --theme-accent-text:  #4245dc;
     --theme-on-accent:    #ffffff;
     --theme-accent-2:     #c2410c;
     --theme-accent-2-text: #a3360a;
@@ -104,15 +117,16 @@
 
   [data-theme="warm-paper"] {
     --theme-bg:           #faf6f0;
-    --theme-surface:      #fff9f0;
+    --theme-surface:      #ffffff;
     --theme-surface-2:    #e7ddd0;
+    --theme-surface-3:    #d8cec2;
     --theme-hover:        rgba(231,221,208,0.5);
-    --theme-border:       #d6c8b8;
+    --theme-border:       #c9c0b4;
     --theme-text-primary: #292524;
     --theme-text-secondary: #57534e;
-    --theme-text-muted:   #67615c;
+    --theme-text-muted:   #5c5752;
     --theme-accent:       #d27306;
-    --theme-accent-text:  #945104;
+    --theme-accent-text:  #925005;
     --theme-on-accent:    #431407;
     --theme-accent-2:     #0f766e;
     --theme-accent-2-text: #0d625b;
@@ -133,11 +147,12 @@
     --theme-bg:           #000000;
     --theme-surface:      #0a0a0a;
     --theme-surface-2:    #1a1a1a;
+    --theme-surface-3:    #2a2a2a;
     --theme-hover:        rgba(26,26,26,0.6);
-    --theme-border:       #1a1a1a;
+    --theme-border:       #3a3a3a;
     --theme-text-primary: #ffffff;
     --theme-text-secondary: #a3a3a3;
-    --theme-text-muted:   #828282;
+    --theme-text-muted:   #929292;
     --theme-accent:       #818cf8;
     --theme-accent-text:  #818cf8;
     --theme-on-accent:    #0a0a0a;
@@ -160,13 +175,14 @@
     --theme-bg:           #1e1b2e;
     --theme-surface:      #2d2640;
     --theme-surface-2:    #3d3557;
+    --theme-surface-3:    #494262;
     --theme-hover:        rgba(61,53,87,0.6);
-    --theme-border:       #3d3557;
+    --theme-border:       #564e6d;
     --theme-text-primary: #ede9f6;
-    --theme-text-secondary: #a39fc4;
-    --theme-text-muted:   #a3a1b8;
+    --theme-text-secondary: #b7b3d2;
+    --theme-text-muted:   #b6b4c8;
     --theme-accent:       #a78bfa;
-    --theme-accent-text:  #ad93fa;
+    --theme-accent-text:  #af96fa;
     --theme-on-accent:    #1e1b2e;
     --theme-accent-2:     #f0806a;
     --theme-accent-2-text: #f39a87;
@@ -187,11 +203,12 @@
     --theme-bg:           #0f1a17;
     --theme-surface:      #172320;
     --theme-surface-2:    #243d35;
+    --theme-surface-3:    #314a42;
     --theme-hover:        rgba(36,61,53,0.6);
-    --theme-border:       #243d35;
+    --theme-border:       #3f574f;
     --theme-text-primary: #e2f5ed;
-    --theme-text-secondary: #7dac98;
-    --theme-text-muted:   #75ac9b;
+    --theme-text-secondary: #94bdac;
+    --theme-text-muted:   #8fbeaf;
     --theme-accent:       #2dd4bf;
     --theme-accent-text:  #2dd4bf;
     --theme-on-accent:    #05130f;
@@ -218,6 +235,7 @@
     --theme-bg:           #ffffff;
     --theme-surface:      #f5f5f5;
     --theme-surface-2:    #e0e0e0;
+    --theme-surface-3:    #e0e0e0;
     --theme-hover:        #cccccc;
     --theme-border:       #555555;
     --theme-text-primary: #000000;
@@ -241,6 +259,14 @@
     --theme-status-warn-text:     #663300;
     font-size: 1.125rem;
     font-weight: 500;
+    --theme-hue-1: var(--theme-surface-2);
+    --theme-hue-2: var(--theme-surface-2);
+    --theme-hue-3: var(--theme-surface-2);
+    --theme-hue-4: var(--theme-surface-2);
+    --theme-hue-5: var(--theme-surface-2);
+    --theme-hue-6: var(--theme-surface-2);
+    --theme-hue-7: var(--theme-surface-2);
+    --theme-hue-8: var(--theme-surface-2);
   }
 
   /* Thicken every (stroke-based) icon on e-ink. Unitless = SVG user units, so it
@@ -416,6 +442,17 @@
      spec.ts` now fails on any /NN colour missing from this block. */
   --color-theme-surface-2: var(--theme-surface-2);
   --color-theme-surface-1: var(--theme-surface-1);
+  /* The level above surface-2 (#1684, theme audit Q4): hover and pressed on a
+     raised surface. No accent text sits on it. */
+  --color-theme-surface-3: var(--theme-surface-3);
+  --color-theme-hue-1: var(--theme-hue-1);
+  --color-theme-hue-2: var(--theme-hue-2);
+  --color-theme-hue-3: var(--theme-hue-3);
+  --color-theme-hue-4: var(--theme-hue-4);
+  --color-theme-hue-5: var(--theme-hue-5);
+  --color-theme-hue-6: var(--theme-hue-6);
+  --color-theme-hue-7: var(--theme-hue-7);
+  --color-theme-hue-8: var(--theme-hue-8);
   /* The second hue (#1684, theme audit Q1): "now playing / live", so the
      accent keeps "press me" and "you are here". Fill, text and on-fill split
      the way the accent's do. */

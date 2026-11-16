@@ -25,7 +25,7 @@ const STORAGE_KEY = 'nicotind-theme';
 
 const ACCENT_COLORS: Record<ThemeId, string> = {
   midnight: '#6164f1',
-  daylight: '#6164f1',
+  daylight: '#5457e8',
   'warm-paper': '#d27306',
   oled: '#818cf8',
   twilight: '#a78bfa',
