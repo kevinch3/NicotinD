@@ -111,8 +111,10 @@
       </section>
     }
 
-    <!-- Top artists + albums, side by side on wide screens -->
-    <div class="grid gap-8 sm:grid-cols-2">
+    <!-- Top artists + albums, side by side on wide screens. `grid-cols-1` is not
+         decoration: without an explicit track the single column is as wide as
+         its longest unbroken name, and the page scrolls sideways (#2021). -->
+    <div class="grid grid-cols-1 gap-8 sm:grid-cols-2">
       @if (stats()!.topArtists.length > 0) {
         <section data-testid="stats-top-artists">
           <h3 class="section-title mb-2">{{ 'stats.topArtists' | t }}</h3>

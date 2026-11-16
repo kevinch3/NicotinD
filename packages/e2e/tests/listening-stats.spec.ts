@@ -145,6 +145,53 @@ test.describe('listening stats', () => {
     await expect(page.getByRole('heading', { name: FIXTURE.album.artist }).first()).toBeVisible();
   });
 
+  // #2021: a long name in a top list must truncate, not widen the page. The
+  // names come from the play events of a song the library no longer has, so
+  // the row is plain text, the widest case.
+  test('a long artist or album name does not widen the Stats tab on a 320px phone', async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await page.goto('/library');
+    const token = await page.evaluate(() => localStorage.getItem('nicotind_token'));
+    const auth = { Authorization: `Bearer ${token}` };
+    const now = Date.now();
+    const long = 'A Very Long Name That Keeps Going Well Past The Edge Of A Small Phone Screen';
+    const post = await request.post('/api/history/plays', {
+      headers: auth,
+      data: {
+        events: [1, 2, 3, 4].map((n) => ({
+          clientEventId: `e2e-stats-long-${now}-${n}`,
+          songId: `e2e-gone-song-${now}`,
+          startedAt: now - n * 60_000,
+          msPlayed: 250_000,
+          durationMs: 300_000,
+          reason: 'ended',
+          source: 'album',
+          device: 'browser',
+          title: `${long} (song)`,
+          artist: `${long} (artist)`,
+          album: `${long} (album)`,
+        })),
+      },
+    });
+    expect(post.ok()).toBeTruthy();
+
+    await page.goto('/library');
+    await page.getByTestId('library-tabs').getByRole('button', { name: 'Stats' }).click();
+    const panel = page.getByTestId('library-stats');
+    await expect(panel.getByTestId('stats-top-album').filter({ hasText: '(album)' })).toBeVisible();
+    for (const testid of ['stats-top-songs', 'stats-top-artists', 'stats-top-albums']) {
+      const box = (await panel.getByTestId(testid).boundingBox())!;
+      expect(box.x + box.width, `${testid} right edge`).toBeLessThanOrEqual(320);
+    }
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
   test('switching period refetches without leaving the tab', async ({ page }) => {
     await page.goto('/library');
     await page.getByTestId('library-tabs').getByRole('button', { name: 'Stats' }).click();
