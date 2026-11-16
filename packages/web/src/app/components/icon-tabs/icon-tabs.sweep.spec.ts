@@ -6,17 +6,16 @@ import { join, relative } from 'path';
 // reason. A new hand-rolled `tablist`, `radiogroup` or segmented pill fails.
 const APP = join(__dirname, '..', '..');
 
-/** Still hand-rolled; each is a migration step of #1668 and leaves this list with it. */
-const PENDING: Record<string, string> = {
-  'pages/home/home-view-switch.component.html': 'Shelves | Mosaic switch (step b)',
-  'pages/library/artist-detail.component.html': 'artist tabs, also untranslated (step e)',
-};
+/** Still hand-rolled and due to migrate. Empty since #1668's last step. */
+const PENDING: Record<string, string> = {};
 
 // One the patterns below do not see: the TV browse tabs (10-foot text pills, exempt).
 
 /** Not tab bars, or tab bars the standard does not fit. */
 const EXCEPTIONS: Record<string, string> = {
   'components/icon-tabs/icon-tabs.component.html': 'the component itself',
+  'pages/home/home-view-switch.component.html':
+    'follows the rule in its own markup: a floating control over the mosaic, translucent track, 44px targets',
   'components/now-playing/radio-chip/radio-chip.component.html':
     'radio variety: a three-position dial, icons would add noise (#1660)',
   'components/now-playing/np-radio-control/np-radio-control.component.html':
@@ -89,6 +88,7 @@ describe('tab bars are <app-icon-tabs> or a recorded exception (#1668)', () => {
       'pages/library/library.component.html',
       'pages/get/get.component.html',
       'components/now-playing/now-playing-panel-tabs/now-playing-panel-tabs.component.html',
+      'pages/library/artist-detail.component.html',
     ]) {
       expect(readFileSync(join(APP, page), 'utf8'), page).toContain('<app-icon-tabs');
       expect(tabLikeTemplates()).not.toContain(page);

@@ -196,38 +196,22 @@
     ) {
       <p class="text-center text-theme-muted py-20">{{ 'artist.noReleases' | t }}</p>
     } @else {
-      <!-- Tabs: Albums | Singles & EPs | Appears On | Songs. The discography line is a
-           sibling of the tablist, not inside it: below md it takes its own line under
-           the tabs (#1636). Labels never wrap; a phone too narrow for all four scrolls
-           the strip, so below md the rule is an inset shadow (overflow would clip the
-           tabs' -mb-px overlap). See docs/web-ui.md. -->
+      <!-- Tabs: Albums | Singles & EPs | Appears On | Songs, as the shared tab bar
+           (#1668): an icon each, a label on the active one, so all four fit a phone.
+           The discography line is a sibling of the tablist, not inside it: below md
+           it takes its own line under the tabs (#1636). See docs/web-ui.md. -->
       <div
-        class="flex flex-wrap items-center gap-x-4 mb-5 md:flex-nowrap md:border-b md:border-theme-surface-2"
+        class="flex flex-wrap items-center gap-x-4 mb-5 md:flex-nowrap"
         data-testid="artist-tab-row"
       >
-        <div
-          class="flex items-center w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden shadow-[inset_0_-1px_0_var(--theme-surface-2)] sm:gap-1 md:w-auto md:shrink-0 md:overflow-visible md:shadow-none"
-          role="tablist"
-          data-testid="artist-tablist"
-        >
-          @for (tab of visibleTabs(); track tab) {
-            <button
-              type="button"
-              role="tab"
-              [attr.data-testid]="'artist-tab-' + tab"
-              [attr.aria-selected]="activeTab() === tab"
-              (click)="setTab(tab)"
-              [class]="
-                'shrink-0 px-1.5 sm:px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 md:-mb-px transition ' +
-                (activeTab() === tab
-                  ? 'border-[var(--theme-accent)] text-theme-primary'
-                  : 'border-transparent text-theme-muted hover:text-theme-secondary')
-              "
-            >
-              {{ tabLabelKey(tab) | t }}
-            </button>
-          }
-        </div>
+        <app-icon-tabs
+          class="block w-full md:w-auto md:shrink-0"
+          variant="tabs"
+          testid="artist-tablist"
+          label="artist.tabs"
+          [items]="tabItems()"
+          [active]="activeTab()"
+          (selected)="setTab($any($event))" />
 
         <!-- What the discography knows, where the tabs are — the old section header. -->
         @if (discography()) {

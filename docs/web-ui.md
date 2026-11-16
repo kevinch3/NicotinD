@@ -952,10 +952,10 @@ the tablist's flex row, so on a 390px phone it squeezed into a 4-line block besi
 tabs and wrapped `Singles & EPs` onto two lines. Now the row (`artist-tab-row`) holds the
 tablist (`artist-tablist`, tabs only) and the summary as siblings: below `md` the summary
 takes its own line under the tabs; from `md` it sits inline, right-aligned, wrapping
-inside its own box rather than pushing the tabs. Labels are `whitespace-nowrap`, and a
-phone too narrow for all four tabs (a 360px Android in Spanish) scrolls the strip instead
-of wrapping a label or the page. Because a scrolling box clips, the phone strip draws its
-rule as an inset shadow and the tabs drop the `-mb-px` overlap they use from `md` up. Every
+inside its own box rather than pushing the tabs. **The tablist is the shared tab bar
+(#1668, `<app-icon-tabs variant="tabs">`)**: each tab shows an icon (`ARTIST_TAB_ICONS`) and
+only the active one its label, so all four fit a 360px phone in Spanish with no scrolling
+strip; the underline tabs and the rule under them are gone. Every
 label in the row, the toggle, the empty slates and the tile's `Get album` /
 `Complete album` / `n/N tracks` go through the catalog (`artist.tab.*`,
 `discography.summary`, `albumTile.*`). `artist-tab-row.spec.ts` measures the four-tab

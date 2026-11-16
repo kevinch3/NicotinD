@@ -59,6 +59,7 @@
   "artist.source.curator": "a curator",
   "artist.genreMixed": "Mixed genres",
   "artist.genreShareCaption": "By the primary genre of each of {count} tagged tracks",
+  "artist.tabs": "Releases and songs",
   "artist.tab.albums": "Albums",
   "artist.tab.singles": "Singles & EPs",
   "artist.tab.appearsOn": "Appears On",

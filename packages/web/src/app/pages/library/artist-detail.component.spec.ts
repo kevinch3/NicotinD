@@ -1177,9 +1177,11 @@ describe('ArtistDetailComponent — tab row (#1636)', () => {
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
 
-    const tablist = el.querySelector('[role="tablist"]')!;
+    // The tablist is the shared tab bar (#1668), a sibling of the summary.
+    const tablist = el.querySelector('[data-testid="artist-tab-row"] app-icon-tabs')!;
+    expect(tablist.getAttribute('variant')).toBe('tabs');
+    expect(tablist.getAttribute('testid')).toBe('artist-tablist');
     expect(tablist.querySelector('[data-testid="discography-summary"]')).toBeNull();
-    expect(Array.from(tablist.children).every((c) => c.getAttribute('role') === 'tab')).toBe(true);
     expect(
       el.querySelector('[data-testid="artist-tab-row"] [data-testid="discography-summary"]'),
     ).toBeTruthy();
@@ -1195,9 +1197,10 @@ describe('ArtistDetailComponent — tab row (#1636)', () => {
     const el: HTMLElement = fixture.nativeElement;
 
     // No catalog loads in a unit test, so a translated label renders as its key.
-    expect(el.querySelector('[data-testid="artist-tab-albums"]')!.textContent!.trim()).toBe(
-      'artist.tab.albums',
-    );
+    expect(fixture.componentInstance.tabItems().map((t) => [t.testid, t.label, t.icon])).toEqual([
+      ['artist-tab-albums', 'artist.tab.albums', 'disc-album'],
+      ['artist-tab-songs', 'artist.tab.songs', 'music'],
+    ]);
     expect(el.querySelector('[data-testid="discography-summary"]')!.textContent!.trim()).toBe(
       'discography.summary',
     );

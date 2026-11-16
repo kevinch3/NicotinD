@@ -43,7 +43,11 @@ import { CoverRevisionsService } from '../../services/cover-revisions.service';
 import { LibraryEventsService } from '../../services/library-events.service';
 import { artistCover } from '../../lib/cover-url';
 import { AlbumTileComponent } from '../../components/album-tile/album-tile.component';
-import { IconComponent } from '../../components/icon/icon.component';
+import { IconComponent, type IconName } from '../../components/icon/icon.component';
+import {
+  IconTabsComponent,
+  type IconTabItem,
+} from '../../components/icon-tabs/icon-tabs.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.component';
@@ -94,6 +98,14 @@ export const ARTIST_TAB_LABEL_KEYS: Record<ArtistTab, string> = {
   songs: 'artist.tab.songs',
 };
 
+/** Each tab's icon: it is all an inactive tab shows (#1668). */
+export const ARTIST_TAB_ICONS: Record<ArtistTab, IconName> = {
+  albums: 'disc-album',
+  singles: 'disc',
+  'appears-on': 'layers',
+  songs: 'music',
+};
+
 export type SongSort = 'newest' | 'title' | 'album';
 const SONGS_PAGE_SIZE = 60;
 
@@ -108,6 +120,7 @@ const SONGS_PAGE_SIZE = 60;
     CoverArtComponent,
     AlbumTileComponent,
     IconComponent,
+    IconTabsComponent,
     TrackRowComponent,
     SelectionBarComponent,
     LibraryFilterPanelComponent,
@@ -291,9 +304,15 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     return tabs;
   });
 
-  tabLabelKey(tab: ArtistTab): string {
-    return ARTIST_TAB_LABEL_KEYS[tab];
-  }
+  /** The tabs as the shared tab bar takes them, under the testids e2e uses. */
+  readonly tabItems = computed<IconTabItem[]>(() =>
+    this.visibleTabs().map((tab) => ({
+      value: tab,
+      icon: ARTIST_TAB_ICONS[tab],
+      label: ARTIST_TAB_LABEL_KEYS[tab],
+      testid: `artist-tab-${tab}`,
+    })),
+  );
 
   setTab(tab: ArtistTab): void {
     this.activeTab.set(tab);
