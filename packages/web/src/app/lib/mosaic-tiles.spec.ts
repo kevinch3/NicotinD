@@ -557,3 +557,28 @@ describe('sizingReference (#1642)', () => {
     expect(sizingReference(800)).toBeGreaterThan(sizingReference(390));
   });
 });
+
+describe('buildMosaicTiles — the lane a song tile was drawn from', () => {
+  it('stamps each song tile with its lane, and no other tile', () => {
+    const tiles = buildMosaicTiles(
+      emptySources({
+        recentPlays: [recent(1)],
+        keepVibe: [song({ id: 'k1' })],
+        tasteBreakers: [song({ id: 'b1' })],
+        vibes: [VIBE_PRESETS[0]],
+      }),
+      seeded(1),
+    );
+    const lane = (key: string) => tiles.find((t) => t.key === key)?.lane;
+    expect(lane('song:r1')).toBe('recent');
+    expect(lane('song:k1')).toBe('keepVibe');
+    expect(lane('song:b1')).toBe('tasteBreaker');
+    for (const t of tiles.filter((t) => t.kind !== 'song')) expect(t.lane).toBeUndefined();
+  });
+
+  it('a discovery-cell song carries no lane', () => {
+    const slots = [{ id: 1, size: 100 }];
+    const [tile] = [...assignSongsToSlots(slots, [song({ id: 'd1' })], playWeights(null)).values()];
+    expect(tile.lane).toBeUndefined();
+  });
+});
