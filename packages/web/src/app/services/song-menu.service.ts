@@ -92,11 +92,34 @@ export class SongMenuService {
     ];
 
     if (song.artistId && !ctx.hideGoToArtist) {
+      // A joint or featured credit: one entry per credited artist, primary
+      // first, so the others can be reached too (#2010). A single credit stays
+      // a plain item.
+      const credits = [...(song.artists ?? [])].sort(
+        (a, b) => Number(b.role === 'primary') - Number(a.role === 'primary'),
+      );
       actions.push({
         label: 'Go to artist',
         labelKey: 'song.goToArtist',
         icon: 'user',
         group: 'goto',
+        ...(credits.length > 1
+          ? {
+              children: () =>
+                credits.map((credit, i) => ({
+                  // Two credits can share a name; a label is also a row's key.
+                  label:
+                    credits.findIndex((c) => c.name === credit.name) === i
+                      ? credit.name
+                      : `${credit.name} (${i + 1})`,
+                  icon: 'user' as const,
+                  action: () =>
+                    this.offline()
+                      ? void this.router.navigate(...offlineFind(credit.name))
+                      : void this.router.navigate(resolveArtistRoute(credit.id)),
+                })),
+            }
+          : {}),
         action: () => {
           const primary = song.artists?.find((a) => a.role === 'primary');
           // Offline the artist page needs the server: open the saved songs

@@ -197,6 +197,61 @@ describe('SongMenuService.build', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/library', 'artists', 'one']);
   });
 
+  // #2010: a joint or featured credit lists every artist.
+  describe('Go to artist with several credits', () => {
+    const joint = () =>
+      song({
+        artistId: 'compound',
+        artists: [
+          { id: 'feat', name: 'Guest', role: 'featuring' },
+          { id: 'one', name: 'One', role: 'primary' },
+          { id: 'two', name: 'Two', role: 'primary' },
+        ],
+      });
+    const goTo = (svc: SongMenuService, s: BaseSong) =>
+      svc.build(s, {}).find((a) => a.label === 'Go to artist')!;
+
+    it('stays a plain item for one credit', () => {
+      const { svc } = setup();
+      const one = song({ artistId: 'a', artists: [{ id: 'a', name: 'Solo', role: 'primary' }] });
+      expect(goTo(svc, one).children).toBeUndefined();
+      expect(goTo(svc, song({ artistId: 'a' })).children).toBeUndefined();
+    });
+
+    it('opens a submenu with one entry per credit, primary artists first', async () => {
+      const { svc, router } = setup();
+      const entries = await goTo(svc, joint()).children!();
+      expect(entries.map((e) => e.label)).toEqual(['One', 'Two', 'Guest']);
+      entries[2]!.action();
+      expect(router.navigate).toHaveBeenLastCalledWith(['/library', 'artists', 'feat']);
+      entries[1]!.action();
+      expect(router.navigate).toHaveBeenLastCalledWith(['/library', 'artists', 'two']);
+    });
+
+    it("offline, each entry opens the saved songs filtered by that artist's name", async () => {
+      const { svc, router } = setup();
+      TestBed.inject(OfflineModeService).serverUnreachable.set(true);
+      const entries = await goTo(svc, joint()).children!();
+      entries[2]!.action();
+      expect(router.navigate).toHaveBeenLastCalledWith(['/library'], {
+        queryParams: { find: 'Guest' },
+      });
+    });
+
+    it('keeps two credits with one name apart', async () => {
+      const { svc } = setup();
+      const twins = song({
+        artistId: 'c',
+        artists: [
+          { id: 'n1', name: 'Nirvana', role: 'primary' },
+          { id: 'n2', name: 'Nirvana', role: 'primary' },
+        ],
+      });
+      const entries = await goTo(svc, twins).children!();
+      expect(entries.map((e) => e.label)).toEqual(['Nirvana', 'Nirvana (2)']);
+    });
+  });
+
   it('hides Go to artist without artistId', () => {
     const { svc } = setup();
     expect(labels(song({ albumId: 'al1' }), svc)).not.toContain('Go to artist');
