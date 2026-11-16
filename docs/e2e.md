@@ -479,7 +479,13 @@ same PR that hit it.
   seed that can silently stop seeding.
 
 - **A screenshot baseline is a Linux rendering with pinned fonts.** `toHaveScreenshot` in the
-  `tv` project compares against committed `*-tv-linux.png` files. Text is most of every TV
+  `tv` project compares against committed `*-tv-linux.png` files, and `phone-screens.spec.ts`
+  (#1687) does the same in the `chromium` project for six phone screens at 412×915: the Library
+  albums grid on Midnight and on Daylight, the genre tiles, an album, Now Playing at rest and the
+  Get page (`*-chromium-linux.png`). Both pin fonts through `tests/helpers/pinned-fonts.ts`.
+  The phone set exists so a palette or component change is a diff someone looks at; it is not a
+  layout gate (geometry is asserted in `mobile-ux.spec.ts`). On Now Playing the seek bar, the
+  clock and play/pause are masked because they move with playback. Text is most of every TV
   screen and the UI font stack resolves through fontconfig to whatever the box has, so
   `tests/tv-build/tv-test.ts` injects a stylesheet pinning DejaVu Sans / DejaVu Sans Mono /
   Noto Color Emoji — fonts every Ubuntu image and Playwright's `install-deps` provide. A
