@@ -18,8 +18,12 @@ Rules, in `GENRE_LANE_RULES`:
 
 - **Vocabulary.** Only a genre `autoGenreVocabulary` allows: carried by at least 3 songs, not junk
   vocab, not a catch-all (Electronic, Dance). The same list a `refiner:auto` token may write.
-- **A candidate is a song with no usable genre** (`unresolvedGenreSql`): empty, or junk vocab.
-  A song with a catch-all as its only genre is not a candidate here.
+- **A candidate is a song a `refiner:auto` token could replace:** one with no usable genre
+  (`unresolvedGenreSql`: empty, or junk vocab), or one whose only genre is a catch-all
+  (`lowInformationOnlyGenreSql`). The report splits the two as `byNeed`. A catch-all beside a real
+  genre is never a candidate.
+- **A catch-all is not evidence.** An album dominated by Electronic or Dance is skipped by the
+  sibling lane: it neither names a style nor contradicts one.
 - **`title`: one bracketed word is not a list.** `[Live]` and `[Acoustic]` are versions. Round
   brackets are never read.
 - **`siblings`: the unit is the album, not the song.** One rip tags every track alike, so eleven
@@ -36,9 +40,25 @@ per-artist MusicBrainz genre list to read.
 `get_library_health({ dimensions: ["genres"] })` → `genres.deterministicLanes`:
 
 - `counts`: songs per lane.
+- `byNeed`: the same songs split into `missing` and `catch-all`.
 - `siblingArtists`: distinct artists the sibling lane draws on.
 - `sample`: candidates with the genres a lane would write and one phrase of evidence each
   (`2 other albums by Artist agree`), half from each lane.
+
+## Measured on prod, 2026-11-16
+
+First version (genre-less candidates only), 33,757 songs, 196 with no usable genre:
+
+| Lane | Songs it would tag |
+| --- | --- |
+| `title` | 0 |
+| `siblings` | 0 |
+
+Checked one case by hand: Adam Port has a genre-less song and four other albums, tagged Deep House,
+Melodic House, Melodic House and House. They disagree, so the lane rightly has no answer. The
+genre-less residue is what every automated lane already failed on, so "all the artist's albums
+agree" has nothing to add there. That is why the candidates were widened to catch-all-only songs
+(237 on that date), which is the population #1123 is about.
 
 ## Before this may write
 

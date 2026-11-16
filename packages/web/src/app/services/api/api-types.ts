@@ -1354,9 +1354,11 @@ export interface LibraryHealthReport {
       /** Genre-less songs a deterministic lane has an answer for (#1516 P3); not applied. */
       deterministicLanes?: {
         counts: { title: number; siblings: number };
+        byNeed?: { missing: number; 'catch-all': number };
         siblingArtists: number;
         sample: {
           lane: 'title' | 'siblings';
+          need?: 'missing' | 'catch-all';
           songId: string;
           title: string;
           artist: string;
