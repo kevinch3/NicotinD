@@ -843,8 +843,8 @@ on. Duration is no substitute either: 162s and 163s are one recording here, whil
 The fingerprint was already *reachable* before this tool: `lookup_song_metadata`
 runs it by default and returns the typed outcome. What was missing is a way to
 ask for **only** that. `lookup_song_metadata` fans out to ~4 outbound sources
-per call and is measured to 502 the origin above ~4 concurrent calls (#757), so
-the one lane that is safe to batch was locked behind the one that is not.
+per call (the server now queues them three at a time, #757), so
+the one lane that is cheap to batch was locked behind the one that is not.
 `identify_song` is fpcalc plus a single lookup.
 
 It suggests only — applying stays `fix_song_metadata`, so the write keeps its
@@ -932,10 +932,17 @@ MCP calls is ~4N outbound requests. A pass running batches of ~10 measured two c
 `origin_bad_gateway` 502s mid-batch (prod, 2026-08-26), with earlier and later batches of the same
 size succeeding.
 
-Both tool descriptions now carry the ceiling — **concurrency ≤ 4, back off on 502, `retry_after` is
-authoritative** — rather than only this page, because the description is what an agent actually
-reads. Whether the 502 originates in `nicotind` under load or in a source upstream of it is still
-unconfirmed and needs prod-side measurement; the guidance is a floor, not a diagnosis.
+**The server now enforces the ceiling** (`services/lookup-gate.ts`): at most `LOOKUP_CONCURRENCY`
+(3) of these two tools run at once, and further calls wait their turn in arrival order
+(`LookupGate`, applied in `dispatchTool` to `GATED_LOOKUP_TOOLS`). A batch of ten takes longer and
+no longer sends ~40 outbound requests at once. The tool descriptions say so, because the
+description is what an agent reads; no pacing rule is asked of the caller any more.
+
+Three is below the four that was measured to work and above one, so a batch still overlaps. Whether
+the 2026-08-26 502s came from `nicotind` itself or from a source behind it was never established:
+on 2026-11-16 the `nicotind` and Lidarr containers showed no restarts and no OOM kill, which rules
+out a crash but not a slow response. The gate bounds the burst either way. `identify_song` is not
+gated: it makes one outbound call.
 
 ## Settings UI
 

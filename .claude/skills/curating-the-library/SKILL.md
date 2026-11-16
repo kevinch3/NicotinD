@@ -229,9 +229,9 @@ Caps: question 160, label 80, rationale 160.
 ## `identify_song` — when the tags cannot be trusted at all
 
 Fingerprint identity from the audio, independent of every tag. It is `read` access,
-one fpcalc run plus **one** outbound call, and safe to batch — unlike
-`lookup_song_metadata`, whose ~4-source fan-out 502s the origin above ~4 concurrent
-calls (#757). It suggests only; apply with `fix_song_metadata`. It carries **no genre**,
+one fpcalc run plus **one** outbound call, and quick to batch — unlike
+`lookup_song_metadata`, whose ~4-source fan-out the server queues three at a time (so a
+batch is slow, not unsafe). It suggests only; apply with `fix_song_metadata`. It carries **no genre**,
 by construction — do not reach for it on the genre backlog.
 
 What it is actually for: a junk-named file (`Track 1`…`Track 10`, `Pista 4`, `CD A 2000`)
