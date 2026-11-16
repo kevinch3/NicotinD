@@ -843,6 +843,184 @@
   }
 }
 
+/* The tile a tap brought forward (docs/mosaic-tile-focus-design.md): a real
+   component over the stage centre, above the veil. It is the only tile with a
+   Play button, and zoom never resizes it. */
+.mosaic-focus {
+  position: absolute;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(100% - 32px, 360px);
+  pointer-events: none;
+}
+.mosaic-focus > * {
+  pointer-events: auto;
+}
+.mosaic-focus-face {
+  position: relative;
+  flex: none;
+  max-width: 100%;
+  border-radius: 18px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background-color: var(--theme-surface);
+  background-size: cover;
+  background-position: center;
+  box-shadow:
+    var(--theme-elevation-raised),
+    0 0 0 1px var(--theme-glass-edge);
+}
+.mosaic-focus-face-cover {
+  color: #fff;
+}
+.mosaic-focus-label {
+  min-width: 0;
+  padding: 14px 72px 14px 14px;
+  line-height: 1.25;
+}
+.mosaic-focus-face-cover .mosaic-focus-label {
+  padding-top: 36px;
+  background: linear-gradient(
+    to top,
+    rgb(0 0 0 / 0.92) 0%,
+    rgb(0 0 0 / 0.72) 45%,
+    transparent 100%
+  );
+}
+.mosaic-focus-label b,
+.mosaic-focus-label span {
+  display: block;
+}
+.mosaic-focus-label b {
+  font-size: 16px;
+  font-weight: 500;
+}
+.mosaic-focus-label span {
+  font-size: 13px;
+  margin-top: 3px;
+  opacity: 0.75;
+}
+.mosaic-focus-emoji {
+  position: absolute;
+  left: 14px;
+  bottom: 68px;
+  font-size: 44px;
+  line-height: 1;
+}
+.mosaic-focus-tag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 5px 9px;
+  border-radius: 9999px;
+  font-size: 11px;
+  line-height: 1;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+}
+.mosaic-focus-more {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+}
+.mosaic-focus-play {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 48px;
+  height: 48px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 3px;
+  background: var(--theme-accent);
+  color: var(--theme-on-accent);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.5);
+}
+.mosaic-focus-play:disabled {
+  opacity: 0.45;
+}
+.mosaic-focus-preview {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background-color: var(--theme-surface);
+  color: var(--theme-text-primary);
+  box-shadow:
+    var(--theme-elevation-raised),
+    0 0 0 1px var(--theme-glass-edge);
+}
+.mosaic-focus-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--theme-text-secondary);
+}
+.mosaic-focus-shuffle {
+  padding: 5px 10px;
+  border-radius: 9999px;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--theme-accent-text);
+  background-color: color-mix(in srgb, var(--theme-accent) 14%, transparent);
+}
+.mosaic-focus-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mosaic-focus-rows li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.mosaic-focus-rows b {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+.mosaic-focus-rows span {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--theme-text-secondary);
+}
+.mosaic-focus-skeleton {
+  height: 16px;
+  border-radius: 6px;
+}
+.mosaic-focus-empty {
+  font-size: 13px;
+  color: var(--theme-text-secondary);
+}
+
 /* ─── Glass panel (#1638) ────────────────────────────────────────────────
    A floating panel over content of unknown colour: the entity menu over the
    mosaic's artwork. How translucent it may be is a per-theme contrast floor
