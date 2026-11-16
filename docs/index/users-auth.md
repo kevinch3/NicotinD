@@ -96,3 +96,6 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   `TvProfileService`, `loadProfiles`, `rememberProfile`, `forgetProfile`; a cast from a stored
   person's phone switches the TV to them (`TvProfileListenerService`, `ProfileCastListener`).
   → [tv-ux.md](../tv-ux.md#profiles-1406)
+- **Lookup gate**: at most three `lookup_album_metadata` / `lookup_song_metadata` calls run at once;
+  the rest queue in arrival order, because each fans out to about four outside sources.
+  `LookupGate`, `GATED_LOOKUP_TOOLS`, `LOOKUP_CONCURRENCY`. → [mcp-agent.md](../mcp-agent.md)

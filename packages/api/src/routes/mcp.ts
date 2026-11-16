@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { GATED_LOOKUP_TOOLS, lookupGate } from '../services/lookup-gate.js';
 import { autoApplyRefusal } from '../services/agent-precision.js';
 import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
@@ -927,7 +928,7 @@ export const MCP_TOOLS: McpTool[] = [
       'and an AcoustID fingerprint when configured), plus an offline `suggested` cleanup of ' +
       'YouTube junk like "(Official Video)". This is the surface’s first outbound-network tool: ' +
       'it can take a few seconds; every source is timeout-bounded and a down source degrades to ' +
-      '`ok:false` in `sources` instead of failing the call. Use `fix_song_metadata` to apply a choice. Each call fans out to ~4 outbound sources, so a batch of N parallel calls is ~4N outbound requests: keep concurrency at or below 4 and back off on a 502 (retry_after is authoritative). A wider batch has been measured to 502 the origin mid-pass (#757).',
+      '`ok:false` in `sources` instead of failing the call. Use `fix_song_metadata` to apply a choice. Each call fans out to ~4 outbound sources, so the server runs at most 3 of these lookups at once and queues the rest (#757): a wide batch is slower, not unsafe, and needs no pacing from the caller.',
     access: 'read',
     inputSchema: {
       type: 'object',
@@ -1174,7 +1175,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'lookup_album_metadata',
     description:
-      "Ranked real-album candidates for one album from every configured source (Lidarr, MusicBrainz, Discogs, the album's own file tags). Network tool: may take a few seconds; a down source degrades to ok:false in sources rather than failing the call. Candidate coverUrl values are what set_album_cover and fix_album_metadata accept; apply a chosen candidate with fix_album_metadata. Each call fans out to ~4 outbound sources, so a batch of N parallel calls is ~4N outbound requests: keep concurrency at or below 4 and back off on a 502 (retry_after is authoritative). A wider batch has been measured to 502 the origin mid-pass (#757).",
+      "Ranked real-album candidates for one album from every configured source (Lidarr, MusicBrainz, Discogs, the album's own file tags). Network tool: may take a few seconds; a down source degrades to ok:false in sources rather than failing the call. Candidate coverUrl values are what set_album_cover and fix_album_metadata accept; apply a chosen candidate with fix_album_metadata. Each call fans out to ~4 outbound sources, so the server runs at most 3 of these lookups at once and queues the rest (#757): a wide batch is slower, not unsafe, and needs no pacing from the caller.",
     access: 'read',
     inputSchema: {
       type: 'object',
@@ -1982,7 +1983,11 @@ export async function dispatchTool(
     };
   }
   try {
-    const text = await tool.handler(ctx, args);
+    // Metadata lookups fan out to several outside sources each; a parallel
+    // batch of them overloaded the origin (#757), so they take turns.
+    const text = GATED_LOOKUP_TOOLS.has(tool.name)
+      ? await lookupGate.run(async () => tool.handler(ctx, args))
+      : await tool.handler(ctx, args);
     if (run) recordAutoWrite(ctx.db, run, tool.name, args, text);
     return { content: [{ type: 'text', text }] };
   } catch (e) {
