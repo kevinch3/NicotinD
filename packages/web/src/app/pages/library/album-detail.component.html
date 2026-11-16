@@ -104,12 +104,12 @@
             </button>
             <div menuPanel class="bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-48">
               @for (action of albumMenu(); track action.label) {
-                <button type="button"
-                  [attr.data-testid]="'album-action-' + action.label"
-                  class="w-full min-h-11 text-left px-4 py-2 text-sm text-theme-secondary transition-colors hover:bg-theme-hover"
-                  (click)="albumMenuPanel.close(); action.action()">
-                  {{ action.labelKey ? (action.labelKey | t) : action.label }}
-                </button>
+                <button
+                  [appMenuItem]="action"
+                  testidPrefix="album-action-"
+                  [tall]="true"
+                  (click)="albumMenuPanel.close(); action.action()"
+                ></button>
               }
               @if (auth.canCurate()) {
                 @if (completeness.confirmed()) {
@@ -123,15 +123,13 @@
                   </button>
                 }
                 @for (action of curatorMenu(); track action.label) {
-                  <button type="button"
-                    [attr.data-testid]="'album-action-' + action.label"
+                  <button
+                    [appMenuItem]="action"
+                    testidPrefix="album-action-"
+                    [tall]="true"
                     [disabled]="action.destructive && deleting()"
-                    class="w-full min-h-11 text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover disabled:opacity-50"
-                    [class.text-status-error]="action.destructive"
-                    [class.text-theme-secondary]="!action.destructive"
-                    (click)="albumMenuPanel.close(); action.action()">
-                    {{ action.labelKey ? (action.labelKey | t) : action.label }}
-                  </button>
+                    (click)="albumMenuPanel.close(); action.action()"
+                  ></button>
                 }
               }
             </div>

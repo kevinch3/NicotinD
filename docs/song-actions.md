@@ -40,6 +40,41 @@ not a link: TV artist names, offline rows without an id.)
   taste, `not_for_me`, routes back to `exclude()` instead of filing a flag. It is the only action
   carrying a `labelKey`, so it renders translated while its `data-testid` stays the English `label`.
 
+## One row component, and an icon per action (#2005)
+
+Every menu that lists `TrackAction`s draws its rows through `MenuItemComponent`
+(`components/menu-item/`): track rows, both Now Playing menus, the entity menu host and the album
+page's two menus. It renders the icon, the translated label and the destructive style, and sets the
+`data-testid` from a prefix (`track-action-`, `entity-action-`, `album-action-`) plus the
+untranslated `label`, exactly as before.
+
+It is an **attribute on the `<button>`**, `<button [appMenuItem]="action" (click)="…">`, not an
+element around it. Menu rows have to stay direct children of `[menuPanel]`: the phone sheet's 44px
+rule and the panel's focus and D-pad handling select on that. The caller keeps `(click)`, because
+closing differs per menu. `[tall]="true"` gives the 44px row.
+
+`TrackAction.icon` is an `IconName`. A row with no icon keeps the icon column, so labels line up.
+
+| Action | Icon |
+| --- | --- |
+| Like / Unlike | `heart` / `heart-filled` |
+| Add to queue | `queue` |
+| Play next | `play-next` |
+| Start radio | `radio` |
+| Go to artist | `user` |
+| Go to album | `disc-album` |
+| Add to playlist | `list-music` |
+| Save offline / Remove download | `download` |
+| Song info | `info` |
+| Don't recommend this / Recommend again | `thumbs-down` / `thumbs-up` |
+| Report this track | `flag` |
+| Remove from library | `delete` |
+| Remove from playlist | `close` |
+| Entity menu: Play, Open | `play`, `chevron-right` (the rest as above) |
+| Album page: Select, Fix metadata, Remove album | `check-square`, `edit`, `delete` |
+
+`chevron-right` and `chevron-left` are in the set for the submenus that follow (#2009).
+
 ## Entity menus: albums, artists, genres, playlists (#1298)
 
 The same rule, one level up. `EntityMenuService.build(ref, ctx)` is the single source of a

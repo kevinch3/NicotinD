@@ -45,6 +45,16 @@ const ICON_SET = {
   'layout-grid': true,
   'rows-3': true,
   folder: true,
+  heart: true,
+  'heart-filled': true,
+  radio: true,
+  'play-next': true,
+  info: true,
+  'thumbs-down': true,
+  'thumbs-up': true,
+  flag: true,
+  'chevron-right': true,
+  'chevron-left': true,
 } satisfies Record<IconName, true>;
 
 export const ICON_NAMES = Object.keys(ICON_SET) as IconName[];

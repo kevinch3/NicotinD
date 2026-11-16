@@ -1,4 +1,6 @@
 import { NgTemplateOutlet } from '@angular/common';
+import { MenuItemComponent } from '../menu-item/menu-item.component';
+import type { IconName } from '../icon/icon.component';
 import { Component, computed, inject, input, output } from '@angular/core';
 import { AuthService } from '../../services/auth.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
@@ -30,7 +32,8 @@ export interface TrackAction {
   label: string;
   /** i18n key rendered in place of `label` when set. */
   labelKey?: string;
-  icon?: string;
+  /** Drawn before the label by the shared menu row (`MenuItemComponent`). */
+  icon?: IconName;
   action: () => void;
   destructive?: boolean;
 }
@@ -45,6 +48,7 @@ function formatDuration(seconds?: number): string {
 @Component({
   selector: 'app-track-row',
   imports: [
+    MenuItemComponent,
     NgTemplateOutlet,
     OverflowRevealDirective,
     CoverArtComponent,

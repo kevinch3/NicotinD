@@ -1,4 +1,5 @@
 import { Component, inject, signal, computed, effect, OnInit } from '@angular/core';
+import { MenuItemComponent } from '../../components/menu-item/menu-item.component';
 import { CoverWashDirective } from '../../directives/cover-wash.directive';
 import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
@@ -47,6 +48,7 @@ import { AlbumCompletenessComponent } from './album-completeness.component';
 @Component({
   selector: 'app-album-detail',
   imports: [
+    MenuItemComponent,
     CoverWashDirective,
     SkeletonComponent,
     TranslatePipe,
@@ -254,6 +256,7 @@ export class AlbumDetailComponent implements OnInit {
       actions.push({
         label: 'Select',
         labelKey: 'album.menu.select',
+        icon: 'check-square',
         action: () => this.selection.enter(),
       });
     }
@@ -265,11 +268,13 @@ export class AlbumDetailComponent implements OnInit {
     {
       label: 'Fix metadata',
       labelKey: 'album.menu.fixMetadata',
+      icon: 'edit',
       action: () => this.openMetadataFix(),
     },
     {
       label: 'Remove album',
       labelKey: 'album.menu.remove',
+      icon: 'delete',
       destructive: true,
       action: () => this.removeAlbum(),
     },

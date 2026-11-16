@@ -51,12 +51,22 @@ export type IconName =
   | 'chart'
   | 'layout-grid'
   | 'rows-3'
-  | 'folder';
+  | 'folder'
+  | 'heart'
+  | 'heart-filled'
+  | 'radio'
+  | 'play-next'
+  | 'info'
+  | 'thumbs-down'
+  | 'thumbs-up'
+  | 'flag'
+  | 'chevron-right'
+  | 'chevron-left';
 
-/** Play is the only filled glyph; the rest are stroked outlines. DI-free so the
+/** Play and the liked heart are the filled glyphs; the rest are stroked outlines. DI-free so the
  *  branch is unit-testable (the JIT harness can't drive the `name` input). */
 export function isFilledIcon(name: IconName): boolean {
-  return name === 'play';
+  return name === 'play' || name === 'heart-filled';
 }
 
 @Component({
