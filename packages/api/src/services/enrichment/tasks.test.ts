@@ -105,6 +105,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     resolveArtistIdentity: null,
     lookupPopularity: async () => new Map(),
     lookupSimilarArtists: async () => null,
+    lookupArtistRelationships: async () => [],
     lookupArtistOrigin: null,
     lookupArtistReleaseGroups: null,
     fileExists: () => true,
@@ -3254,9 +3255,10 @@ describe('artist-relations task (#1486)', () => {
         return mbid === 'mb-1' ? [{ mbid: 'mb-9', name: 'Nine', score: 4 }] : [];
       },
     });
-    expect(task.countPending(db)).toBe(2);
+    // Two sources, each asked once per artist: four requests to make.
+    expect(task.countPending(db)).toBe(4);
     const res = await task.run(db, c, 25);
-    expect(res.applied).toBe(2);
+    expect(res.applied).toBe(4);
     expect(res.failed).toBe(0);
     expect(asked.sort()).toEqual(['mb-1', 'mb-2']);
     expect(stored()).toEqual([{ source_mbid: 'mb-1', target_mbid: 'mb-9' }]);
@@ -3268,10 +3270,56 @@ describe('artist-relations task (#1486)', () => {
 
   it('records nothing for a failed request, so it is retried', async () => {
     seedArtist('a1', 'One', 'mb-1');
-    const res = await task.run(db, ctx({ lookupSimilarArtists: async () => null }), 25);
+    const res = await task.run(
+      db,
+      ctx({ lookupSimilarArtists: async () => null, lookupArtistRelationships: async () => null }),
+      25,
+    );
     expect(res.applied).toBe(0);
-    expect(res.failed).toBe(1);
+    expect(res.failed).toBe(2);
+    expect(task.countPending(db)).toBe(2);
+  });
+
+  it('stores stated relationships from the second source, on its own ledger', async () => {
+    seedArtist('band', 'The Band', 'mb-band');
+    const asked: string[] = [];
+    const c = ctx({
+      lookupSimilarArtists: async () => null,
+      lookupArtistRelationships: async (mbid) => {
+        asked.push(mbid);
+        return [{ mbid: 'mb-member', name: 'A Member', kind: 'member' }];
+      },
+    });
+    const res = await task.run(db, c, 25);
+    // One source failed and the other answered: each is counted by itself.
+    expect(res).toMatchObject({ applied: 1, failed: 1 });
+    expect(res.labels).toEqual(['The Band → 1 relationships']);
+    expect(
+      db
+        .query<{ kind: string; source: string }, []>(
+          'SELECT kind, source FROM library_artist_relations',
+        )
+        .all(),
+    ).toEqual([{ kind: 'member', source: 'musicbrainz' }]);
+    // Only the failed source is still pending, and the answered one is not asked again.
     expect(task.countPending(db)).toBe(1);
+    await task.run(db, c, 25);
+    expect(asked).toEqual(['mb-band']);
+  });
+
+  it('spends what is left of the limit on the second source', async () => {
+    seedArtist('a1', 'One', 'mb-1');
+    seedArtist('a2', 'Two', 'mb-2');
+    let links = 0;
+    const c = ctx({
+      lookupSimilarArtists: async () => [],
+      lookupArtistRelationships: async () => {
+        links++;
+        return [];
+      },
+    });
+    await task.run(db, c, 3);
+    expect(links).toBe(1);
   });
 
   it('honours the limit, and does nothing for an album-scoped kick', async () => {

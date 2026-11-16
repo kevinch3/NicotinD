@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { normalizeArtistForGrouping } from './album-grouping.js';
 import type { SimilarArtist } from './listenbrainz-client.js';
+import type { MbArtistRelationship, MbRelationshipKind } from './musicbrainz-client.js';
 
 /**
  * Cultural artist relations (#1486, docs/artist-relations.md): the non-audio
@@ -9,6 +10,8 @@ import type { SimilarArtist } from './listenbrainz-client.js';
  * once per artist MBID by an enrichment task and read from here.
  */
 export const RELATION_SOURCE = 'listenbrainz';
+/** The source of stated relationships: member, collaboration, supporting musician. */
+export const RELATIONSHIP_SOURCE = 'musicbrainz';
 /** Ask a source again about an artist this often. Listening habits drift slowly. */
 export const RELATION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 /** A relation weaker than this share of the artist's best one is not offered. */
@@ -97,13 +100,14 @@ export function pendingRelationArtists(
   db: Database,
   cutoff: number,
   limit?: number,
+  source: string = RELATION_SOURCE,
 ): Array<{ id: string; mbid: string }> {
   const fresh = new Set(
     db
       .query<{ mbid: string }, [string, number]>(
         `SELECT mbid FROM library_artist_relation_fetches WHERE source = ? AND fetched_at > ?`,
       )
-      .all(RELATION_SOURCE, cutoff)
+      .all(source, cutoff)
       .map((r) => r.mbid),
   );
   const out: Array<{ id: string; mbid: string }> = [];
@@ -165,4 +169,81 @@ export function culturalNeighbours(
       source: r.source,
     }))
     .filter((n) => n.id !== artistId);
+}
+
+/**
+ * Store one artist's stated relationships (MusicBrainz), replacing what was
+ * stored for it. An empty answer is recorded too, as for similar artists.
+ */
+export function storeArtistRelationships(
+  db: Database,
+  sourceMbid: string,
+  relationships: readonly MbArtistRelationship[],
+  now = Date.now(),
+): void {
+  db.transaction(() => {
+    db.run(`DELETE FROM library_artist_relations WHERE source_mbid = ? AND source = ?`, [
+      sourceMbid,
+      RELATIONSHIP_SOURCE,
+    ]);
+    const insert = db.prepare(
+      `INSERT OR REPLACE INTO library_artist_relations
+         (source_mbid, target_mbid, target_name, kind, score, raw_score, source, fetched_at)
+       VALUES (?, ?, ?, ?, 1, NULL, ?, ?)`,
+    );
+    for (const r of relationships) {
+      insert.run(sourceMbid, r.mbid, r.name, r.kind, RELATIONSHIP_SOURCE, now);
+    }
+    db.run(
+      `INSERT INTO library_artist_relation_fetches (mbid, source, fetched_at, results)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(mbid, source) DO UPDATE SET fetched_at = excluded.fetched_at, results = excluded.results`,
+      [sourceMbid, RELATIONSHIP_SOURCE, now, relationships.length],
+    );
+  })();
+}
+
+export interface RelationshipNeighbour {
+  /** The library artist on the other end. */
+  id: string;
+  kind: MbRelationshipKind;
+}
+
+/** Strongest first: a band and its members before a one-off collaboration. */
+const RELATIONSHIP_ORDER: readonly MbRelationshipKind[] = ['member', 'alias', 'collab', 'support'];
+
+/**
+ * The library artists `artistId` has a stated relationship with, in either
+ * direction: a band stored its members, and a member finds its band through the
+ * same row. Owned artists only. Empty when nothing is stored.
+ */
+export function relationshipNeighbours(db: Database, artistId: string): RelationshipNeighbour[] {
+  const { mbidOf, artistOf } = artistMbidIndex(db);
+  const mbid = mbidOf.get(artistId);
+  if (!mbid) return [];
+  const rows = db
+    .query<{ other: string; kind: MbRelationshipKind }, [string, string, string, string]>(
+      `SELECT target_mbid AS other, kind FROM library_artist_relations
+        WHERE source_mbid = ? AND source = ?
+       UNION
+       SELECT source_mbid AS other, kind FROM library_artist_relations
+        WHERE target_mbid = ? AND source = ?`,
+    )
+    .all(mbid, RELATIONSHIP_SOURCE, mbid, RELATIONSHIP_SOURCE);
+  const best = new Map<string, MbRelationshipKind>();
+  for (const r of rows) {
+    const id = artistOf.get(r.other);
+    if (!id || id === artistId) continue;
+    const seen = best.get(id);
+    if (!seen || RELATIONSHIP_ORDER.indexOf(r.kind) < RELATIONSHIP_ORDER.indexOf(seen)) {
+      best.set(id, r.kind);
+    }
+  }
+  return [...best.entries()]
+    .map(([id, kind]) => ({ id, kind }))
+    .sort(
+      (a, b) =>
+        RELATIONSHIP_ORDER.indexOf(a.kind) - RELATIONSHIP_ORDER.indexOf(b.kind) ||
+        a.id.localeCompare(b.id),
+    );
 }

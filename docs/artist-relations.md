@@ -43,12 +43,32 @@ hand-over Library Find uses (#1663); nothing is searched or fetched until the us
 The sample of 2026-11-09 had about 55 not-owned related artists per answered artist, so the cap is
 what keeps this a short row.
 
+## Stated relationships (MusicBrainz)
+
+Similarity says two artists share listeners. A relationship is a fact MusicBrainz records: this
+person is a member of that band.
+
+- **Fetched** by the same opt-in `artist-relations` task, one `artist?inc=artist-rels` request per
+  artist MBID on the shared, rate-limited MusicBrainz client (`getArtistRelationships`). It runs in
+  what is left of a run's limit after the ListenBrainz requests, and has its own row in
+  `library_artist_relation_fetches` (`source = 'musicbrainz'`), so one source failing does not make
+  the other ask again. The task's pending count is requests still to make across both sources.
+- **Kept kinds** (`MB_RELATIONSHIP_KINDS`): `member` (member of band, founder, subgroup), `collab`
+  (collaboration), `support` (supporting musician), `alias` (a person and their performance
+  name). Everything else MusicBrainz lists (tribute, family, teacher) is dropped.
+- **Stored** in `library_artist_relations` with that `kind` and `source = 'musicbrainz'`
+  (`storeArtistRelationships`). One row, from the side that was asked.
+- **Read from either end** (`relationshipNeighbours`): a band finds its members and a member finds
+  its band through the same row. Owned artists only; when two kinds link the same pair the stronger
+  one is kept (member, alias, collab, support).
+- **In Related artists** they take the first places, at most `RELATIONSHIP_SLOTS` (3). They are
+  facts, not a score, so they are not ranked against a cosine; the cap keeps a long member list from
+  pushing the sound-alikes out. The tile says which kind it is under the name.
+
 ## What is not built
 
 - **Radio.** A cultural-affinity axis beside the embedding cosine needs calibration of the kind
   #1119 did for genre affinity, on prod. Until then radio does not read these rows.
-- **MusicBrainz relationships** (member of, collaboration): `kind` has room for them; only
-  `similar` from `listenbrainz` is written.
 - **A dump.** The labs API is the only source used; whether ListenBrainz publishes this dataset for
   offline use is still unanswered.
 

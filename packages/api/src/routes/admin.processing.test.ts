@@ -66,6 +66,7 @@ function makeService(): LibraryProcessingService {
       lookupLicence: async () => null,
       lookupPopularity: async () => new Map(),
       lookupSimilarArtists: async () => null,
+      lookupArtistRelationships: async () => null,
       lookupArtistOrigin: null,
       lookupArtistReleaseGroups: null,
       concurrency: 1,

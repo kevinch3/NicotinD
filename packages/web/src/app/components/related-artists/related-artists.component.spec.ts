@@ -70,6 +70,21 @@ describe('RelatedArtistsComponent', () => {
     expect(c.coverSrc(after)).not.toBe(c.coverSrc(before));
   });
 
+  it('says why an artist with a stated relationship is here, and nothing for the others', () => {
+    const fixture = setup([
+      artist('a', { signals: { relationship: { kind: 'member', source: 'musicbrainz' } } }),
+      artist('b'),
+    ]);
+    const captions = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+        '[data-testid="related-artist-relationship"]',
+      ),
+    );
+    expect(captions).toHaveLength(1);
+    expect(captions[0]!.dataset['kind']).toBe('member');
+    expect(captions[0]!.textContent?.trim()).toBe('artist.relationship.member');
+  });
+
   // #1486: related artists the library does not have are a way into the Get search.
   describe('not-owned related artists', () => {
     const withNotOwned = (owned: RelatedArtist[]) =>

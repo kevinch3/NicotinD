@@ -154,6 +154,38 @@ describe('MusicBrainzClient getArtistOrigin', () => {
   });
 });
 
+describe('MusicBrainzClient getArtistRelationships (#1486)', () => {
+  it('keeps members, collaborations and supporting musicians, by what they mean here', async () => {
+    const calls = mockFetch({
+      relations: [
+        { type: 'member of band', artist: { id: 'm1', name: 'Gustavo Cerati' } },
+        { type: 'member of band', artist: { id: 'm1', name: 'Gustavo Cerati' } },
+        { type: 'collaboration', artist: { id: 'c1', name: 'A Duo' } },
+        { type: 'instrumental supporting musician', artist: { id: 's1', name: 'A Sideman' } },
+        { type: 'is person', artist: { id: 'p1', name: 'Real Name' } },
+        { type: 'tribute', artist: { id: 't1', name: 'A Tribute Band' } },
+        { type: 'member of band', artist: { id: 'band-1', name: 'Itself' } },
+        { type: 'discogs', url: { resource: 'https://example.test' } },
+      ],
+    });
+    const client = testClient();
+    expect(await client.getArtistRelationships('band-1')).toEqual([
+      { mbid: 'm1', name: 'Gustavo Cerati', kind: 'member' },
+      { mbid: 'c1', name: 'A Duo', kind: 'collab' },
+      { mbid: 's1', name: 'A Sideman', kind: 'support' },
+      { mbid: 'p1', name: 'Real Name', kind: 'alias' },
+    ]);
+    expect(calls[0]).toContain('/artist/band-1?inc=artist-rels');
+  });
+
+  it('is an empty list when MusicBrainz has none, and null when the request failed', async () => {
+    mockFetch({ id: 'x' });
+    expect(await testClient().getArtistRelationships('x')).toEqual([]);
+    mockFetchFail();
+    expect(await testClient().getArtistRelationships('x')).toBeNull();
+  });
+});
+
 describe('MusicBrainzClient searchReleaseGroups', () => {
   it('maps release-group hits from artist-credit/primary-type/first-release-date/score', async () => {
     mockFetch({

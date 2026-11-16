@@ -11,6 +11,15 @@
         >
           <app-cover-art [src]="coverSrc(a)" [artist]="a.name" [size]="88" [holdPrevious]="true" rounded="rounded-full" />
           <span appOverflowReveal class="w-full text-center text-xs text-theme-secondary truncate" [title]="a.name">{{ a.name }}</span>
+          @if (a.signals.relationship; as link) {
+            <!-- A stated link (member, collaboration): say why it is here (#1486). -->
+            <span
+              appOverflowReveal
+              class="w-full -mt-1 text-center text-xs text-theme-muted truncate"
+              data-testid="related-artist-relationship"
+              [attr.data-kind]="link.kind"
+            >{{ ('artist.relationship.' + link.kind) | t }}</span>
+          }
         </a>
       }
     </div>

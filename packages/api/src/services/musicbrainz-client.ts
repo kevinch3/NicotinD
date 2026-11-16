@@ -94,6 +94,26 @@ const MIN_INTERVAL_MS = 1050; // MusicBrainz allows 1 req/sec; add 50ms buffer
  */
 export const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+export type MbRelationshipKind = 'member' | 'collab' | 'support' | 'alias';
+
+export interface MbArtistRelationship {
+  mbid: string;
+  name: string;
+  kind: MbRelationshipKind;
+}
+
+/** MusicBrainz artist-artist relationship types we keep, by what they mean here. */
+export const MB_RELATIONSHIP_KINDS: Readonly<Record<string, MbRelationshipKind>> = {
+  'member of band': 'member',
+  founder: 'member',
+  subgroup: 'member',
+  collaboration: 'collab',
+  'supporting musician': 'support',
+  'vocal supporting musician': 'support',
+  'instrumental supporting musician': 'support',
+  'is person': 'alias',
+};
+
 /**
  * Outcome of one MusicBrainz request.
  *
@@ -457,6 +477,35 @@ export class MusicBrainzClient {
       title: rg.title,
       genres: rg.genres ?? [],
     }));
+  }
+
+  /**
+   * An artist's relationships to other artists (#1486): members, collaborations,
+   * supporting musicians and performance names. These are stated links, not
+   * similarity. `null` is a failed request (retry later); an empty list is a
+   * confident "none". Not cached here: the caller stores the answer.
+   */
+  async getArtistRelationships(mbid: string): Promise<MbArtistRelationship[] | null> {
+    const data = this.unwrap(
+      await this.fetch<{
+        relations?: Array<{
+          type?: string;
+          'target-type'?: string;
+          artist?: { id?: string; name?: string };
+        }>;
+      }>(`${MB_BASE}/artist/${encodeURIComponent(mbid)}?inc=artist-rels&fmt=json`),
+    );
+    if (data === undefined) return null;
+    const out = new Map<string, MbArtistRelationship>();
+    for (const r of data?.relations ?? []) {
+      const kind = MB_RELATIONSHIP_KINDS[r.type ?? ''];
+      const id = r.artist?.id;
+      const name = r.artist?.name;
+      if (!kind || !id || !name || id === mbid) continue;
+      // One row per (artist, kind): a member who left and rejoined is one member.
+      out.set(`${id}:${kind}`, { mbid: id, name, kind });
+    }
+    return [...out.values()];
   }
 
   /**
