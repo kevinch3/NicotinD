@@ -194,6 +194,32 @@ export class SongMenuService {
       action: () => this.report.open(song.id),
     });
 
+    // Role items sit behind a submenu, so the menu stays the same length for
+    // everyone else (#2018). Acquiring needs the server.
+    if (this.auth.canAcquire() && song.artistId && !ctx.hideGoToArtist && !this.offline()) {
+      const primary = song.artists?.find((a) => a.role === 'primary');
+      const artistName = primary?.name ?? song.artist;
+      actions.push({
+        label: 'Get more',
+        labelKey: 'song.getMore',
+        icon: 'download',
+        group: 'role',
+        action: () => {},
+        children: () => [
+          {
+            // The artist page opens on its discography, where the albums the
+            // library lacks are already marked.
+            label: 'More by this artist',
+            labelKey: 'song.moreByArtist',
+            labelParams: { artist: artistName },
+            icon: 'user',
+            action: () =>
+              void this.router.navigate(resolveArtistRoute(primary?.id ?? song.artistId)),
+          },
+        ],
+      });
+    }
+
     if (ctx.removable && this.auth.canCurate()) {
       actions.push({
         label: 'Remove from library',

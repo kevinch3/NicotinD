@@ -34,6 +34,8 @@ export interface TrackAction {
   label: string;
   /** i18n key rendered in place of `label` when set. */
   labelKey?: string;
+  /** Values for the placeholders in `labelKey`'s text, e.g. an artist's name. */
+  labelParams?: Record<string, string | number>;
   /** Drawn before the label by the shared menu row (`MenuItemComponent`). */
   icon?: IconName;
   /** Rows of one group sit together; a separator is drawn where it changes (#2006). */

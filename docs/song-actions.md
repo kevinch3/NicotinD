@@ -141,6 +141,21 @@ bulk "Add". Not built: ticks on playlists that already hold the song, which need
 (`naturalPanelHeight`), not its `scrollHeight`: a flyout hanging beside a row made a menu that
 fitted look too tall, which switched scrolling on and clipped the flyout out of sight.
 
+## Get more ▸ (#2013)
+
+Role items sit behind a submenu, in the `role` group, so the menu is the same length for everyone
+else. **Get more ▸** is shown when `AuthService.canAcquire()` is true: role `user` and up **and**
+the server's acquisition switch on. It is hidden offline, for a song with no artist, and on the
+artist's own page.
+
+| Entry | Does |
+| --- | --- |
+| **More by <artist>** | opens the artist page, whose discography already marks the albums the library lacks |
+
+The label names the primary credited artist through `labelParams`, the values `MenuItemComponent`
+passes to the `t` pipe for a `labelKey` with placeholders. Full album, similar artists and a
+better copy are separate issues (#2014, #2015, #2016).
+
 ## Entity menus: albums, artists, genres, playlists (#1298)
 
 The same rule, one level up. `EntityMenuService.build(ref, ctx)` is the single source of a
