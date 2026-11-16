@@ -1,5 +1,10 @@
 import { Component, effect, input, viewChild } from '@angular/core';
-import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import {
+  applicationConfig,
+  moduleMetadata,
+  type Meta,
+  type StoryObj,
+} from '@storybook/angular-vite';
 import { NowPlayingComponent } from './now-playing.component';
 import { PlayerComponent } from '../player/player.component';
 import { storyProviders, type StoryState } from '../../../stories/support/story-providers';

@@ -1,4 +1,4 @@
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { ArtistInfoComponent } from './artist-info.component';
 import { storyProviders } from '../../../stories/support/story-providers';
 import { DEMO_ARTIST_ID } from '../../../stories/support/fixtures';

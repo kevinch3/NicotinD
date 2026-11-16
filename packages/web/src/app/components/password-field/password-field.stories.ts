@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/angular';
+import type { Meta, StoryObj } from '@storybook/angular-vite';
 import { PasswordFieldComponent } from './password-field.component';
 
 const meta: Meta<PasswordFieldComponent> = {

@@ -50,7 +50,7 @@ runs its steps in sequence, so its peak is its largest step, and each large step
 | --- | --- | --- | --- |
 | `bun run test` (backend) | 6.2 GB, 4 m 25 s | 2.1 GB, 2 m 33 s | `scripts/test-sharded.ts`: 12 sequential `bun test` processes (`TEST_SHARDS`) |
 | `test:web` | 2.4 GB at 12 workers | ~170 MB per worker | `maxWorkers` = one per core, capped at one per 300 MB free (`VITEST_MAX_WORKERS`) |
-| `build:storybook` | 3.5 GB | 1.9 GB | no minify under 4 GB free or `NICOTIND_LOW_MEM=1` |
+| `build:storybook` | 3.5 GB | 2.7 GB, 11 s | Vite instead of webpack (#478); the peak is the Angular compile, and minify no longer matters |
 
 **Why shard rather than `--smol`.** One `bun test` process never hands memory back between
 files: the suite peaked at 6.2 GB against 1.3 GB for its heaviest single file

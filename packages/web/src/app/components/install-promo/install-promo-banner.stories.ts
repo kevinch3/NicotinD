@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { InstallPromoBannerComponent } from './install-promo-banner.component';
 import { InstallPromptService } from '../../services/install-prompt.service';
 import { storyProviders } from '../../../stories/support/story-providers';

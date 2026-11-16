@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/angular';
+import type { Meta, StoryObj } from '@storybook/angular-vite';
 import { MetricPillComponent } from './metric-pill.component';
 
 const GB = 1_073_741_824;

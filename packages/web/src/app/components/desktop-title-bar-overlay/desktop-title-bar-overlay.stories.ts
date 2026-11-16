@@ -1,4 +1,4 @@
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { DesktopTitleBarOverlayComponent } from './desktop-title-bar-overlay.component';
 import { storyProviders } from '../../../stories/support/story-providers';
 

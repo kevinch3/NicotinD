@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/angular';
+import type { Meta, StoryObj } from '@storybook/angular-vite';
 import { GenreRadarComponent } from './genre-radar.component';
 import { demoGenreSlices } from '../../../stories/support/fixtures';
 

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/angular';
+import type { Meta, StoryObj } from '@storybook/angular-vite';
 import { SettingsGroupHeaderComponent } from './settings-group-header.component';
 
 const meta: Meta<SettingsGroupHeaderComponent> = {

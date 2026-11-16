@@ -1,4 +1,9 @@
-import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import {
+  applicationConfig,
+  moduleMetadata,
+  type Meta,
+  type StoryObj,
+} from '@storybook/angular-vite';
 import { BottomNavComponent } from './bottom-nav.component';
 import { storyProviders, type StoryState } from '../../../stories/support/story-providers';
 

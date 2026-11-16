@@ -1,4 +1,9 @@
-import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import {
+  applicationConfig,
+  moduleMetadata,
+  type Meta,
+  type StoryObj,
+} from '@storybook/angular-vite';
 import { SkeletonComponent } from './skeleton.component';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { TrackRowComponent } from '../track-row/track-row.component';

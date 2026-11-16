@@ -3,7 +3,7 @@ import {
   componentWrapperDecorator,
   type Meta,
   type StoryObj,
-} from '@storybook/angular';
+} from '@storybook/angular-vite';
 import { GetAlbumCardComponent } from './get-album-card.component';
 import { storyProviders } from '../../../stories/support/story-providers';
 

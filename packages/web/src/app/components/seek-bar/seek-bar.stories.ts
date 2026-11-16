@@ -1,4 +1,4 @@
-import { moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import { moduleMetadata, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { Component } from '@angular/core';
 import { expect, waitFor } from 'storybook/test';
 import { SeekBarComponent } from './seek-bar.component';

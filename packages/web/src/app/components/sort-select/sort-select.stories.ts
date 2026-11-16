@@ -1,4 +1,4 @@
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { SortSelectComponent } from './sort-select.component';
 import { storyProviders } from '../../../stories/support/story-providers';
 

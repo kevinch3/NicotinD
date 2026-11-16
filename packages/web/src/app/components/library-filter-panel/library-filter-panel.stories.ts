@@ -1,4 +1,4 @@
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { LibraryFilterPanelComponent } from './library-filter-panel.component';
 import { storyProviders } from '../../../stories/support/story-providers';
 

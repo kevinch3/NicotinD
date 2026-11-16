@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/angular';
+import type { Meta, StoryObj } from '@storybook/angular-vite';
 import { DiskPillComponent } from './disk-pill.component';
 
 const TB = 1_000_000_000_000;

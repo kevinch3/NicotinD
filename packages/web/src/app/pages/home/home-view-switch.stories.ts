@@ -1,4 +1,4 @@
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
 import type { HomeView } from '@nicotind/core';
 import { HomeViewSwitchComponent } from './home-view-switch.component';
 import { homeSwitchAnchorClass } from './home-switch-anchor';

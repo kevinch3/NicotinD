@@ -1,5 +1,10 @@
 import { Component } from '@angular/core';
-import { applicationConfig, moduleMetadata, type Meta, type StoryObj } from '@storybook/angular';
+import {
+  applicationConfig,
+  moduleMetadata,
+  type Meta,
+  type StoryObj,
+} from '@storybook/angular-vite';
 import { EntityMenuButtonComponent } from './entity-menu-button.component';
 import { EntityMenuHostComponent } from '../entity-menu-host/entity-menu-host.component';
 import { storyProviders } from '../../../stories/support/story-providers';

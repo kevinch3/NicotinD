@@ -1,4 +1,4 @@
-import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
 import { inject, provideAppInitializer } from '@angular/core';
 import { ToastOutletComponent } from './toast-outlet.component';
 import { ToastService } from '../../services/toast.service';
