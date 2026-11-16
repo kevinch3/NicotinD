@@ -10,6 +10,17 @@ import { vibesPlayable } from '../../helpers';
 import { test, expect, expectFitsTheScreen, expectNoNativeFormControls } from './tv-test';
 
 test.describe('TV home', () => {
+  // The state the emulator lane asserts (#1934): on the fixture library no vibe
+  // probe matches, so the mood block renders with no tile and the nav still works.
+  test('with no playable vibe the mood block stays and shows no tile', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByTestId('tv-home')).toBeVisible();
+    await expect(page.getByTestId('radio-new-mood')).toBeVisible();
+    await expect(page.getByTestId('radio-preset')).toHaveCount(0);
+    await expect(page.getByTestId('tv-nav-browse')).toBeVisible();
+    await expect(page.getByTestId('tv-nav-settings')).toBeVisible();
+  });
+
   test('the nav is the first thing on screen, above the shelves', async ({ page }) => {
     // The vibe tiles are the shelf under the nav, shown only when their probes
     // find a match (#1739); the fixtures carry no mood/feature data.
