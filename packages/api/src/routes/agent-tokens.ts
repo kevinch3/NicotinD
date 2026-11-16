@@ -9,6 +9,7 @@ import {
   type AgentScope,
 } from '../services/agent-tokens.js';
 import { recordAudit } from '../services/audit-log.js';
+import { getAgentRun, listAgentRuns, revertAgentRun } from '../services/agent-runs.js';
 import { AUTO_TOKEN_DEFAULT_DAYS, AUTO_TOKEN_MAX_DAYS } from '../services/agent-policy.js';
 
 const VALID_SCOPES: readonly AgentScope[] = ['refiner:read', 'refiner:curate', 'refiner:auto'];
@@ -21,8 +22,40 @@ const MAX_NAME_LEN = 100;
  * agent-token auth (that gates `/api/mcp` itself). The minted token is capped at
  * refiner regardless of the owner's role.
  */
-export function agentTokensRoutes() {
+export function agentTokensRoutes(deps: { musicDir?: string } = {}) {
   const app = new Hono<AuthEnv>();
+
+  // Unattended runs (#1516 P2): what `refiner:auto` tokens wrote, newest first.
+  // Any curator may read and revert them: the library they wrote to is shared.
+  app.get('/runs', (c) => {
+    requireCurator(c);
+    return c.json({ runs: listAgentRuns(getDatabase()) });
+  });
+
+  // One run with every write and what it replaced.
+  app.get('/runs/:id', (c) => {
+    requireCurator(c);
+    const run = getAgentRun(getDatabase(), c.req.param('id'));
+    if (!run) return c.json({ error: 'Run not found', code: 'NOT_FOUND' }, 404);
+    return c.json(run);
+  });
+
+  // Undo a run. A write is undone only while its target still holds what the
+  // run left there, so a later correction by a person is never overwritten;
+  // those writes come back in `skipped` with the reason.
+  app.post('/runs/:id/revert', async (c) => {
+    const user = requireCurator(c);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const result = await revertAgentRun(db, { musicDir: deps.musicDir }, id, user.sub);
+    if (!result) return c.json({ error: 'Run not found', code: 'NOT_FOUND' }, 404);
+    recordAudit(db, user, 'agent-run.revert', {
+      targetKind: 'agent-run',
+      targetId: id,
+      detail: `${result.reverted} reverted, ${result.skipped.length} skipped`,
+    });
+    return c.json(result);
+  });
 
   // List the caller's own tokens (never the secret/hash).
   app.get('/', (c) => {

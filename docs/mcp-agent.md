@@ -786,6 +786,37 @@ shared gates:
 
 Anything outside these limits is a `flag_for_review` card for a human.
 
+#### Runs and revert (#1516 P2)
+
+Everything an unattended token writes is grouped into a **run** with the value before and after
+each write, so a bad run can be undone as a unit (`services/agent-runs.ts`, tables `agent_runs`
+and `agent_run_writes`).
+
+- **A run is implicit.** The token's first write opens it, and it ends once the token has written
+  nothing for `RUN_IDLE_MS` (30 minutes). The runner speaks no extra protocol. A refused or failed
+  write leaves no row, and neither does a read or anything an attended token does.
+- **One run at a time.** While a run is open, a write by a *different* unattended token is refused
+  ("Another unattended run is in progress"). Two models working the same backlog is how one
+  overwrites the other.
+- **What is recorded.** `set_song_genre`: the song's genre set and its override row before, and the
+  genre set after. `flag_for_review`: the flag's id.
+- **Revert never overwrites a later correction.** `POST /api/agent-tokens/runs/:id/revert`
+  (curators) undoes the writes newest first. A genre write is undone only while the song's genre
+  set is still exactly what the run left; then the earlier set and the earlier override (or the
+  absence of one) come back and the file tag is rewritten to match, emptied if the set was empty,
+  since a tag left holding the run's value would be read back in by the next scan. A flag is
+  closed if it is still open. Anything else is **skipped and reported** with the reason, which is
+  also stored on the write: the genres were changed after the run, the song no longer exists
+  (a path change is not that case: the write's song id is carried across a re-mint,
+  `SONG_CARRY_TABLES`), or the flag was already resolved. Reverting twice
+  retries only what is still neither reverted nor changed. Reverting an open run ends it first.
+- **Reading.** `GET /api/agent-tokens/runs` lists runs newest first with write and reverted
+  counts; `GET /api/agent-tokens/runs/:id` adds every write with its before and after. Any
+  curator may read and revert, because the library the run wrote to is shared. A revert is
+  audit-logged (`agent-run.revert`).
+
+There is no web UI for this yet; the routes are the surface.
+
 ### `identify_song` — identity from the audio (issue #777)
 
 Fingerprint identity answers questions no tag-derived tool can: a junk or

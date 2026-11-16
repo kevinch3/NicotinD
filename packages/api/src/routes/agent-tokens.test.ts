@@ -12,6 +12,7 @@ import {
   revokeAgentToken,
   hashToken,
 } from '../services/agent-tokens.js';
+import { claimRun, recordRunWrite } from '../services/agent-runs.js';
 
 const testDb = new Database(':memory:');
 applySchema(testDb);
@@ -172,5 +173,64 @@ describe('agent-tokens routes', () => {
     const notFound = await req('refiner', `/${id}`, { method: 'DELETE' });
     expect(notFound.status).toBe(404);
     expect(((await notFound.json()) as { code: string }).code).toBe('NOT_FOUND');
+  });
+});
+
+describe('agent run routes (#1516 P2)', () => {
+  beforeEach(() => {
+    testDb.run('DELETE FROM agent_run_writes');
+    testDb.run('DELETE FROM agent_runs');
+  });
+
+  /** A run with one flag write, made through the service the MCP dispatch uses. */
+  function seedRun(): string {
+    const claim = claimRun(testDb, { tokenId: 'tok1', userId: 'refiner1' });
+    if (!('runId' in claim)) throw new Error('no run');
+    recordRunWrite(testDb, claim.runId, {
+      tool: 'flag_for_review',
+      targetKind: 'song',
+      targetId: 's1',
+      before: null,
+      after: { flagId: 999_999 },
+    });
+    return claim.runId;
+  }
+
+  it('lists runs and shows one with its writes', async () => {
+    const runId = seedRun();
+    const list = (await (await req('refiner', '/runs')).json()) as {
+      runs: Array<{ id: string; writes: number }>;
+    };
+    expect(list.runs).toEqual([expect.objectContaining({ id: runId, writes: 1 })]);
+
+    const one = (await (await req('refiner', `/runs/${runId}`)).json()) as {
+      log: Array<{ tool: string; after: unknown }>;
+    };
+    expect(one.log).toEqual([
+      expect.objectContaining({ tool: 'flag_for_review', after: { flagId: 999_999 } }),
+    ]);
+  });
+
+  it('reverts a run, reports what it skipped, and audits it', async () => {
+    const runId = seedRun();
+    const res = await req('refiner', `/runs/${runId}/revert`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { reverted: number; skipped: Array<{ reason: string }> };
+    expect(body.reverted).toBe(0);
+    expect(body.skipped[0]!.reason).toContain('no longer exists');
+    const audit = testDb
+      .query<{ detail: string }, []>(
+        `SELECT detail FROM audit_log WHERE action = 'agent-run.revert' ORDER BY id DESC LIMIT 1`,
+      )
+      .get();
+    expect(audit?.detail).toBe('0 reverted, 1 skipped');
+  });
+
+  it('is curator-only and 404s an unknown run', async () => {
+    const runId = seedRun();
+    expect((await req('listener', '/runs')).status).toBe(403);
+    expect((await req('listener', `/runs/${runId}/revert`, { method: 'POST' })).status).toBe(403);
+    expect((await req('refiner', '/runs/nope')).status).toBe(404);
+    expect((await req('refiner', '/runs/nope/revert', { method: 'POST' })).status).toBe(404);
   });
 });

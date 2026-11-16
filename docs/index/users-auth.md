@@ -55,6 +55,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **A missing MCP argument is an error, not empty data**: `missingRequiredArgs` rejects on each
   tool's own `inputSchema.required`, naming the keys sent; `htmlEntityArgs` refuses a literal HTML
   entity. → [mcp-agent.md](../mcp-agent.md)
+- **Unattended runs and revert**: a `refiner:auto` token's writes are logged as a run with before
+  and after, one run at a time, and a revert skips anything changed since. `claimRun`,
+  `recordRunWrite`, `revertAgentRun`, `RUN_IDLE_MS`. → [mcp-agent.md](../mcp-agent.md)
 - **Unattended `refiner:auto` tokens**: a scheduled runner's scope, policed by the server, not the
   prompt — `AUTO_SCOPE_WRITE_TOOLS` allowlist, `unknownArgs`, `autoGenreRefusal` (fill-only, library
   vocabulary), `autoBudgetRefusal` daily caps. → [mcp-agent.md](../mcp-agent.md)

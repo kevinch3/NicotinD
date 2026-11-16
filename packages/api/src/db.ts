@@ -2111,6 +2111,39 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_audit_log_at ON audit_log (at DESC)`);
 
+  // Unattended agent runs (#1516 P2): what a `refiner:auto` token wrote, with
+  // the value before and after each write, so a run can be reverted. A run is
+  // opened by the token's first write and ends when it goes idle; at most one
+  // is open at a time (services/agent-runs.ts).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS agent_runs (
+      id          TEXT PRIMARY KEY,
+      token_id    TEXT NOT NULL,
+      user_id     TEXT NOT NULL,
+      started_at  INTEGER NOT NULL,
+      last_at     INTEGER NOT NULL,
+      ended_at    INTEGER,
+      reverted_at INTEGER,
+      reverted_by TEXT
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_agent_runs_started ON agent_runs (started_at DESC)`);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS agent_run_writes (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id      TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+      at          INTEGER NOT NULL,
+      tool        TEXT NOT NULL,
+      target_kind TEXT NOT NULL,
+      target_id   TEXT NOT NULL,
+      before_json TEXT,
+      after_json  TEXT,
+      reverted_at INTEGER,
+      revert_note TEXT
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_agent_run_writes_run ON agent_run_writes (run_id, id)`);
+
   // Generation feedback (removed). It captured album-hunt recognitions as
   // (input, output, verdict) snapshots to distil into replay fixtures, but the
   // acquisition-addon migration severed the capture seam and nothing has written
