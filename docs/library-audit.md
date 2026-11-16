@@ -65,6 +65,16 @@ and a message. The CLI groups by rule (worst first); `--rule=<id>` lists one.
   Orchestra, Piero Gamba`. One album arrives as a dozen tiles in the artists grid.
   **Reported against the base row**, so the finding names the merge target; **never
   deletable** — the music is real. See *Why a name predicate cannot decide this* below.
+- `composer_in_artist` (low) — an album by one performer whose tracks are credited to many other
+  names that look like composers (issue #1369): *The People's Tenor*, album artist Luciano
+  Pavarotti, tracks credited to Puccini, Verdi, Tosti. It needs all of: at least 5 other names, at
+  least 80 % of tracks credited to them, and evidence the names are composers (half the tracks in a
+  classical-family genre, or half the names appearing as a `composer` value somewhere in the
+  library). The evidence gate is what keeps a tribute album out. Thresholds are `COMPOSER_IN_ARTIST`;
+  the pure test is `composerInArtistShape`. **Advisory and never deletable**: confirm against the
+  tracks, then `fix_song_metadata({ artist, composer })`. The thresholds are the ones proposed on the
+  issue and were **not calibrated on prod** before shipping; the first health report after deploy is
+  the tabulation.
 - `numeric_single` — a one-track album titled a bare number (`07`).
 - `placeholder_single` (medium) — a single whose identity is unknown/placeholder.
 - `missplit_album` — ≥3 one-track singles share an edition-stripped title, carry

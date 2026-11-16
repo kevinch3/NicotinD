@@ -3,6 +3,8 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import {
   checkSinglesOnOwnedAlbums,
+  checkComposerInArtist,
+  composerInArtistShape,
   auditLibrary,
   summarize,
   checkMisSplitAlbums,
@@ -911,5 +913,139 @@ describe('content rules — what is in the row, not what it is called', () => {
       addCredit(db, `st${i}`, 'art');
     }
     expect(checkBrandArtists(db)).toEqual([]);
+  });
+});
+
+// Issue #1369: composers filed as track artists under one performer's album.
+describe('composer_in_artist (#1369)', () => {
+  const COMPOSERS = ['Puccini', 'Verdi', 'Tosti', 'Bixio', 'De Curtis', 'Leoncavallo'];
+  const tracks = (names: string[], genre: string | null) =>
+    names.map((artist) => ({ artist, genre }));
+
+  describe('composerInArtistShape', () => {
+    it('matches one performer with many other names on a classical album', () => {
+      const shape = composerInArtistShape(
+        {
+          albumArtist: 'Luciano Pavarotti',
+          tracks: [...tracks(COMPOSERS, 'Opera'), { artist: 'Luciano Pavarotti', genre: 'Opera' }],
+        },
+        new Set(),
+      );
+      expect(shape).toMatchObject({ byGenre: true, byComposer: false });
+      expect(shape?.others).toEqual(COMPOSERS);
+    });
+
+    it('does not match a tribute album: same shape, no evidence the names are composers', () => {
+      const performers = ['Band A', 'Band B', 'Band C', 'Band D', 'Band E', 'Band F'];
+      expect(
+        composerInArtistShape(
+          { albumArtist: 'The Honoree', tracks: tracks(performers, 'Rock') },
+          new Set(['puccini']),
+        ),
+      ).toBeNull();
+    });
+
+    it('matches without a classical genre when the names are known composers', () => {
+      const shape = composerInArtistShape(
+        { albumArtist: 'Some Tenor', tracks: tracks(COMPOSERS, null) },
+        new Set(['puccini', 'verdi', 'tosti']),
+      );
+      expect(shape).toMatchObject({ byGenre: false, byComposer: true });
+    });
+
+    it('needs five other names and four tracks in five credited to them', () => {
+      expect(
+        composerInArtistShape(
+          { albumArtist: 'Tenor', tracks: tracks(COMPOSERS.slice(0, 4), 'Opera') },
+          new Set(),
+        ),
+      ).toBeNull();
+      const mostlyOwn = [
+        ...tracks(COMPOSERS, 'Opera'),
+        ...tracks(['Tenor', 'Tenor', 'Tenor', 'Tenor'], 'Opera'),
+      ];
+      expect(
+        composerInArtistShape({ albumArtist: 'Tenor', tracks: mostlyOwn }, new Set()),
+      ).toBeNull();
+    });
+
+    it('a credit that contains the album artist is the performer, not another name', () => {
+      const withOwner = COMPOSERS.map((c) => `Tenor, ${c}`);
+      expect(
+        composerInArtistShape(
+          { albumArtist: 'Tenor', tracks: tracks(withOwner, 'Opera') },
+          new Set(),
+        ),
+      ).toBeNull();
+    });
+  });
+
+  describe('checkComposerInArtist', () => {
+    let db: Database;
+    beforeEach(() => {
+      db = new Database(':memory:');
+      applySchema(db);
+    });
+    function seedAlbum(
+      id: string,
+      artist: string,
+      names: string[],
+      genre: string | null,
+      hidden = 0,
+    ) {
+      addArtist(db, `ar-${id}`, artist, 1);
+      addAlbum(db, {
+        id,
+        name: `Album ${id}`,
+        artist,
+        artistId: `ar-${id}`,
+        songCount: names.length,
+        classification: 'album',
+        hidden,
+      });
+      names.forEach((name, i) => {
+        addSong(db, `${id}-s${i}`, id, `ar-${id}`, `t${i}`, i + 1, { artist: name });
+        if (genre)
+          db.run(`UPDATE library_songs SET genre = ? WHERE id = ?`, [genre, `${id}-s${i}`]);
+      });
+    }
+
+    it('reports the album, low severity, naming the performer and some of the names', () => {
+      seedAlbum('tenor', 'Luciano Pavarotti', COMPOSERS, 'Opera');
+      const findings = checkComposerInArtist(db);
+      expect(findings).toHaveLength(1);
+      expect(findings[0]).toMatchObject({
+        rule: 'composer_in_artist',
+        severity: 'low',
+        subject: 'tenor',
+      });
+      expect(findings[0]!.message).toContain('"Luciano Pavarotti"');
+      expect(findings[0]!.message).toContain('Puccini; Verdi; Tosti; …');
+    });
+
+    it('uses composer values from anywhere in the library as evidence', () => {
+      seedAlbum('untagged', 'Some Tenor', COMPOSERS, null);
+      expect(checkComposerInArtist(db)).toHaveLength(0);
+      seedAlbum('other', 'Orchestra', ['Orchestra'], null);
+      db.run(`UPDATE library_songs SET composer = 'Puccini' WHERE id = 'other-s0'`);
+      addSong(db, 'other-s1', 'other', 'ar-other', 'x', 2, { artist: 'Orchestra' });
+      addSong(db, 'other-s2', 'other', 'ar-other', 'y', 3, { artist: 'Orchestra' });
+      db.run(`UPDATE library_songs SET composer = 'VERDI' WHERE id = 'other-s1'`);
+      db.run(`UPDATE library_songs SET composer = 'Tosti' WHERE id = 'other-s2'`);
+      expect(checkComposerInArtist(db).map((f) => f.subject)).toEqual(['untagged']);
+    });
+
+    it('skips Various Artists, hidden albums and tribute albums', () => {
+      seedAlbum('va', 'Various Artists', COMPOSERS, 'Opera');
+      seedAlbum('hid', 'Hidden Tenor', COMPOSERS, 'Opera', 1);
+      seedAlbum('trib', 'The Honoree', ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'], 'Rock');
+      expect(checkComposerInArtist(db)).toHaveLength(0);
+    });
+
+    it('is part of the audit and never deletable: the music is real', () => {
+      seedAlbum('tenor', 'Luciano Pavarotti', COMPOSERS, 'Opera');
+      expect(auditLibrary(db).findings.some((f) => f.rule === 'composer_in_artist')).toBe(true);
+      expect(DELETABLE_RULES).not.toContain('composer_in_artist');
+    });
   });
 });

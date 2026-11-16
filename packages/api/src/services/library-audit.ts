@@ -5,6 +5,7 @@ import { isPlaceholderArtistStrict } from './artwork-backfill.js';
 import { missingAlbumArtSql } from './artwork-store.js';
 import { normalizeForGrouping, normalizeArtistForGrouping } from './album-grouping.js';
 import { jointCreditFindings } from './joint-credits.js';
+import { isVariousArtists } from './compilation-tagger.js';
 import {
   looksLikeSourceWatermark,
   isNumericLikeName,
@@ -256,6 +257,120 @@ export function checkFragmentedArtists(db: Database): AuditFinding[] {
       `(${c.fragments.slice(0, 3).join('; ')}${c.fragments.length > 3 ? '; …' : ''}) — ` +
       `confirm each is not a real collaboration, then merge into "${c.base}"`,
   }));
+}
+
+/** `composer_in_artist` thresholds (#1369). Proposed on the issue; not yet calibrated on prod. */
+export const COMPOSER_IN_ARTIST = {
+  /** Distinct track artists that are not the album artist. */
+  minOtherArtists: 5,
+  /** Share of the album's tracks credited to someone other than the album artist. */
+  minOtherShare: 0.8,
+  /** Share of tracks in a classical-family genre, or of the other names known as composers. */
+  minEvidenceShare: 0.5,
+} as const;
+
+/** Genres where the name in front of a track is usually who wrote it. */
+const CLASSICAL_FAMILY =
+  /\b(classical|opera|operetta|baroque|orchestral|choral|chamber|symphon\w*|lieder|zarzuela|aria)\b/i;
+
+export interface ComposerInArtistAlbum {
+  albumArtist: string;
+  tracks: Array<{ artist: string; genre: string | null }>;
+}
+
+/**
+ * Whether an album has the shape of composers filed as track artists (#1369):
+ * one performer as album artist, and most tracks credited to many other names.
+ * That shape alone is also a tribute album, so it needs evidence that the
+ * other names are composers: a classical-family genre on the tracks, or the
+ * names appearing as a `composer` value elsewhere in the library.
+ *
+ * Returns the other names when it matches, null otherwise.
+ */
+export function composerInArtistShape(
+  album: ComposerInArtistAlbum,
+  knownComposers: ReadonlySet<string>,
+): { others: string[]; byGenre: boolean; byComposer: boolean } | null {
+  const total = album.tracks.length;
+  const owner = normalizeArtistForGrouping(album.albumArtist);
+  if (!total || !owner) return null;
+  const others = new Map<string, string>();
+  let otherTracks = 0;
+  for (const t of album.tracks) {
+    const key = normalizeArtistForGrouping(t.artist);
+    if (!key || key === owner || key.includes(owner)) continue;
+    otherTracks++;
+    if (!others.has(key)) others.set(key, t.artist);
+  }
+  if (others.size < COMPOSER_IN_ARTIST.minOtherArtists) return null;
+  if (otherTracks / total < COMPOSER_IN_ARTIST.minOtherShare) return null;
+  const classical = album.tracks.filter((t) => t.genre && CLASSICAL_FAMILY.test(t.genre)).length;
+  const composers = [...others.keys()].filter((k) => knownComposers.has(k)).length;
+  const byGenre = classical / total >= COMPOSER_IN_ARTIST.minEvidenceShare;
+  const byComposer = composers / others.size >= COMPOSER_IN_ARTIST.minEvidenceShare;
+  if (!byGenre && !byComposer) return null;
+  return { others: [...others.values()], byGenre, byComposer };
+}
+
+/**
+ * Issue #1369: a composer's name sitting in `artist`. *The People's Tenor* is
+ * the known case: album artist Luciano Pavarotti, 47 of 49 tracks credited to
+ * Puccini, Verdi, Tosti and others. Advisory and low severity: the curator
+ * confirms, then moves the name with `fix_song_metadata({ artist, composer })`.
+ */
+export function checkComposerInArtist(db: Database): AuditFinding[] {
+  const rows = db
+    .query<
+      { id: string; name: string; album_artist: string; artist: string; genre: string | null },
+      []
+    >(
+      `SELECT a.id, a.name, a.artist AS album_artist, s.artist, s.genre
+         FROM library_albums a
+         JOIN library_songs s ON s.album_id = a.id
+        WHERE a.hidden = 0
+        ORDER BY a.id`,
+    )
+    .all();
+  const knownComposers = new Set(
+    db
+      .query<{ composer: string }, []>(
+        `SELECT DISTINCT composer FROM library_songs WHERE composer IS NOT NULL AND composer != ''`,
+      )
+      .all()
+      .map((r) => normalizeArtistForGrouping(r.composer))
+      .filter(Boolean),
+  );
+
+  const albums = new Map<string, { name: string } & ComposerInArtistAlbum>();
+  for (const r of rows) {
+    let al = albums.get(r.id);
+    if (!al) albums.set(r.id, (al = { name: r.name, albumArtist: r.album_artist, tracks: [] }));
+    al.tracks.push({ artist: r.artist, genre: r.genre });
+  }
+
+  const out: AuditFinding[] = [];
+  for (const [id, al] of albums) {
+    if (isVariousArtists(al.albumArtist) || isPlaceholderArtistStrict(al.albumArtist)) continue;
+    const shape = composerInArtistShape(al, knownComposers);
+    if (!shape) continue;
+    const why = [
+      shape.byGenre ? 'a classical genre' : '',
+      shape.byComposer ? 'known composers' : '',
+    ]
+      .filter(Boolean)
+      .join(' and ');
+    out.push({
+      rule: 'composer_in_artist',
+      severity: 'low',
+      subject: id,
+      message:
+        `Album "${al.name}" by "${al.albumArtist}" credits ${shape.others.length} other names ` +
+        `as track artist (${shape.others.slice(0, 3).join('; ')}${shape.others.length > 3 ? '; …' : ''}), ` +
+        `with ${why}: these may be composers. Confirm against the tracks, then set artist to the ` +
+        `performer and move the name to composer`,
+    });
+  }
+  return out;
 }
 
 /**
@@ -980,6 +1095,7 @@ export function auditLibrary(db: Database, extraFindings: AuditFinding[] = []): 
     ...checkPollutedArtists(db),
     ...checkFragmentedArtists(db),
     ...checkJointCredits(db),
+    ...checkComposerInArtist(db),
     ...checkPollutedAlbums(db),
     ...checkMisSplitAlbums(db),
     ...checkWatermarkedTitles(db),
