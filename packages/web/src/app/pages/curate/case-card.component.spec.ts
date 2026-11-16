@@ -166,8 +166,8 @@ describe('CaseCardComponent', () => {
         ],
       }),
     );
-    expect(options(f)[0].classList.contains('text-red-400')).toBe(true);
-    expect(options(f)[1].classList.contains('text-red-400')).toBe(false);
+    expect(options(f)[0].classList.contains('text-status-error')).toBe(true);
+    expect(options(f)[1].classList.contains('text-status-error')).toBe(false);
   });
 
   // A delete fires on the second tap, never the first: the option turns into

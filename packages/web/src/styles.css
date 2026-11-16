@@ -390,9 +390,12 @@
     background-color: color-mix(in srgb, #d97706 16%, var(--theme-surface));
     color: color-mix(in srgb, #d97706 60%, var(--theme-text-primary));
   }
+  /* 45%, not the 60% its siblings use: green is the most luminous of the tones,
+     and at 60% its label read 4.34:1 on Daylight (measured by the Storybook
+     gate's light-preset scan, #1686). */
   .chip-tone-spotify {
     background-color: color-mix(in srgb, #22c55e 16%, var(--theme-surface));
-    color: color-mix(in srgb, #22c55e 60%, var(--theme-text-primary));
+    color: color-mix(in srgb, #22c55e 45%, var(--theme-text-primary));
   }
   /* Themed status colours. The four semantic roles (progress/done/warn/error)
      each resolve to a per-theme token pair, so a status pill or coloured label

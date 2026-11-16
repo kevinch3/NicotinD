@@ -31,7 +31,7 @@
           [attr.data-testid]="'entity-action-' + action.label"
           class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
           [class.min-h-11]="l.kind === 'sheet'"
-          [class.text-red-400]="action.destructive"
+          [class.text-status-error]="action.destructive"
           [class.text-theme-secondary]="!action.destructive"
           (click)="run(action)"
         >

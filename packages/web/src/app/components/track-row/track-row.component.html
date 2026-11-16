@@ -94,7 +94,7 @@
         </svg>
       </button>
       @if (showRemove()) {
-        <button type="button" appTvNavItem (click)="remove.emit()" class="p-1 text-theme-muted group-hover:text-theme-secondary hover:!text-red-400 transition flex-shrink-0" title="Remove">
+        <button type="button" appTvNavItem (click)="remove.emit()" class="p-1 text-theme-muted group-hover:text-theme-secondary hover:!text-status-error transition flex-shrink-0" title="Remove">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -119,7 +119,7 @@
                 type="button"
                 [attr.data-testid]="'track-action-' + action.label"
                 class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
-                [class.text-red-400]="action.destructive"
+                [class.text-status-error]="action.destructive"
                 [class.text-theme-secondary]="!action.destructive"
                 (click)="menu.close(); runAction(action)">
                 {{ action.labelKey ? (action.labelKey | t) : action.label }}
