@@ -1,0 +1,4 @@
+• desktop: embed update information and publish a .zsync for the AppImage (#2040), references AppImage/appimage.github.io#12099
+• mosaic: zoom the field by wheel and pinch, with text sizes held (#2035)
+• web: get the full album from a song's menu when its album is incomplete (#2036)
+• web: follow the OS colour scheme until the user picks a theme (#2039), references AppImage/appimage.github.io#12099

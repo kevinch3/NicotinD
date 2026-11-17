@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.133](https://github.com/kevinch3/NicotinD/compare/v0.8.132...v0.8.133) (2026-11-17)
+
+### Features
+
+* **desktop:** embed update information and publish a .zsync for the AppImage ([#2040](https://github.com/kevinch3/NicotinD/issues/2040)) ([a602d62](https://github.com/kevinch3/NicotinD/commit/a602d62c3938f8b1945b6981cc33acb4bc6772d8)), references [AppImage/appimage.github.io#12099](https://github.com/kevinch3/NicotinD/issues/12099)
+* **mosaic:** zoom the field by wheel and pinch, with text sizes held ([#2035](https://github.com/kevinch3/NicotinD/issues/2035)) ([9dd9f23](https://github.com/kevinch3/NicotinD/commit/9dd9f230b8c21e54bd2b6a1e49d77dbe862c81c3)), closes [#2020](https://github.com/kevinch3/NicotinD/issues/2020)
+* **web:** get the full album from a song's menu when its album is incomplete ([#2036](https://github.com/kevinch3/NicotinD/issues/2036)) ([4652dc0](https://github.com/kevinch3/NicotinD/commit/4652dc0e59038136acd88b0938bce0338ce1eba8)), closes [#2014](https://github.com/kevinch3/NicotinD/issues/2014)
+
+### Bug Fixes
+
+* **web:** follow the OS colour scheme until the user picks a theme ([#2039](https://github.com/kevinch3/NicotinD/issues/2039)) ([66e2a6f](https://github.com/kevinch3/NicotinD/commit/66e2a6f6b0e17d818110a19f2c580a54d3b46d9f)), references [AppImage/appimage.github.io#12099](https://github.com/kevinch3/NicotinD/issues/12099)
 ## [0.8.132](https://github.com/kevinch3/NicotinD/compare/v0.8.131...v0.8.132) (2026-11-16)
 
 ### Features
