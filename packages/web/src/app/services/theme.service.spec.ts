@@ -65,9 +65,9 @@ describe('resolveTheme', () => {
 // adopted without writing back, and the mirrored per-user theme beats the
 // device key at construction.
 describe('ThemeService — per-user preferences', () => {
-  function stubMatchMedia() {
+  function stubMatchMedia(light = false) {
     (window as { matchMedia?: unknown }).matchMedia = () => ({
-      matches: false,
+      matches: light,
       addEventListener: () => {},
       removeEventListener: () => {},
     });
@@ -88,12 +88,43 @@ describe('ThemeService — per-user preferences', () => {
     delete (window as { matchMedia?: unknown }).matchMedia;
   });
 
+  it('a device that never chose follows the OS scheme', () => {
+    setup();
+    stubMatchMedia(true);
+    const svc = TestBed.inject(ThemeService);
+    svc.apply();
+    expect(svc.systemTheme()).toBe(true);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('daylight');
+  });
+
+  it('a stored opt-out of the OS scheme keeps the chosen preset', () => {
+    setup();
+    stubMatchMedia(true);
+    localStorage.setItem(
+      'nicotind-theme',
+      JSON.stringify({ state: { theme: 'midnight', systemTheme: false } }),
+    );
+    const svc = TestBed.inject(ThemeService);
+    svc.apply();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('midnight');
+  });
+
   it('setTheme applies locally and writes through the preferences door', () => {
     const { patch } = setup();
     const svc = TestBed.inject(ThemeService);
     svc.setTheme('forest');
     expect(document.documentElement.getAttribute('data-theme')).toBe('forest');
-    expect(patch).toHaveBeenCalledWith({ theme: 'forest' });
+    expect(patch).toHaveBeenCalledWith({ theme: 'forest', followSystemTheme: false });
+    expect(svc.systemTheme()).toBe(false);
+  });
+
+  it('setTheme after following is off writes only the theme', () => {
+    const { patch } = setup();
+    const svc = TestBed.inject(ThemeService);
+    svc.setTheme('forest');
+    patch.mockClear();
+    svc.setTheme('oled');
+    expect(patch).toHaveBeenCalledWith({ theme: 'oled' });
   });
 
   it('setSystemTheme writes followSystemTheme through', () => {

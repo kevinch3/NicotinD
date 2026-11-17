@@ -362,3 +362,28 @@ test.describe('per-user preferences', () => {
     await expect(page.getByTestId('settings-language')).toHaveValue('es');
   });
 });
+
+test.describe('first-run scheme', () => {
+  // A device that never chose a theme follows the OS, and the sign-in screen
+  // follows it too: the AppImage catalog's test boots on a light desktop and
+  // flagged the always-dark auth screens (docs/web-ui.md "Theme System").
+  for (const [scheme, preset] of [
+    ['light', 'daylight'],
+    ['dark', 'midnight'],
+  ] as const) {
+    test(`a fresh ${scheme} device signs in on ${preset}`, async ({ browser, baseURL }) => {
+      const ctx = await browser.newContext({ baseURL: baseURL ?? undefined, colorScheme: scheme });
+      const page = await ctx.newPage();
+      await page.goto('/login');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', preset);
+      const card = page.getByTestId('login-card');
+      await expect(card).toBeVisible();
+      const [fg, bg] = await card.evaluate((el) => {
+        const h1 = el.querySelector('h1')!;
+        return [getComputedStyle(h1).color, getComputedStyle(document.body).backgroundColor];
+      });
+      expect(contrast(parseColor(fg), parseColor(bg))).toBeGreaterThanOrEqual(4.5);
+      await ctx.close();
+    });
+  }
+});

@@ -141,6 +141,11 @@ Recurring wrong assumptions that have shipped red CI. Check every new spec
 against these before pushing; if you discover a new one, add it here in the
 same PR that hit it.
 
+- **A light OS scheme.** A device that never chose a theme follows `prefers-color-scheme`,
+  and Chromium reports `light`, so `playwright.config.ts` and the screenshots config pin
+  `colorScheme: 'dark'` to keep the Midnight first run every assertion and baseline was
+  written against. A spec about the light first run opens its own context with
+  `colorScheme: 'light'` (`theme.spec.ts` "first-run scheme").
 - **`POST /api/system/scan` returns before the scan finishes, and the suite shares
   one server.** The route is deliberately fire-and-forget (`routes/system.ts`:
   *"the client can poll /scan/status"*), so a bare `request.post('/api/system/scan')`
