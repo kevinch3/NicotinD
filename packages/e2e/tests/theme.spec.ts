@@ -372,7 +372,13 @@ test.describe('first-run scheme', () => {
     ['dark', 'midnight'],
   ] as const) {
     test(`a fresh ${scheme} device signs in on ${preset}`, async ({ browser, baseURL }) => {
-      const ctx = await browser.newContext({ baseURL: baseURL ?? undefined, colorScheme: scheme });
+      // An empty storageState: the project's admin session would otherwise
+      // carry over, and /me then adopts the theme earlier specs left on it.
+      const ctx = await browser.newContext({
+        baseURL: baseURL ?? undefined,
+        colorScheme: scheme,
+        storageState: { cookies: [], origins: [] },
+      });
       const page = await ctx.newPage();
       await page.goto('/login');
       await expect(page.locator('html')).toHaveAttribute('data-theme', preset);
