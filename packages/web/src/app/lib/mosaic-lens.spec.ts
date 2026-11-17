@@ -9,9 +9,16 @@ import {
   decayVelocity,
   lockBreakPx,
   visiblePlacements,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  SUBTITLE_MIN_SIDE_PX,
+  TITLE_MIN_SIDE_PX,
+  clampZoom,
+  textLevel,
+  wheelZoom,
 } from './mosaic-lens';
 import type { PackedTile } from './mosaic-packing';
-import type { MosaicTile } from './mosaic-tiles';
+import { sizingReference, tileSize, type MosaicTile } from './mosaic-tiles';
 
 const mosaicTile = (key: string): MosaicTile => ({
   key,
@@ -164,5 +171,116 @@ describe('lockBreakPx', () => {
   it('stays feelable on a tiny stage and escapable on a huge one', () => {
     expect(lockBreakPx(100, 'mouse')).toBe(40);
     expect(lockBreakPx(4000, 'touch')).toBe(140);
+  });
+});
+
+// #2020: the field zooms; the rim does not.
+describe('zoom', () => {
+  const WIDE = { w: 1400, h: 1400 };
+  const at = (zoom: number, camX = 800) =>
+    visiblePlacements([packed(0, 800, 800)], { x: camX, y: 800 }, VIEW, W, R, zoom);
+
+  it('leaves 100% exactly as it was', () => {
+    expect(at(1)).toEqual(visiblePlacements([packed(0, 800, 800)], { x: 800, y: 800 }, VIEW, W, R));
+  });
+
+  it("multiplies a tile's on-screen size, and keeps the centre tile on the centre", () => {
+    for (const zoom of [ZOOM_MIN, 1.5, ZOOM_MAX]) {
+      const [centre] = at(zoom).filter((p) => p.i === 0 && p.j === 0);
+      expect(centre!.scale).toBeCloseTo(CENTER_SCALE * zoom, 2);
+      expect(centre!.left).toBeCloseTo(VIEW.w / 2 - 50);
+    }
+  });
+
+  it('moves a tile off the centre outward on screen as the field zooms in', () => {
+    const offset = (zoom: number) => {
+      const [p] = at(zoom, 760).filter((q) => q.i === 0 && q.j === 0);
+      return p!.left + 50 - VIEW.w / 2;
+    };
+    expect(offset(2)).toBeGreaterThan(offset(1));
+    expect(offset(1)).toBeGreaterThan(offset(ZOOM_MIN));
+  });
+
+  // The rim is the same circle at any zoom; zooming out takes in more plane.
+  it('keeps the rim and takes in more of the plane when zoomed out', () => {
+    const far = 800 + R * THETA_MAX + 60;
+    const seen = (zoom: number) =>
+      // A stage wide enough to hold the whole rim, so only the lens culls.
+      visiblePlacements([packed(0, far, 800)], { x: 800, y: 800 }, WIDE, W, R, zoom).filter(
+        (p) => p.i === 0 && p.j === 0,
+      ).length;
+    expect(seen(1)).toBe(0);
+    expect(seen(ZOOM_MIN)).toBe(1);
+    expect(seen(ZOOM_MAX)).toBe(0);
+  });
+
+  it('never places a tile outside the rim circle, at any zoom', () => {
+    const tiles = Array.from({ length: 40 }, (_, i) => packed(i, (i * 137) % W, (i * 263) % W, 60));
+    const rim = R * Math.sin(THETA_MAX);
+    for (const zoom of [ZOOM_MIN, 1, ZOOM_MAX]) {
+      for (const p of visiblePlacements(tiles, { x: 800, y: 800 }, VIEW, W, R, zoom)) {
+        const dx = p.left + p.packed.half - VIEW.w / 2;
+        const dy = p.top + p.packed.half - VIEW.h / 2;
+        expect(Math.hypot(dx, dy)).toBeLessThanOrEqual(rim + 0.5);
+      }
+    }
+  });
+});
+
+describe('clampZoom and wheelZoom', () => {
+  it('holds the zoom between 60% and 220%', () => {
+    expect(ZOOM_MIN).toBe(0.6);
+    expect(ZOOM_MAX).toBe(2.2);
+    expect(clampZoom(0.1)).toBe(ZOOM_MIN);
+    expect(clampZoom(9)).toBe(ZOOM_MAX);
+    expect(clampZoom(1.3)).toBe(1.3);
+  });
+
+  it('wheel up zooms in, wheel down zooms out, by the same ratio at any zoom', () => {
+    expect(wheelZoom(1, { deltaY: -100 })).toBeGreaterThan(1);
+    expect(wheelZoom(1, { deltaY: 100 })).toBeLessThan(1);
+    const ratio = (z: number) => wheelZoom(z, { deltaY: -100 }) / z;
+    expect(ratio(0.8)).toBeCloseTo(ratio(1.4), 6);
+    // There and back is where it started.
+    expect(wheelZoom(wheelZoom(1, { deltaY: -120 }), { deltaY: 120 })).toBeCloseTo(1, 6);
+  });
+
+  it('stops at the limits however far the wheel turns', () => {
+    expect(wheelZoom(1, { deltaY: -100000 })).toBe(ZOOM_MAX);
+    expect(wheelZoom(1, { deltaY: 100000 })).toBe(ZOOM_MIN);
+  });
+
+  it('reads a line-mode wheel as 16 px a line, and a trackpad pinch more finely', () => {
+    expect(wheelZoom(1, { deltaY: -3, deltaMode: 1 })).toBeCloseTo(
+      wheelZoom(1, { deltaY: -48 }),
+      6,
+    );
+    expect(wheelZoom(1, { deltaY: -10, ctrlKey: true })).toBeGreaterThan(
+      wheelZoom(1, { deltaY: -10 }),
+    );
+  });
+});
+
+describe('textLevel', () => {
+  it('drops the subtitle under 38 px, and the title under 28 px', () => {
+    expect(textLevel(60, 1)).toBe('full');
+    expect(textLevel(SUBTITLE_MIN_SIDE_PX, 1)).toBe('full');
+    expect(textLevel(SUBTITLE_MIN_SIDE_PX - 1, 1)).toBe('title');
+    expect(textLevel(TITLE_MIN_SIDE_PX, 1)).toBe('title');
+    expect(textLevel(TITLE_MIN_SIDE_PX - 1, 1)).toBe('cover');
+  });
+
+  it('measures the side after the zoom', () => {
+    expect(textLevel(60, ZOOM_MIN)).toBe('title'); // 36 px
+    expect(textLevel(40, ZOOM_MIN)).toBe('cover'); // 24 px
+    expect(textLevel(20, ZOOM_MAX)).toBe('full'); // 44 px
+  });
+
+  // The promise in the design: 100% looks exactly as it did.
+  it('drops no text at 100%, down to the narrowest phone', () => {
+    for (const stageMin of [320, 360, 390, 600, 900, 1400]) {
+      const smallest = tileSize(0, sizingReference(stageMin)) * TILE_BASE;
+      expect(textLevel(smallest, 1), `stage ${stageMin}: ${smallest.toFixed(1)} px`).toBe('full');
+    }
   });
 });

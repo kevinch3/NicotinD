@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
@@ -729,10 +731,27 @@ describe('mosaic depth (#1638)', () => {
         component.tiles().find((t) => t.kind === 'song')!,
       );
     expect(html(60)).toContain('--face-pad:5px');
-    expect(html(60)).toContain('font-size:9px');
-    // Big faces keep the sizes they always had.
+    // The type's natural size rides on the face; styles.css clamps it to
+    // 9–17 px (title) and 7–12 px (subtitle) against the zoom (#2020).
+    expect(html(60)).toContain('--face-title:7.20px');
+    expect(html(60)).toContain('--face-sub:5.10px');
     expect(html(220)).toContain('--face-pad:12px');
-    expect(html(220)).toContain('font-size:17px');
+    expect(html(220)).toContain('--face-title:26.40px');
+    // No size is baked into the label any more: a baked size could not follow the zoom.
+    expect(html(60)).not.toMatch(/<b[^>]*font-size/);
+  });
+
+  // The clamp the faces used to bake in now lives in the stylesheet.
+  it("the stylesheet clamps a face's type to the old limits, divided by the zoom", () => {
+    const css = readFileSync(join(__dirname, '../../../styles.css'), 'utf8').replace(/\s+/g, ' ');
+    expect(css).toContain(
+      'font-size: clamp( calc(9px * var(--mosaic-inv, 1)), var(--face-title, 13px), calc(17px * var(--mosaic-inv, 1)) )',
+    );
+    expect(css).toContain(
+      'font-size: clamp( calc(7px * var(--mosaic-inv, 1)), var(--face-sub, 12px), calc(12px * var(--mosaic-inv, 1)) )',
+    );
+    expect(css).toContain(".mosaic-tile[data-text='title'] span.mosaic-name");
+    expect(css).toContain(".mosaic-tile[data-text='cover'] .mosaic-scrim");
   });
 
   describe('in the loop', () => {
@@ -803,6 +822,117 @@ describe('mosaic depth (#1638)', () => {
       pointer(component.drag, 'pointerup', 3);
       c.frame();
       expect(stage.classList.contains('is-moving')).toBe(false);
+    });
+
+    // #2020: zoom by wheel and pinch.
+    describe('zoom', () => {
+      const scaleOf = (el: HTMLElement) => Number(/scale\(([\d.]+)\)/.exec(el.style.transform)![1]);
+      const touch = (type: string, id: number, x: number) =>
+        new PointerEvent(type, {
+          pointerId: id,
+          clientX: x,
+          clientY: 0,
+          pointerType: 'touch',
+          bubbles: true,
+        });
+
+      it('scales the tiles, and hands the stage the inverse for the type to hold its size', async () => {
+        const { component, c, el } = await drawn();
+        const stage = el.parentElement!;
+        const before = scaleOf(el);
+        component.setZoom(2);
+        c.frame();
+        expect(scaleOf(el)).toBeCloseTo(before * 2, 2);
+        expect(stage.style.getPropertyValue('--mosaic-inv')).toBe('0.5000');
+        expect(stage.dataset['zoom']).toBe('2.00');
+      });
+
+      // A tile's layer is drawn once at its packed size; zoomed in, a field at
+      // rest is flagged so styles.css lets the browser redraw it sharp.
+      it('flags a zoomed-in field, and counts a zoom as motion until the loop finds it at rest', async () => {
+        const { component, c, el } = await drawn();
+        const stage = el.parentElement!;
+        component.setZoom(1.5);
+        expect(stage.classList.contains('is-zoomed-in')).toBe(true);
+        expect(stage.classList.contains('is-moving')).toBe(true);
+        c.frame();
+        expect(stage.classList.contains('is-moving')).toBe(false);
+        component.setZoom(0.8);
+        expect(stage.classList.contains('is-zoomed-in')).toBe(false);
+        const css = readFileSync(join(__dirname, '../../../styles.css'), 'utf8');
+        expect(css).toContain('.mosaic-stage-contain.is-zoomed-in:not(.is-moving) .mosaic-tile');
+      });
+
+      it('stops at 60% and 220%', async () => {
+        const { component, el } = await drawn();
+        const stage = el.parentElement!;
+        component.setZoom(50);
+        expect(stage.dataset['zoom']).toBe('2.20');
+        component.setZoom(0.01);
+        expect(stage.dataset['zoom']).toBe('0.60');
+      });
+
+      it('a small face drops its subtitle, then its title, as the field zooms out', async () => {
+        const { component, c } = await drawn();
+        const level = (size: number) => {
+          c.packing = { W: 500, tiles: [packedStub(7, size)] };
+          c.frame();
+          return [...c.live.values()].find((r) => r.el.dataset['tileId'] === '7')!.el.dataset[
+            'text'
+          ];
+        };
+        expect(level(50)).toBe('full');
+        component.setZoom(0.6); // 50 → 30 px, 40 → 24 px
+        expect(level(50)).toBe('title');
+        expect(level(40)).toBe('cover');
+        component.setZoom(1);
+        expect(level(40)).toBe('full');
+      });
+
+      it('a pan covers less of the plane when zoomed in, so the content still tracks the finger', async () => {
+        const { component, c } = await drawn();
+        const travel = (zoom: number) => {
+          component.setZoom(zoom);
+          const from = c.cx;
+          pointer(component.drag, 'pointerdown', 0);
+          pointer(component.drag, 'pointermove', 40);
+          const moved = from - c.cx;
+          pointer(component.drag, 'pointerup', 40);
+          c.vx = 0;
+          c.vy = 0;
+          return moved;
+        };
+        const at1 = travel(1);
+        expect(travel(2)).toBeCloseTo(at1 / 2, 5);
+      });
+
+      it('two fingers zoom: the pan under the first finger stops and its release is not a tap', async () => {
+        const { component, c, el } = await drawn();
+        const stage = el.parentElement!;
+        component.onStagePointerDown(touch('pointerdown', 1, 100));
+        expect(c.dragging).toBe(true);
+        component.onStagePointerDown(touch('pointerdown', 2, 200));
+        expect(c.dragging).toBe(false);
+        const camera = c.cx;
+        document.dispatchEvent(touch('pointermove', 2, 300)); // 100 → 200 px apart
+        expect(stage.dataset['zoom']).toBe('2.00');
+        expect(c.cx).toBe(camera);
+        // One finger lifts; the other is spent and does not start a pan.
+        document.dispatchEvent(touch('pointerup', 2, 300));
+        document.dispatchEvent(touch('pointermove', 1, 400));
+        expect(c.cx).toBe(camera);
+        expect((c as unknown as { suppressTap: boolean }).suppressTap).toBe(true);
+        document.dispatchEvent(touch('pointerup', 1, 400));
+      });
+
+      it('one finger still pans', async () => {
+        const { component, c } = await drawn();
+        const from = c.cx;
+        component.onStagePointerDown(touch('pointerdown', 1, 100));
+        document.dispatchEvent(touch('pointermove', 1, 160));
+        expect(c.cx).not.toBe(from);
+        document.dispatchEvent(touch('pointerup', 1, 160));
+      });
     });
 
     /** Run frames on a fake clock until the glide lands (or a cap is hit). */

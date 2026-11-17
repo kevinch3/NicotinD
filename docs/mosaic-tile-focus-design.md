@@ -154,6 +154,14 @@ choosing this approach. No setting to restore one-tap play is proposed.
 8. **Zoom is not remembered.** Each visit starts at 100%.
 9. **The tile under the focus is not hidden;** the veil dims it and the focused tile covers it.
 
+## Built
+
+- Tap to focus: #2022.
+- Zoom: #2020, as specified above. Two things the build added: the pan gain is divided by the
+  zoom, so the content still tracks the finger when zoomed in; and a zoomed-in field at rest drops
+  the tiles' `will-change` hint, because a layer drawn at the packed size and scaled four times
+  is visibly soft. The 100% field is unchanged in both respects.
+
 ## Still to confirm on a device
 
 - **Pinch versus the browser.** The stage is `touch-none`, so a pinch reaches the page's own
