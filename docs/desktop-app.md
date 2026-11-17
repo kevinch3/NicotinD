@@ -336,6 +336,20 @@ Auto-update is a no-op in dev (`!app.isPackaged`) and wrapped so a failed/offlin
 the app. The packaging jobs attach the `latest-*.yml` feeds the updater polls along with the
 installers — electron-builder writes them to `release/` even with `--publish never`.
 
+**AppImageUpdate** works too, for people who manage AppImages outside the app (the AppImage catalog
+asked for it). The AppImage is built on the static type2 runtime (`toolsets.appimage` in
+`electron-builder.yml`), which needs no libfuse2 on the host, and
+`scripts/embed-appimage-update-info.ts` writes
+`gh-releases-zsync|kevinch3|NicotinD|latest|NicotinD-*.AppImage.zsync` into its empty `.upd_info`
+section after the build, then publishes a `.zsync` beside it. Writing into the runtime changes the
+file electron-updater already described, so the script works in this order: strip electron-builder's
+embedded blockmap (the deflated map plus a 4-byte big-endian length trailer, so `blockMapSize + 4`
+bytes), write the section, re-append the blockmap with electron-builder's own `buildBlockMap`, swap
+`sha512`/`size`/`blockMapSize` in `latest-linux.yml` by exact value (re-serialising the YAML would
+unquote `releaseDate`, which js-yaml reads as a Date), and only then run `zsyncmake` over the
+final bytes. Measured on a real build: the 68 changed bytes all sit inside `.upd_info`, and the
+rebuilt blockmap covers the content exactly.
+
 ## Build & CI
 
 Tag-triggered jobs in `.github/workflows/deploy.yml` (mirroring the Android/iOS jobs,
@@ -346,7 +360,7 @@ build that publishes nothing — see "Publishing to the GitHub Release" below. T
 the server `deploy` job: it runs in parallel with no `needs` linkage, so its success is independent
 of packaging.
 
-- `desktop-linux` (ubuntu) → `electron-builder --linux --publish never` (AppImage/deb + `latest-linux.yml`).
+- `desktop-linux` (ubuntu) → `electron-builder --linux --publish never` (AppImage/deb + `latest-linux.yml`), then `embed-appimage-update-info.ts` (AppImageUpdate info + `.zsync`) before the upload.
 - `desktop-mac` (macos-15; macos-14 was retired 2026-11-02, #1629) → `electron-builder --mac --publish never` (dmg + `latest-mac.yml`).
 
 Each then attaches what it built to the tag's draft release **by id**:

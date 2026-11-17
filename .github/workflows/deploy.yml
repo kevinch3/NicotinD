@@ -454,6 +454,15 @@ jobs:
         # update feed carry THIS release's version.
         run: bunx electron-builder --linux --publish never -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
 
+      # AppImageUpdate reads the runtime's `.upd_info`; electron-builder leaves it empty.
+      # Fill it, re-embed the blockmap, fix latest-linux.yml and write the `.zsync`, all
+      # before the upload so the attach and verify steps below see the final files.
+      - name: Embed AppImage update information
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends zsync
+          bun run packages/desktop/scripts/embed-appimage-update-info.ts
+
       # By id, like android/ios: the one upload path that sees the draft.
       - name: Attach the Linux desktop artifacts to the GitHub Release
         env:

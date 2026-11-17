@@ -24,6 +24,10 @@ const RELEASE_1261 = [
 ];
 
 describe('publishedArtifacts', () => {
+  it('keeps the AppImageUpdate .zsync beside the AppImage', () => {
+    expect(isPublishedArtifact('NicotinD-0.8.39.AppImage.zsync')).toBe(true);
+  });
+
   it('keeps the installers and the updater feed, drops the build intermediates', () => {
     expect(publishedArtifacts(LINUX_OUTPUT)).toEqual([
       'NicotinD-0.8.39.AppImage',
