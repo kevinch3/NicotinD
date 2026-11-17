@@ -21,6 +21,9 @@ import {
   type BaseSong,
 } from '../lib/track-utils';
 import { SearchService } from './search.service';
+import { ToastService } from './toast.service';
+import { TranslateService } from './translate.service';
+import { COMPLETE_OUTCOME_KIND } from '../lib/album-complete-outcome';
 import type { NotOwnedRelatedArtist } from './api/api-types';
 import type { TrackAction } from '../components/track-row/track-row.component';
 
@@ -79,6 +82,8 @@ export class SongMenuService {
   private readonly auth = inject(AuthService);
   private readonly api = inject(LibraryApiService);
   private readonly acquireSearch = inject(SearchService);
+  private readonly toast = inject(ToastService);
+  private readonly i18n = inject(TranslateService);
   private readonly transfers = inject(TransferService);
   private readonly trackInfo = inject(TrackInfoService);
   private readonly confirm = inject(ConfirmService);
@@ -240,35 +245,47 @@ export class SongMenuService {
         group: 'role',
         action: () => {},
         children: async () => {
-          const similar = await this.similarNotOwned(artistId);
-          return [
-            {
-              // The artist page opens on its discography, where the albums the
-              // library lacks are already marked.
-              label: 'More by this artist',
-              labelKey: 'song.moreByArtist',
-              labelParams: { artist: artistName },
-              icon: 'user' as const,
-              action: () => void this.router.navigate(resolveArtistRoute(artistId)),
-            },
-            // Artists close to this one that the library does not have (#2015).
-            ...(similar.length > 0
-              ? [
-                  {
-                    label: 'Similar artists',
-                    labelKey: 'song.similarArtists',
-                    icon: 'radio' as const,
-                    action: () => {},
-                    children: () =>
-                      similar.map((artist) => ({
-                        label: artist.name,
-                        icon: 'search' as const,
-                        action: () => this.findOnGet(artist.name),
-                      })),
-                  },
-                ]
-              : []),
-          ];
+          const [similar, missing] = await Promise.all([
+            this.similarNotOwned(artistId),
+            this.missingFromAlbum(song.albumId),
+          ]);
+          const rows: TrackAction[] = [];
+          // The album is confirmed incomplete: hunt only what it lacks (#2014).
+          if (missing > 0 && song.albumId) {
+            const albumId = song.albumId;
+            rows.push({
+              label: 'Get the full album',
+              labelKey: 'song.getFullAlbum',
+              labelParams: { missing },
+              icon: 'disc-album',
+              action: () => void this.completeAlbum(albumId, song.album ?? '', missing),
+            });
+          }
+          rows.push({
+            // The artist page opens on its discography, where the albums the
+            // library lacks are already marked.
+            label: 'More by this artist',
+            labelKey: 'song.moreByArtist',
+            labelParams: { artist: artistName },
+            icon: 'user',
+            action: () => void this.router.navigate(resolveArtistRoute(artistId)),
+          });
+          // Artists close to this one that the library does not have (#2015).
+          if (similar.length > 0) {
+            rows.push({
+              label: 'Similar artists',
+              labelKey: 'song.similarArtists',
+              icon: 'radio',
+              action: () => {},
+              children: () =>
+                similar.map((artist) => ({
+                  label: artist.name,
+                  icon: 'search' as const,
+                  action: () => this.findOnGet(artist.name),
+                })),
+            });
+          }
+          return rows;
         },
       });
     }
@@ -441,6 +458,43 @@ export class SongMenuService {
     await firstValueFrom(this.api.deleteSongs(ids));
     this.transfers.addDeletedIds(ids);
     selection.done();
+  }
+
+  /**
+   * How many tracks the song's album is confirmed to lack; 0 when it is
+   * complete, unknown, or the read fails. Only asked for someone the server
+   * lets complete an album (`requireCurator`). Asked each time the submenu
+   * opens, because a hunt changes the answer.
+   */
+  private async missingFromAlbum(albumId: string | undefined): Promise<number> {
+    if (!albumId || !this.auth.canCurate()) return 0;
+    try {
+      const state = await firstValueFrom(this.api.getAlbumCompleteness(albumId));
+      return state.confirmed?.missing ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Confirm, start the hunt for the missing tracks, and say what happened. */
+  private async completeAlbum(albumId: string, album: string, missing: number): Promise<void> {
+    const question = this.i18n.t('song.getFullAlbumConfirm', { album, missing });
+    const ok = await this.confirm.ask(question, {
+      destructive: false,
+      confirmLabel: this.i18n.t('song.getFullAlbumGo'),
+    });
+    if (!ok) return;
+    try {
+      const res = await firstValueFrom(this.api.completeAlbum(albumId));
+      const kind = COMPLETE_OUTCOME_KIND[res.outcome] ?? 'info';
+      const message = this.i18n.t(`album.completeOutcome.${res.outcome}`);
+      this.toast.show({
+        kind,
+        message: kind === 'error' && res.detail ? `${message} — ${res.detail}` : message,
+      });
+    } catch {
+      this.toast.show({ kind: 'error', message: this.i18n.t('album.completeFailed') });
+    }
   }
 
   private readonly similar = new Map<string, Promise<NotOwnedRelatedArtist[]>>();
