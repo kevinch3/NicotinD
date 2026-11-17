@@ -165,3 +165,9 @@ publish:
   # publishing` per file and exited 0 for ~40 releases. → docs/desktop-app.md
   releaseType: release
 
+# The static AppImage runtime (type2-runtime; no libfuse2 on the host, which the
+# AppImage catalog flagged) instead of the legacy FUSE2 one. It also carries the
+# empty `.upd_info` section that scripts/embed-appimage-update-info.ts fills for
+# AppImageUpdate after the build. electron-builder checksums the toolset download.
+toolsets:
+  appimage: "1.0.3"

@@ -38,7 +38,7 @@ export const RELEASE_DIR = resolve(import.meta.dir, '../release');
  * unpacked app trees and `builder-debug.yml`/`builder-effective-config.yaml`,
  * which are build intermediates and are not release assets.
  */
-const PUBLISHED_EXTENSIONS = ['.AppImage', '.deb', '.dmg', '.exe', '.zip', '.blockmap'];
+const PUBLISHED_EXTENSIONS = ['.AppImage', '.deb', '.dmg', '.exe', '.zip', '.blockmap', '.zsync'];
 
 /**
  * electron-updater's feed descriptors (`latest-linux.yml`, `latest-mac.yml`).
