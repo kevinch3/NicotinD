@@ -32,7 +32,7 @@
           var stored = JSON.parse(localStorage.getItem('nicotind-theme') || '{}');
           var state = stored.state || {};
           var theme = state.theme || 'midnight';
-          var sys = state.systemTheme;
+          var sys = state.systemTheme !== false;
           if (sys) {
             theme = window.matchMedia('(prefers-color-scheme: light)').matches
               ? 'daylight'
@@ -45,8 +45,15 @@
         }
       })();
     </script>
+    <style>
+      /* Pre-stylesheet paint: match the light/dark preset the script above chose. */
+      body { background-color: var(--theme-bg, #09090b); color: var(--theme-text-primary, #f4f4f5); }
+      html[data-theme="daylight"] body, html[data-theme="warm-paper"] body, html[data-theme="eink"] body {
+        background-color: var(--theme-bg, #ececf1); color: var(--theme-text-primary, #18181b);
+      }
+    </style>
   </head>
-  <body style="background-color: var(--theme-bg, #09090b); color: var(--theme-text-primary, #f4f4f5);" class="antialiased">
+  <body class="antialiased">
     <app-root></app-root>
     <script>
       // Engine floor guard (docs/mobile-app.md "Minimum WebView"). ES5 only: it

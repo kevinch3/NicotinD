@@ -1,14 +1,14 @@
 
-    <div class="min-h-screen flex items-center justify-center bg-zinc-950">
+    <div class="min-h-screen flex items-center justify-center bg-theme-base">
       <div class="w-full max-w-md px-6">
-        <h1 class="text-3xl font-bold text-center mb-2 text-zinc-100">NicotinD</h1>
-        <p class="text-zinc-500 text-center text-sm mb-8">{{ 'setup.subtitle' | t }}</p>
+        <h1 class="text-3xl font-bold text-center mb-2 text-theme-primary">NicotinD</h1>
+        <p class="text-theme-muted text-center text-sm mb-8">{{ 'setup.subtitle' | t }}</p>
 
         @if (step() !== 'done') {
           <div class="flex items-center gap-2 mb-6 justify-center">
             @for (i of stepDots(); track i) {
               <div class="h-1 rounded-full transition-all w-8"
-                [class]="i <= stepNumber() ? 'bg-zinc-100' : 'bg-zinc-800'"
+                [class]="i <= stepNumber() ? 'bg-theme-inverse' : 'bg-theme-surface-2'"
               ></div>
             }
           </div>
@@ -17,21 +17,21 @@
         <!-- Step 1: Admin -->
         @if (step() === 'admin') {
           <form (ngSubmit)="handleAdminNext()" class="space-y-4">
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
-              <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-4">{{ 'setup.createAdminAccount' | t }}</h2>
+            <div class="rounded-xl border border-theme bg-theme-surface/50 p-6">
+              <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-4">{{ 'setup.createAdminAccount' | t }}</h2>
               <div class="space-y-3">
                 <input type="text" [placeholder]="'setup.username' | t" [(ngModel)]="adminUsername" name="adminUser" required autofocus
                   data-testid="setup-username"
-                  class="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm" />
+                  class="w-full px-4 py-3 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-theme-muted focus:outline-none focus:border-theme-secondary transition text-sm" />
                 <app-password-field [(ngModel)]="adminPassword" name="adminPass" [placeholder]="'setup.password' | t" [required]="true" [autocomplete]="'new-password'"
                   [testId]="'setup-password'"
-                  [inputClass]="'px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm'" />
+                  [inputClass]="'px-4 py-3 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-theme-muted focus:outline-none focus:border-theme-secondary transition text-sm'" />
               </div>
             </div>
-            @if (error()) { <p class="text-red-400 text-sm">{{ error() }}</p> }
+            @if (error()) { <p class="text-status-error text-sm">{{ error() }}</p> }
             <button type="submit" [disabled]="!adminUsername.trim() || !adminPassword.trim()"
               data-testid="setup-submit"
-              class="w-full py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
+              class="w-full py-3 rounded-lg bg-theme-inverse text-theme-inverse font-semibold hover:opacity-90 transition disabled:opacity-50">
               {{ 'common.next' | t }}
             </button>
           </form>
@@ -40,27 +40,27 @@
         <!-- Step 2: Library -->
         @if (step() === 'library') {
           <div class="space-y-4">
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
-              <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-1">{{ 'setup.musicLibrary' | t }}</h2>
-              <p class="text-xs text-zinc-600 mb-4">{{ 'setup.musicLibraryHint' | t }}</p>
+            <div class="rounded-xl border border-theme bg-theme-surface/50 p-6">
+              <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-1">{{ 'setup.musicLibrary' | t }}</h2>
+              <p class="text-xs text-theme-muted mb-4">{{ 'setup.musicLibraryHint' | t }}</p>
               <div class="space-y-3">
                 <div class="flex gap-2">
                   <input type="text" [placeholder]="'setup.musicDirPlaceholder' | t" [(ngModel)]="musicDir" name="musicDir" autofocus
                     data-testid="setup-music-dir"
-                    class="min-w-0 flex-1 px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm" />
+                    class="min-w-0 flex-1 px-4 py-3 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-theme-muted focus:outline-none focus:border-theme-secondary transition text-sm" />
                   @if (isElectron()) {
                     <button type="button" (click)="chooseFolder()" data-testid="onboarding-pick-folder"
-                      class="px-4 py-3 rounded-lg border border-zinc-700 text-zinc-300 text-sm font-medium hover:border-zinc-500 transition whitespace-nowrap">{{ 'setup.chooseFolder' | t }}</button>
+                      class="px-4 py-3 rounded-lg border border-theme text-theme-secondary text-sm font-medium hover:border-theme-secondary transition whitespace-nowrap">{{ 'setup.chooseFolder' | t }}</button>
                   }
                 </div>
-                <p class="text-xs text-zinc-500">{{ 'setup.musicDirDefaultHint' | t: { default: '~/Music' } }}</p>
+                <p class="text-xs text-theme-muted">{{ 'setup.musicDirDefaultHint' | t: { default: '~/Music' } }}</p>
               </div>
             </div>
-            @if (error()) { <p class="text-red-400 text-sm">{{ error() }}</p> }
+            @if (error()) { <p class="text-status-error text-sm">{{ error() }}</p> }
             <div class="flex gap-3">
-              <button type="button" (click)="step.set('admin')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">{{ 'common.back' | t }}</button>
+              <button type="button" (click)="step.set('admin')" class="px-5 py-3 rounded-lg border border-theme text-theme-secondary text-sm font-medium hover:border-theme-secondary transition">{{ 'common.back' | t }}</button>
               <button type="button" (click)="handleLibraryNext()" data-testid="setup-next-library"
-                class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">{{ 'common.next' | t }}</button>
+                class="flex-1 py-3 rounded-lg bg-theme-inverse text-theme-inverse font-semibold hover:opacity-90 transition">{{ 'common.next' | t }}</button>
             </div>
           </div>
         }
@@ -68,14 +68,14 @@
         <!-- Step 3: Quality -->
         @if (step() === 'quality') {
           <div class="space-y-4">
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
-              <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-1">{{ 'setup.streamingQuality' | t }}</h2>
-              <p class="text-xs text-zinc-600 mb-4">{{ 'setup.streamingQualityHint' | t }}</p>
+            <div class="rounded-xl border border-theme bg-theme-surface/50 p-6">
+              <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-1">{{ 'setup.streamingQuality' | t }}</h2>
+              <p class="text-xs text-theme-muted mb-4">{{ 'setup.streamingQualityHint' | t }}</p>
               <div class="space-y-4">
                 <label class="flex items-center justify-between cursor-pointer">
-                  <span class="text-sm text-zinc-300">{{ 'setup.convertLosslessToOpus' | t }}</span>
+                  <span class="text-sm text-theme-secondary">{{ 'setup.convertLosslessToOpus' | t }}</span>
                   <button type="button" (click)="transcodeLosslessEnabled = !transcodeLosslessEnabled"
-                    [class]="transcodeLosslessEnabled ? 'bg-emerald-500' : 'bg-zinc-700'"
+                    [class]="transcodeLosslessEnabled ? 'bg-emerald-500' : 'bg-theme-surface-3'"
                     class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors">
                     <span [class.translate-x-5]="transcodeLosslessEnabled" [class.translate-x-1]="!transcodeLosslessEnabled"
                       class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"></span>
@@ -83,11 +83,11 @@
                 </label>
                 @if (transcodeLosslessEnabled) {
                   <div>
-                    <label class="block text-xs text-zinc-500 mb-2">{{ 'setup.bitrate' | t }}</label>
+                    <label class="block text-xs text-theme-muted mb-2">{{ 'setup.bitrate' | t }}</label>
                     <div class="flex gap-2">
                       @for (br of [128, 192, 256]; track br) {
                         <button type="button" (click)="transcodeBitrate = br"
-                          [class]="transcodeBitrate === br ? 'bg-zinc-600 text-zinc-100 border-zinc-500' : 'bg-zinc-800 text-zinc-400 border-zinc-700'"
+                          [class]="transcodeBitrate === br ? 'bg-theme-surface-3 text-theme-primary border-theme-secondary' : 'bg-theme-surface-2 text-theme-secondary border-theme'"
                           class="flex-1 py-2 rounded-lg border text-sm font-medium transition">
                           {{ br }} kbps
                         </button>
@@ -99,35 +99,35 @@
             </div>
 
             <!-- Advanced: Lidarr -->
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+            <div class="rounded-xl border border-theme bg-theme-surface/50 overflow-hidden">
               <button type="button" (click)="showLidarr.set(!showLidarr())"
                 data-testid="setup-advanced-toggle"
-                class="w-full flex items-center justify-between p-4 hover:bg-zinc-800/30 transition">
-                <span class="text-sm font-semibold uppercase tracking-wider text-zinc-400">{{ 'setup.advancedServices' | t }}</span>
-                <svg [class.rotate-180]="showLidarr()" class="w-4 h-4 text-zinc-500 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                class="w-full flex items-center justify-between p-4 hover:bg-theme-hover transition">
+                <span class="text-sm font-semibold uppercase tracking-wider text-theme-secondary">{{ 'setup.advancedServices' | t }}</span>
+                <svg [class.rotate-180]="showLidarr()" class="w-4 h-4 text-theme-muted transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="6 9 12 15 18 9" />
                 </svg>
               </button>
               @if (showLidarr()) {
                 <div class="px-4 pb-4 space-y-3">
-                  <p class="text-xs text-zinc-600 mb-2">{{ 'setup.lidarrHint' | t }}</p>
+                  <p class="text-xs text-theme-muted mb-2">{{ 'setup.lidarrHint' | t }}</p>
                   <input type="text" [placeholder]="'setup.lidarrUrlPlaceholder' | t" [(ngModel)]="lidarrUrl" name="lidarrUrl"
                     data-testid="setup-lidarr-url"
-                    class="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm" />
+                    class="w-full px-4 py-3 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-theme-muted focus:outline-none focus:border-theme-secondary transition text-sm" />
                   <app-password-field [(ngModel)]="lidarrApiKey" name="lidarrApiKey" [placeholder]="'setup.lidarrApiKeyPlaceholder' | t" [autocomplete]="'off'"
                     [testId]="'setup-lidarr-apikey'"
-                    [inputClass]="'px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm'" />
+                    [inputClass]="'px-4 py-3 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-theme-muted focus:outline-none focus:border-theme-secondary transition text-sm'" />
                 </div>
               }
             </div>
 
-            @if (error()) { <p class="text-red-400 text-sm">{{ error() }}</p> }
+            @if (error()) { <p class="text-status-error text-sm">{{ error() }}</p> }
             <div class="flex gap-3">
-              <button type="button" (click)="step.set('library')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">{{ 'common.back' | t }}</button>
+              <button type="button" (click)="step.set('library')" class="px-5 py-3 rounded-lg border border-theme text-theme-secondary text-sm font-medium hover:border-theme-secondary transition">{{ 'common.back' | t }}</button>
               <!-- Busy while the ~3 s submit runs, so it never looks dead (#1736). -->
               <button type="button" (click)="handleQualityNext()" data-testid="setup-next-quality"
                 [disabled]="loading()" [attr.aria-busy]="loading()"
-                class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition disabled:opacity-60 disabled:cursor-wait">{{ (loading() ? 'setup.completing' : 'setup.completeSetup') | t }}</button>
+                class="flex-1 py-3 rounded-lg bg-theme-inverse text-theme-inverse font-semibold hover:opacity-90 transition disabled:opacity-60 disabled:cursor-wait">{{ (loading() ? 'setup.completing' : 'setup.completeSetup') | t }}</button>
             </div>
           </div>
         }
@@ -135,19 +135,19 @@
         <!-- Done -->
         @if (step() === 'done') {
           <div class="space-y-4">
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 text-center">
-              <div class="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-4">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-emerald-400">
+            <div class="rounded-xl border border-theme bg-theme-surface/50 p-6 text-center">
+              <div class="w-12 h-12 rounded-full bg-status-done/10 border border-status-done/20 flex items-center justify-center mx-auto mb-4">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-status-done">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               </div>
-              <h2 class="text-lg font-semibold text-zinc-100 mb-1">{{ 'setup.setupComplete' | t }}</h2>
-              <p class="text-sm text-zinc-500">{{ 'setup.setupCompleteHint' | t }}</p>
+              <h2 class="text-lg font-semibold text-theme-primary mb-1">{{ 'setup.setupComplete' | t }}</h2>
+              <p class="text-sm text-theme-muted">{{ 'setup.setupCompleteHint' | t }}</p>
               @if (needsRestart()) {
-                <p class="text-xs text-amber-400 mt-2">{{ 'setup.lidarrNeedsRestart' | t }}</p>
+                <p class="text-xs text-status-warn mt-2">{{ 'setup.lidarrNeedsRestart' | t }}</p>
               }
             </div>
-            <button type="button" (click)="enterApp()" [disabled]="loading()" data-testid="setup-done" class="w-full py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition disabled:opacity-60">{{ (loading() ? 'settings.restarting' : 'setup.getStarted') | t }}</button>
+            <button type="button" (click)="enterApp()" [disabled]="loading()" data-testid="setup-done" class="w-full py-3 rounded-lg bg-theme-inverse text-theme-inverse font-semibold hover:opacity-90 transition disabled:opacity-60">{{ (loading() ? 'settings.restarting' : 'setup.getStarted') | t }}</button>
           </div>
         }
       </div>

@@ -60,13 +60,13 @@
           </div>
         </div>
 
-        <div appTvNavGroup axis="grid" #themeGrid="appTvNavGroup" [class]="'grid grid-cols-3 gap-2 transition-opacity ' + (themeService.systemTheme() ? 'opacity-40 pointer-events-none' : '')">
+        <div appTvNavGroup axis="grid" #themeGrid="appTvNavGroup" class="grid grid-cols-3 gap-2">
           @for (row of chunk(themePresets, themeGrid.gridColumns()); track $index) {
             <div role="row" style="display: contents">
               @for (preset of row; track preset.id) {
                 <button appTvNavItem (click)="themeService.setTheme(preset.id)"
                   [attr.data-theme]="preset.id"
-                  [class]="'rounded-lg overflow-hidden border-2 transition-all text-left ' + (themeService.theme() === preset.id ? 'border-theme-accent' : 'border-transparent hover:border-theme')"
+                  [class]="'rounded-lg overflow-hidden border-2 transition-all text-left ' + (!themeService.systemTheme() && themeService.theme() === preset.id ? 'border-theme-accent' : 'border-transparent hover:border-theme')"
                   [attr.aria-label]="'settings.switchToTheme' | t: { name: preset.name }">
                   <div class="h-10 flex flex-col gap-1 p-1.5" style="background: var(--theme-bg, #09090b)">
                     <div class="h-2 rounded-sm w-full" style="background: var(--theme-surface, #18181b)"></div>

@@ -109,6 +109,9 @@ export default defineConfig({
       : 'list',
   use: {
     baseURL,
+    // Pinned: a fresh context follows the OS scheme (docs/web-ui.md "Theme System"), and
+    // every assertion and baseline here was written against the dark default.
+    colorScheme: 'dark',
     // Not `on-first-retry`: it traced neither place a flake has been seen —
     // locally `retries` is 0, and in CI it traces the retry, which for an
     // order-dependent flake is the attempt that PASSES (#1116, #835, docs/e2e.md).

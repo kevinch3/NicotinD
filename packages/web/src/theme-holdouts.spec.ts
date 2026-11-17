@@ -12,15 +12,6 @@ const src = join(__dirname, 'app');
 
 /** Deliberate exceptions, each with its reason (docs/web-ui.md "Theme System"). */
 const ALLOWED: Record<string, string> = {
-  // The pre-auth screens are always dark, whatever preset the user later picks.
-  'pages/login/login.component.html': 'always-dark auth screen',
-  'pages/setup/setup.component.html': 'always-dark auth screen',
-  'pages/server-config/server-config.component.html': 'always-dark auth screen',
-  'pages/pair/pair.component.html': 'always-dark auth screen',
-  'pages/invite/invite-accept.component.html': 'always-dark auth screen',
-  'pages/reset-password/reset-password.component.html': 'always-dark auth screen',
-  'pages/forgot-password/forgot-password.component.html': 'always-dark auth screen',
-  'pages/verify-email/verify-email.component.html': 'always-dark auth screen',
   // A hue set for gradients, not a neutral standing in for a token.
   'lib/vibe-presets.ts': 'decorative gradient hues',
 };

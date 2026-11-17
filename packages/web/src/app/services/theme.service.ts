@@ -45,7 +45,7 @@ export function resolveTheme(
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
   readonly theme = signal<ThemeId>('midnight');
-  readonly systemTheme = signal(false);
+  readonly systemTheme = signal(true);
 
   private mqlListener: (() => void) | null = null;
   private readonly prefs = inject(UserPreferencesService);
@@ -57,8 +57,14 @@ export class ThemeService {
     this.adoptPreferences();
   }
 
-  /** A user choice: apply here, then write it through the per-user door. */
+  /** A user choice: apply here, then write it through the per-user door. Picking a preset stops following the OS. */
   setTheme(id: ThemeId): void {
+    if (this.systemTheme()) {
+      this.applySystemTheme(false);
+      this.applyTheme(id);
+      this.prefs.patch({ theme: id, followSystemTheme: false });
+      return;
+    }
     this.applyTheme(id);
     this.prefs.patch({ theme: id });
   }

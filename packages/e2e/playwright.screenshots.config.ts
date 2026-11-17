@@ -33,7 +33,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: 'list',
-  use: { baseURL, trace: 'off', screenshot: 'off' },
+  use: { baseURL, trace: 'off', screenshot: 'off', colorScheme: 'dark' },
   projects: [
     { name: 'setup', testMatch: /auth\.setup\.ts/ },
     {
