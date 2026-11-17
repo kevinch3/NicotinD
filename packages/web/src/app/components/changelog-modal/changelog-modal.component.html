@@ -30,7 +30,7 @@
     </div>
 
     <div class="overflow-y-auto flex-1 p-4 space-y-5">
-      @for (entry of entries; track entry.version) {
+      @for (entry of entries(); track entry.version) {
         <div>
           <div class="flex items-baseline gap-2">
             <span class="text-sm font-semibold text-theme-primary">v{{ entry.version }}</span>
