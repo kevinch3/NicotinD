@@ -1,4 +1,4 @@
-import { Component, output } from '@angular/core';
+import { Component, computed, input, output } from '@angular/core';
 import { registerOverlayCloser } from '../../services/native/back-button.service';
 import { CommonModule } from '@angular/common';
 import changelog from '../../../../public/changelog.json';
@@ -10,7 +10,7 @@ interface RawChangelogSection {
   items: string[];
 }
 
-interface RawChangelogEntry {
+export interface RawChangelogEntry {
   version: string;
   date: string;
   compareUrl: string;
@@ -38,15 +38,20 @@ interface ParsedEntry {
 export class ChangelogModalComponent {
   close = output<void>();
 
-  readonly entries: ParsedEntry[] = (changelog as RawChangelogEntry[]).map((e) => ({
-    version: e.version,
-    date: e.date,
-    compareUrl: e.compareUrl,
-    sections: e.sections.map((s) => ({
-      title: s.title,
-      items: s.items.map(parseChangelogItem),
+  /** The bundled release notes; a story passes a fixed list so its picture does not move per release (#2037). */
+  readonly source = input<RawChangelogEntry[]>(changelog as RawChangelogEntry[]);
+
+  readonly entries = computed<ParsedEntry[]>(() =>
+    this.source().map((e) => ({
+      version: e.version,
+      date: e.date,
+      compareUrl: e.compareUrl,
+      sections: e.sections.map((s) => ({
+        title: s.title,
+        items: s.items.map(parseChangelogItem),
+      })),
     })),
-  }));
+  );
 
   constructor() {
     // Escape / hardware Back close via the shared stack (issue #398).
