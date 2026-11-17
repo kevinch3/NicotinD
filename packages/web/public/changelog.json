@@ -1,70 +1,5 @@
 [
   {
-    "version": "0.8.132",
-    "date": "2026-11-16",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.131...v0.8.132",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**acquisition:** one hunt scheduler with priority lanes in front of the source ([#1978](https://github.com/kevinch3/NicotinD/issues/1978)) ([654ba1a](https://github.com/kevinch3/NicotinD/commit/654ba1a28a9d32c84ee4e23c7fccf3ff9a54d6b7)), references [#1945](https://github.com/kevinch3/NicotinD/issues/1945)",
-          "**agents:** an unattended token writes genres by itself only once its proposals are accepted ([#1987](https://github.com/kevinch3/NicotinD/issues/1987)) ([18fca3b](https://github.com/kevinch3/NicotinD/commit/18fca3bbd796bc8bf43b11709c50032c62d4e789)), references [#1516](https://github.com/kevinch3/NicotinD/issues/1516)",
-          "**artists:** list related artists that are not in the library, with a way to look for them ([#1982](https://github.com/kevinch3/NicotinD/issues/1982)) ([19d9a57](https://github.com/kevinch3/NicotinD/commit/19d9a5759e4aa6b5fe9ab482b07396eccdf87cd2)), references [#1486](https://github.com/kevinch3/NicotinD/issues/1486)",
-          "**artists:** store band, member and collaboration links, and show them first in Related artists ([#1984](https://github.com/kevinch3/NicotinD/issues/1984)) ([0df2ec6](https://github.com/kevinch3/NicotinD/commit/0df2ec65f3d615aa9d1330f07109f9f3461f7b2e)), references [#1486](https://github.com/kevinch3/NicotinD/issues/1486)",
-          "**audit:** flag albums whose track artists look like composers ([#1980](https://github.com/kevinch3/NicotinD/issues/1980)) ([d63475f](https://github.com/kevinch3/NicotinD/commit/d63475ff8e4236e812eddb69ef0ea0d51d033011)), references [#1369](https://github.com/kevinch3/NicotinD/issues/1369)",
-          "**curator-runner:** optional web search evidence from a self-hosted SearXNG ([#1985](https://github.com/kevinch3/NicotinD/issues/1985)) ([b4928fc](https://github.com/kevinch3/NicotinD/commit/b4928fca2b4970a17e820e66e3beccc35d39f905)), references [#1516](https://github.com/kevinch3/NicotinD/issues/1516)",
-          "**health:** count the artist tags a scan-path sanitizer would change ([#1993](https://github.com/kevinch3/NicotinD/issues/1993)) ([4c11294](https://github.com/kevinch3/NicotinD/commit/4c112948c464bbc2056f019d05eda6a504301a09)), references [#864](https://github.com/kevinch3/NicotinD/issues/864)",
-          "**health:** count the genre-less songs a no-model lane could tag ([#1983](https://github.com/kevinch3/NicotinD/issues/1983)) ([f4430ee](https://github.com/kevinch3/NicotinD/commit/f4430ee385d363dd0ea4ec36ab4201e3fb8d3548)), references [#1516](https://github.com/kevinch3/NicotinD/issues/1516)",
-          "**health:** measure the genre lanes on umbrella-only songs too ([#1988](https://github.com/kevinch3/NicotinD/issues/1988)) ([5cb3ca0](https://github.com/kevinch3/NicotinD/commit/5cb3ca0c3395e743f10329b2ac10d5f6b63430de)), references [#1516](https://github.com/kevinch3/NicotinD/issues/1516)",
-          "**health:** measure umbrella-only genres and what an artist's catalogue could resolve ([#1996](https://github.com/kevinch3/NicotinD/issues/1996)) ([5bd37cf](https://github.com/kevinch3/NicotinD/commit/5bd37cf5444193f727a2629a069c1ebad59e8e07)), references [#1123](https://github.com/kevinch3/NicotinD/issues/1123)",
-          "**library:** cultural artist relations from ListenBrainz, stored locally ([#1971](https://github.com/kevinch3/NicotinD/issues/1971)) ([7495f64](https://github.com/kevinch3/NicotinD/commit/7495f644e2805798894fd79bf1804b081e743c3c)), references [#1486](https://github.com/kevinch3/NicotinD/issues/1486)",
-          "**lyrics:** a timing editor that stamps each line at the playhead ([#1959](https://github.com/kevinch3/NicotinD/issues/1959)) ([b11b2e7](https://github.com/kevinch3/NicotinD/commit/b11b2e7f9fd39cda563a8113b624698b9cc30b1e)), references [#1675](https://github.com/kevinch3/NicotinD/issues/1675)",
-          "**lyrics:** try another source walks the ranked candidates and says which one applied ([#1957](https://github.com/kevinch3/NicotinD/issues/1957)) ([064bfba](https://github.com/kevinch3/NicotinD/commit/064bfbab18e4cd324ffa1f7b5a81869cf3963fb6)), references [#1674](https://github.com/kevinch3/NicotinD/issues/1674)",
-          "**lyrics:** undo the last change, and record what kind of edit a row carries ([#1962](https://github.com/kevinch3/NicotinD/issues/1962)) ([328f926](https://github.com/kevinch3/NicotinD/commit/328f9269ce8e327e6cf7ea65a85e6046ddfa3578)), references [#1960](https://github.com/kevinch3/NicotinD/issues/1960)",
-          "**mcp:** an unattended token's writes are logged as a run that can be reverted ([#1970](https://github.com/kevinch3/NicotinD/issues/1970)) ([91da8c9](https://github.com/kevinch3/NicotinD/commit/91da8c9b2e9cd2ea19d79e5d69c8ade47723a52c)), references [#1516](https://github.com/kevinch3/NicotinD/issues/1516)",
-          "**mosaic:** a tap centres a tile, and only the centred tile plays ([#2022](https://github.com/kevinch3/NicotinD/issues/2022)) ([04e23a0](https://github.com/kevinch3/NicotinD/commit/04e23a0010e13591e7d0ebda724e833bedfc1334)), references [#2019](https://github.com/kevinch3/NicotinD/issues/2019) [#2020](https://github.com/kevinch3/NicotinD/issues/2020)",
-          "**radio:** a shared-listeners axis, off by default ([#1997](https://github.com/kevinch3/NicotinD/issues/1997)) ([536eee6](https://github.com/kevinch3/NicotinD/commit/536eee6963dbcdf67b5641dc688cc439e9f4948a)), references [#1486](https://github.com/kevinch3/NicotinD/issues/1486)",
-          "**radio:** weigh shared listeners, calibrated on the production library ([#2001](https://github.com/kevinch3/NicotinD/issues/2001)) ([562b4dc](https://github.com/kevinch3/NicotinD/commit/562b4dcbd6bcccfae09a841494d63ad9ca2fa85d)), closes [#1486](https://github.com/kevinch3/NicotinD/issues/1486)",
-          "**stats:** top songs, artists and albums link, show artwork and play ([#1979](https://github.com/kevinch3/NicotinD/issues/1979)) ([ada7171](https://github.com/kevinch3/NicotinD/commit/ada7171ccc45c95c16761f80e653baae3b8ec64f)), closes [#1669](https://github.com/kevinch3/NicotinD/issues/1669)",
-          "**web:** a cover-derived wash on Now Playing and the album and artist headers ([#1974](https://github.com/kevinch3/NicotinD/issues/1974)) ([84d5817](https://github.com/kevinch3/NicotinD/commit/84d581768425968991acc9b6f5c339b870aeda88)), references [#1687](https://github.com/kevinch3/NicotinD/issues/1687)",
-          "**web:** a curate submenu puts a curator's song actions one tap in ([#2030](https://github.com/kevinch3/NicotinD/issues/2030)) ([afa39a1](https://github.com/kevinch3/NicotinD/commit/afa39a1c92eda1b2cd4ea9130b2ae75876794790)), closes [#2017](https://github.com/kevinch3/NicotinD/issues/2017)",
-          "**web:** a get-more submenu leads from a song to its artist's discography ([#2029](https://github.com/kevinch3/NicotinD/issues/2029)) ([7191a65](https://github.com/kevinch3/NicotinD/commit/7191a65559d3e804606c578eed4fc8580efd839f)), closes [#2013](https://github.com/kevinch3/NicotinD/issues/2013)",
-          "**web:** a phone menu sheet names its song and leads with quick actions ([#2031](https://github.com/kevinch3/NicotinD/issues/2031)) ([2182455](https://github.com/kevinch3/NicotinD/commit/2182455396d8a754160fa6c8e9351d55d14f3dfc)), closes [#2007](https://github.com/kevinch3/NicotinD/issues/2007) [#2008](https://github.com/kevinch3/NicotinD/issues/2008)",
-          "**web:** a raised control hovers to surface-3 ([#1972](https://github.com/kevinch3/NicotinD/issues/1972)) ([fb6d1c6](https://github.com/kevinch3/NicotinD/commit/fb6d1c6f11fdc802f1df76e121f95b38ddef5853)), references [#1686](https://github.com/kevinch3/NicotinD/issues/1686)",
-          "**web:** a shared icon tab bar, with the Library as its first consumer ([#1958](https://github.com/kevinch3/NicotinD/issues/1958)) ([1815fec](https://github.com/kevinch3/NicotinD/commit/1815fece3d9cbae57473f5f4f57fda3430e298be)), references [#1668](https://github.com/kevinch3/NicotinD/issues/1668)",
-          "**web:** controls take the control radius ([#1977](https://github.com/kevinch3/NicotinD/issues/1977)) ([eb37eee](https://github.com/kevinch3/NicotinD/commit/eb37eeeef445059578b76accb018e8e9d8caf9ec)), references [#1686](https://github.com/kevinch3/NicotinD/issues/1686)",
-          "**web:** coverless artwork and genre tiles take one of the eight theme hues ([#1965](https://github.com/kevinch3/NicotinD/issues/1965)) ([3d8adc2](https://github.com/kevinch3/NicotinD/commit/3d8adc23f5becfc777cb5e26b7466c59ae69662d)), references [#1686](https://github.com/kevinch3/NicotinD/issues/1686)",
-          "**web:** dividers between groups in the song menu ([#2025](https://github.com/kevinch3/NicotinD/issues/2025)) ([f49bc3a](https://github.com/kevinch3/NicotinD/commit/f49bc3a04e9eb48469a3adbae9eb5a9bc20b1ab6)), closes [#2006](https://github.com/kevinch3/NicotinD/issues/2006)",
-          "**web:** genre chips wear their genre's hue, not the accent ([#1973](https://github.com/kevinch3/NicotinD/issues/1973)) ([7242952](https://github.com/kevinch3/NicotinD/commit/7242952c014a135be24dad2e486f8e82448a0225)), references [#1686](https://github.com/kevinch3/NicotinD/issues/1686)",
-          "**web:** icons in every action menu, drawn by one shared menu row ([#2024](https://github.com/kevinch3/NicotinD/issues/2024)) ([3d2dbbc](https://github.com/kevinch3/NicotinD/commit/3d2dbbc2dc91ec7d8864b866884334371d9c0ae6)), closes [#2005](https://github.com/kevinch3/NicotinD/issues/2005)",
-          "**web:** now playing and live wear the second hue ([#1975](https://github.com/kevinch3/NicotinD/issues/1975)) ([342b9c8](https://github.com/kevinch3/NicotinD/commit/342b9c80d52308033f585a7dcedc267d055431d3)), references [#1686](https://github.com/kevinch3/NicotinD/issues/1686)",
-          "**web:** similar artists the library lacks, from a song's get-more menu ([#2033](https://github.com/kevinch3/NicotinD/issues/2033)) ([5627325](https://github.com/kevinch3/NicotinD/commit/562732510149fd1eee2793e77f9036e2520fdd69)), closes [#2015](https://github.com/kevinch3/NicotinD/issues/2015)",
-          "**web:** submenus in action menus, and Add to playlist as one ([#2027](https://github.com/kevinch3/NicotinD/issues/2027)) ([03aa7d0](https://github.com/kevinch3/NicotinD/commit/03aa7d0cd13ac42d0112d1f4250fa54b56990688)), closes [#2009](https://github.com/kevinch3/NicotinD/issues/2009)",
-          "**web:** the artist tabs use the shared icon tab bar ([#1964](https://github.com/kevinch3/NicotinD/issues/1964)) ([3f956d1](https://github.com/kevinch3/NicotinD/commit/3f956d1f1afa59a48d492d147993d226f114f658)), references [#1668](https://github.com/kevinch3/NicotinD/issues/1668)",
-          "**web:** the Get tabs use the shared icon tab bar ([#1961](https://github.com/kevinch3/NicotinD/issues/1961)) ([e597dde](https://github.com/kevinch3/NicotinD/commit/e597dde6740598c73d5dcd9a98291ffe0b666dc4)), references [#1668](https://github.com/kevinch3/NicotinD/issues/1668)",
-          "**web:** the go-to-artist menu item lists every credited artist ([#2028](https://github.com/kevinch3/NicotinD/issues/2028)) ([519daed](https://github.com/kevinch3/NicotinD/commit/519daed7ea6a585386674478a74254b1dde9b617)), closes [#2010](https://github.com/kevinch3/NicotinD/issues/2010)",
-          "**web:** the Now Playing panel tabs use the shared icon tab bar ([#1963](https://github.com/kevinch3/NicotinD/issues/1963)) ([dcf4137](https://github.com/kevinch3/NicotinD/commit/dcf4137ed73abe65615fc96d5ffc2567fa7eaf0f)), references [#1668](https://github.com/kevinch3/NicotinD/issues/1668)",
-          "**web:** the palette proposal lands on every preset, with surface-3 and eight hue tokens ([#1956](https://github.com/kevinch3/NicotinD/issues/1956)) ([9cb609f](https://github.com/kevinch3/NicotinD/commit/9cb609fe727f68a963234ea86db4d4593223670f)), references [#1684](https://github.com/kevinch3/NicotinD/issues/1684)",
-          "**web:** the song menu acts on the whole selection ([#2034](https://github.com/kevinch3/NicotinD/issues/2034)) ([85d4a1d](https://github.com/kevinch3/NicotinD/commit/85d4a1d4ae97d8d93258697265b49eaab05c1d95)), closes [#2012](https://github.com/kevinch3/NicotinD/issues/2012)",
-          "**web:** track rows give the title more room on a phone, and offline is a cover badge ([#1955](https://github.com/kevinch3/NicotinD/issues/1955)) ([6f748c3](https://github.com/kevinch3/NicotinD/commit/6f748c3051c6ad37b95d198ec87311cd44ab53f0)), references [#1654](https://github.com/kevinch3/NicotinD/issues/1654)"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**artists:** relationship captions that fit under the portrait ([#2000](https://github.com/kevinch3/NicotinD/issues/2000)) ([248ec8b](https://github.com/kevinch3/NicotinD/commit/248ec8b234446e57dd4404b7fcfb92e92a771e27))",
-          "**library:** keep an artist name that starts with & or + ([#1995](https://github.com/kevinch3/NicotinD/issues/1995)) ([e881bd5](https://github.com/kevinch3/NicotinD/commit/e881bd5999ebd216c746fad17ea1afb223c46cb1)), closes [#1994](https://github.com/kevinch3/NicotinD/issues/1994)",
-          "**library:** strip a bracketed track index from an artist tag ([#1992](https://github.com/kevinch3/NicotinD/issues/1992)) ([07466ca](https://github.com/kevinch3/NicotinD/commit/07466cab64f725155014bc10f53680a2042f90eb)), closes [#866](https://github.com/kevinch3/NicotinD/issues/866)",
-          "**mcp:** run at most three metadata lookups at once and queue the rest ([#2002](https://github.com/kevinch3/NicotinD/issues/2002)) ([16e7098](https://github.com/kevinch3/NicotinD/commit/16e7098522712a65eccfdbaea8979c5fcdc0e6b8)), closes [#757](https://github.com/kevinch3/NicotinD/issues/757)",
-          "**stats:** a long name no longer widens the Stats tab on a phone ([#2023](https://github.com/kevinch3/NicotinD/issues/2023)) ([6ab60d7](https://github.com/kevinch3/NicotinD/commit/6ab60d7d532d3ba54dbadc063a74acc604a7e2d9)), closes [#2021](https://github.com/kevinch3/NicotinD/issues/2021)",
-          "**web:** a navigation blurs the focused field, so the iOS keyboard closes normally ([#1953](https://github.com/kevinch3/NicotinD/issues/1953)) ([8d6766d](https://github.com/kevinch3/NicotinD/commit/8d6766df7cb309f5f50af93b2d7db480ca503331)), references [#1635](https://github.com/kevinch3/NicotinD/issues/1635)",
-          "**web:** a tab's tap target is 44px tall ([#1968](https://github.com/kevinch3/NicotinD/issues/1968)) ([84d9f52](https://github.com/kevinch3/NicotinD/commit/84d9f524f4a15aa31a2ffea9ed57e60b35c8c760)), references [#1668](https://github.com/kevinch3/NicotinD/issues/1668)",
-          "**web:** error text keeps its contrast on light presets, and stories are scanned on Daylight too ([#1976](https://github.com/kevinch3/NicotinD/issues/1976)) ([a69183a](https://github.com/kevinch3/NicotinD/commit/a69183aeaf14e928a1e55f300f07331d7dc5fd43)), references [#1686](https://github.com/kevinch3/NicotinD/issues/1686)"
-        ]
-      }
-    ]
-  },
-  {
     "version": "0.8.131",
     "date": "2026-11-15",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.130...v0.8.131",
@@ -998,6 +933,26 @@
         "title": "Performance",
         "items": [
           "**scanner:** build a full scan's library on a worker thread ([#1399](https://github.com/kevinch3/NicotinD/issues/1399)) ([797f612](https://github.com/kevinch3/NicotinD/commit/797f61214bd9ad2caac43a7d074707b6b3b830dc)), references [#1313](https://github.com/kevinch3/NicotinD/issues/1313)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.82",
+    "date": "2026-09-25",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.81...v0.8.82",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**organizer:** file multi-disc tracks as D-NN in one album folder ([#1393](https://github.com/kevinch3/NicotinD/issues/1393)) ([a25b99e](https://github.com/kevinch3/NicotinD/commit/a25b99efa629b906863277d1bce9625f306c3691)), references [#747](https://github.com/kevinch3/NicotinD/issues/747) [#1392](https://github.com/kevinch3/NicotinD/issues/1392) [#747](https://github.com/kevinch3/NicotinD/issues/747)",
+          "**remote-playback:** the controller's queue is the session's queue ([#1396](https://github.com/kevinch3/NicotinD/issues/1396)) ([6066faf](https://github.com/kevinch3/NicotinD/commit/6066faf0b728e45b1d057c30b82c1b24bb6317e2)), references [#1295](https://github.com/kevinch3/NicotinD/issues/1295)"
+        ]
+      },
+      {
+        "title": "Performance",
+        "items": [
+          "**analysis:** run local key and tempo estimation on a worker thread ([#1395](https://github.com/kevinch3/NicotinD/issues/1395)) ([d364883](https://github.com/kevinch3/NicotinD/commit/d364883ca2b7b35022f18f547fce4362bc57810e)), closes [#1394](https://github.com/kevinch3/NicotinD/issues/1394)"
         ]
       }
     ]
