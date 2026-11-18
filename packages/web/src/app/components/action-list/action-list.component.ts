@@ -6,7 +6,9 @@ import {
   HostListener,
   Input,
   OnDestroy,
+  Injector,
   Output,
+  afterNextRender,
   inject,
   signal,
 } from '@angular/core';
@@ -17,6 +19,7 @@ import { OverflowRevealDirective } from '../../directives/overflow-reveal.direct
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { startsGroup } from '../../lib/menu-groups';
 import { BackButtonService } from '../../services/native/back-button.service';
+import { measureBottomChromeInset, measureTopChromeInset } from '../../lib/player-chrome';
 import type { TrackAction } from '../track-row/track-row.component';
 
 /** Width a flyout needs beside its row before it flips to the other side. */
@@ -33,6 +36,25 @@ export function flyoutSide(
 ): 'right' | 'left' {
   if (row.right + width <= viewportWidth) return 'right';
   return row.left - width >= 0 ? 'left' : 'right';
+}
+
+/** Space a flyout keeps from the chrome it is lifted clear of. */
+const FLYOUT_MARGIN_PX = 8;
+
+/**
+ * How far to lift a flyout so it ends above the bottom chrome (the player
+ * bar): by its overflow, but never so far that its top goes under the header.
+ */
+export function flyoutShift(
+  flyout: { top: number; bottom: number },
+  viewportHeight: number,
+  bottomInset: number,
+  topInset: number,
+  margin = FLYOUT_MARGIN_PX,
+): number {
+  const overflow = flyout.bottom - (viewportHeight - bottomInset - margin);
+  if (overflow <= 0) return 0;
+  return Math.max(0, Math.min(overflow, flyout.top - topInset - margin));
 }
 
 /** Rows of a list after a filter field's text is applied; field rows always stay. */
@@ -130,6 +152,7 @@ export class ActionListComponent implements OnDestroy {
   private root: TrackAction[] = [];
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
   private readonly back = inject(BackButtonService);
+  private readonly injector = inject(Injector);
   private unregisterBack: (() => void) | null = null;
 
   /** Submenus drilled into, outermost first. */
@@ -185,7 +208,22 @@ export class ActionListComponent implements OnDestroy {
       side: flyoutSide(rect, window.innerWidth),
       top: row.offsetTop,
     });
+    afterNextRender(() => this.liftFlyout(), { injector: this.injector });
     this.holdBack();
+  }
+
+  /** Lift a just-opened flyout clear of the player bar; its height is known only once drawn. */
+  private liftFlyout(): void {
+    const f = this.flyout();
+    const el = this.host.querySelector<HTMLElement>(':scope > [data-testid="menu-flyout"]');
+    if (!f || !el) return;
+    const shift = flyoutShift(
+      el.getBoundingClientRect(),
+      window.innerHeight,
+      measureBottomChromeInset(this.host),
+      measureTopChromeInset(this.host),
+    );
+    if (shift > 0) this.flyout.set({ ...f, top: f.top - shift });
   }
 
   /**
