@@ -244,6 +244,21 @@ uses), skips the ones the poll already handled this tick, re-fetches each by
 to `failOrphanedJob`, since a forgotten job's files are genuinely gone. It is
 bounded by the number of genuinely stuck jobs, which is normally zero.
 
+**The addon job it asks is the item's own (`addon_job_id`), not the card's
+`source_ref`.** A re-sourced card is served by several addon jobs, and the one
+that opened it is usually the one core already released. Resolving through
+`source_ref` asked that released job, read its 404 as our own cleanup, and
+skipped the card every sweep — so a file the replacement job had finished was
+never fetched. Measured on prod: a nine-track album held at "Downloading · 99%"
+for 21 h, seven tracks landed and the last two `completed` on a job that had
+been `done` and file-ready the whole time. `source_ref` remains the fallback for
+rows written before items carried an owner.
+
+The sweep is also what completes a finish that ran on an old snapshot. The
+finish tail is single-flight and works from the job as it was when queued; items
+that complete while it is transcoding are mirrored but not fetched, and the
+cursor has moved past the job by the time the slot frees.
+
 **It is throttled to once a minute per addon**, well below the poller's 5 s
 tick. The normal result set is empty, but a job whose file the addon can no
 longer serve stays in it until the 24 h valve clears it — at tick frequency that

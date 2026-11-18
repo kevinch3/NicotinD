@@ -1171,6 +1171,43 @@ describe('stranded ingest — a job the poll cursor moved past (#725)', () => {
     expect(item.state).toBe('organized');
   });
 
+  it('asks the addon job that owns the file, not the one the card was opened by', async () => {
+    const all = [strandedJob(), makeJob({ id: 'aj-newer', updatedAt: 9000, items: [] })];
+    const h = harness(
+      () => all,
+      async (id) => {
+        const job = all.find((j) => j.id === id);
+        if (!job) throw new AddonRequestError(`addon responded 404 for ${id}`, 404);
+        return job;
+      },
+      {
+        listSince: (since) => all.filter((j) => !since || j.updatedAt > since),
+        fetchFile: flakyFirstFetch(),
+      },
+    );
+    await h.registry.enable('fixture-addon', 'admin');
+    await h.poller.tick();
+    await h.poller.idle(); // the fetch fails; cursor -> 9000
+
+    // A re-sourced card: opened by a job core has since released, finished by another.
+    h.db.run(`UPDATE acquisition_jobs SET source_ref = 'addon:fixture-addon:aj-first'`);
+    h.db.run(
+      `INSERT INTO plugin_kv (plugin_id, key, value)
+       VALUES ('addon-poller:fixture-addon', 'released:aj-first', '1')`,
+    );
+
+    await h.poller.tick();
+    await h.poller.idle();
+
+    const item = h.db
+      .query<{ state: string }, []>(
+        `SELECT state FROM acquisition_job_items WHERE addon_job_id = 'aj-stranded'`,
+      )
+      .get()!;
+    expect(item.state).toBe('organized');
+    expect(h.deleted).toContain('aj-stranded');
+  });
+
   it('throttles the sweep so a dead file is not re-fetched every 5s tick', async () => {
     const all = [strandedJob(), makeJob({ id: 'aj-newer', updatedAt: 9000, items: [] })];
     let getJobCalls = 0;
