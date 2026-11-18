@@ -793,8 +793,8 @@ export class AddonJobPoller {
       if (!row) {
         db.run(
           `INSERT INTO acquisition_job_items
-             (job_id, addon_job_id, track_title, username, filename, transfer_key, bit_rate_kbps, audio_format, size_bytes, bytes_transferred, state, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (job_id, addon_job_id, track_title, username, filename, transfer_key, bit_rate_kbps, audio_format, size_bytes, bytes_transferred, state, updated_at, progress_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             coreJobId,
             job.id,
@@ -808,6 +808,7 @@ export class AddonJobPoller {
             item.bytesTransferred ?? null,
             state,
             now,
+            now,
           ],
         );
         continue;
@@ -820,7 +821,10 @@ export class AddonJobPoller {
       if (row.state === 'superseded') continue;
       db.run(
         `UPDATE acquisition_job_items
-         SET transfer_key = ?, track_title = ?, username = ?, filename = ?, bit_rate_kbps = ?, audio_format = ?, size_bytes = ?, bytes_transferred = ?, state = ?, updated_at = ?
+         SET transfer_key = ?, track_title = ?, username = ?, filename = ?, bit_rate_kbps = ?, audio_format = ?, size_bytes = ?, bytes_transferred = ?, state = ?, updated_at = ?,
+             progress_at = CASE
+               WHEN state <> ? OR COALESCE(bytes_transferred, -1) <> COALESCE(?, -1) THEN ?
+               ELSE COALESCE(progress_at, ?) END
          WHERE id = ?`,
         [
           key,
@@ -832,6 +836,10 @@ export class AddonJobPoller {
           item.size || null,
           item.bytesTransferred ?? null,
           state,
+          now,
+          state,
+          item.bytesTransferred ?? null,
+          now,
           now,
           row.id,
         ],

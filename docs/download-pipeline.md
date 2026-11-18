@@ -2280,6 +2280,38 @@ with no click. Both share `job-resource.ts`: `resolveResourceTarget`, `searchAlt
 - **Restart.** `resumePending` queues the eligible partials updated in the last 24 h.
 - **Toggle.** `downloads.autoCompletePartial` / `NICOTIND_AUTO_COMPLETE_PARTIAL`, on by default.
 
+### A stalled download asks another peer too (#2048)
+
+**What prompted it.** On 2026-11-18 several cards sat at *Descargando · 7 of 8 · 3h ago* with no
+byte progress, and the manual button usually finished them straight away. The trigger above fires
+only when a card **closes**, and a hung card does not close until the 24 h idle valve
+(`ITEM_IDLE_VALVE_MS`) writes it off. The slskd addon has its own stall detector, but its
+`primaryStillWorking` blocks the fallback while the first peer holds any file in an active state,
+whether moving or not. That is an addon-side follow-up.
+
+**What happens now.** `AutoCompleteService.sweepStalled` runs every minute. A running album card
+that `stalledResourceCandidates` returns goes through the same queue, search and `switchToPeer`
+as a closed partial. Only the missing titles move; landed tracks stay.
+
+- **The clock.** `acquisition_job_items.progress_at` moves only when `mirrorItems` sees more bytes
+  or a new state. `updated_at` cannot answer this question, because the mirror rewrites it on
+  every report. A row with no clock yet falls back to `updated_at`: the addon reports a job only
+  when it moves (a state flip or a ≥1 % file advance), so that write is when the row last moved.
+  `reserveResourcedItems` starts a fresh hand-over's placeholders at *now*, so a new peer gets a
+  full window.
+- **The rule.** `isCardStalled` decides from the card's age and each live item's `progressAt`,
+  leaving superseded rows out. Its tests in `acquisition-job-store.stall.test.ts` pin the cases:
+  - one item still moving keeps the card;
+  - a peer that never started counts as stalled;
+  - organizing keeps the card;
+  - a card younger than the window is never stalled.
+- **Budget.** The same 2 attempts per card, in the same lowest `resource-auto` lane. A search that
+  finds no peer spends an attempt but marks the card exhausted only once the budget is gone,
+  because the first peer may still deliver. A card is asked at most once per stall window
+  (in-memory `stallAskedAt`), so an empty search does not spend the second attempt a minute later.
+- **Setting.** `downloads.autoCompleteStallMinutes` / `NICOTIND_AUTO_COMPLETE_STALL_MINUTES`,
+  default 10, `0` off. `downloads.autoCompletePartial` still switches both triggers.
+
 ## A partial download says why, and can be retried
 
 The reporting fixes above made a partial playlist *honest* (`5 of 89 · 84 unavailable`)

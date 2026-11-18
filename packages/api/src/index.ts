@@ -580,6 +580,7 @@ export function createApp({
     db,
     getPlugin: (addonId) => plugins.get(addonId),
     enabled: () => config.downloads.autoCompletePartial && (acquisitionOnRef.enabled?.() ?? true),
+    stallMs: () => config.downloads.autoCompleteStallMinutes * 60_000,
   });
   const addonJobPoller = new AddonJobPoller({
     db,
@@ -592,6 +593,7 @@ export function createApp({
   });
   addonJobPoller.start();
   autoComplete.resumePending();
+  autoComplete.start();
   // why: registerBuiltinPlugins already builds a MusicBrainzClient for Discogs
   // artist-info resolution, but keeps it private to that function — a second
   // instance here (sharing the same on-disk cache file) is cheaper than
