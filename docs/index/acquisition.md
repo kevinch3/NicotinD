@@ -66,6 +66,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
 - **A partial completes itself**: a `done` album card with tracks missing asks another peer for
   the rest, without the button's click; `AutoCompleteService`, `autoCompleteCandidates`,
   `switchToPeer`, `addonJobIdsOf`. → [download-pipeline.md](../download-pipeline.md)
+- **A stalled download asks another peer**: a running album card with no byte progress for
+  10 min goes the same way; `sweepStalled`, `stalledResourceCandidates`, `isCardStalled`.
+  → [download-pipeline.md](../download-pipeline.md)
 - **Spotify metadata fallback**: metadata-only lane handing a `spotify.com/album` URL to
   `/api/acquire`; the external spotdl addon resolves the download.
   → [spotify-fallback.md](../spotify-fallback.md)

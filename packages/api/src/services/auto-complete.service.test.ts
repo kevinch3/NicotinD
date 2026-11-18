@@ -250,3 +250,88 @@ describe('AutoCompleteService (#1879)', () => {
     expect(addon.calls.created).toHaveLength(1);
   });
 });
+
+describe('AutoCompleteService — a stalled download (#2048)', () => {
+  const MIN = 60_000;
+  const STALL = 10 * MIN;
+
+  /** Track 1 landed; the peer went quiet three hours ago on the other two. */
+  function frozenCard(lastMoved: number): string {
+    const jobId = partialJob();
+    db.run(
+      `UPDATE acquisition_job_items SET state = 'downloading', progress_at = ?
+        WHERE job_id = ? AND state = 'unavailable'`,
+      [lastMoved, jobId],
+    );
+    db.run(`UPDATE acquisition_jobs SET state = 'active', created_at = 0 WHERE id = ?`, [jobId]);
+    return jobId;
+  }
+
+  function stallService(addon: ReturnType<typeof fakeAddon>, opts: { stallMs?: number } = {}) {
+    let now = 300 * MIN;
+    const svc = new AutoCompleteService({
+      db,
+      getPlugin: addon.getPlugin,
+      enabled: () => true,
+      stallMs: () => opts.stallMs ?? STALL,
+      now: () => now,
+      schedule: () => {},
+    });
+    return { svc, now: () => now, advance: (ms: number) => (now += ms) };
+  }
+
+  it('hands a frozen running card to another peer, only for what is missing', async () => {
+    const addon = fakeAddon();
+    const { svc, now } = stallService(addon);
+    const jobId = frozenCard(now() - 3 * 60 * MIN);
+
+    expect(svc.sweepStalled()).toBe(1);
+    await svc.settled(jobId);
+
+    expect(addon.calls.searches).toEqual([{ lane: 'resource-auto' }]);
+    expect(addon.calls.cancelled).toEqual(['aj-first']);
+    expect(addon.calls.created[0]!.wantedTracks?.map((t) => t.title).sort()).toEqual([
+      'Carrie',
+      'Rock the Night',
+    ]);
+    // The landed track stays where it is.
+    expect(getJob(db, jobId)?.items.some((i) => i.state === 'scanned')).toBe(true);
+  });
+
+  it('leaves a card that is still moving', () => {
+    const addon = fakeAddon();
+    const { svc, now } = stallService(addon);
+    frozenCard(now() - MIN);
+    expect(svc.sweepStalled()).toBe(0);
+  });
+
+  it('0 minutes turns the trigger off', () => {
+    const addon = fakeAddon();
+    const { svc, now } = stallService(addon, { stallMs: 0 });
+    frozenCard(now() - 3 * 60 * MIN);
+    expect(svc.sweepStalled()).toBe(0);
+  });
+
+  it('nobody else has it yet: spends one attempt, waits a window, gives up on the second', async () => {
+    const addon = fakeAddon({ searchResult: { candidates: [] } });
+    const { svc, now, advance } = stallService(addon);
+    const jobId = frozenCard(now() - 3 * 60 * MIN);
+
+    expect(svc.sweepStalled()).toBe(1);
+    await svc.settled(jobId);
+    expect(autoState(jobId)).toEqual({
+      auto_resource_attempts: 1,
+      auto_resource_exhausted_at: null,
+    });
+
+    // The next minute's sweep does not spend the second attempt straight away.
+    advance(MIN);
+    expect(svc.sweepStalled()).toBe(0);
+
+    advance(STALL);
+    expect(svc.sweepStalled()).toBe(1);
+    await svc.settled(jobId);
+    expect(autoState(jobId).auto_resource_attempts).toBe(2);
+    expect(autoState(jobId).auto_resource_exhausted_at).not.toBeNull();
+  });
+});

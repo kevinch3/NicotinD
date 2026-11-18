@@ -92,6 +92,9 @@ export const NicotinDConfigSchema = z.object({
       // A partial album (some tracks unavailable) asks another peer for the rest
       // by itself, the way the "Complete from another peer" button does (#1879).
       autoCompletePartial: z.boolean().default(true),
+      // A running album card that has moved no bytes for this many minutes asks
+      // another peer for what is missing (#2048). 0 turns this trigger off.
+      autoCompleteStallMinutes: z.number().int().min(0).default(10),
       // Acquisition staging. Relative → resolved under musicDir, so ingest is
       // an atomic rename on one filesystem and a self-hoster mounts one path.
       // Must be a single top-level name: only a top-level name can be reserved,
@@ -120,6 +123,7 @@ export const NicotinDConfigSchema = z.object({
       autoAcquireIntervalMs: 3_600_000,
       autoAcquireMaxPerSweep: 3,
       autoCompletePartial: true,
+      autoCompleteStallMinutes: 10,
       dir: '.downloads',
       transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 },
     }),

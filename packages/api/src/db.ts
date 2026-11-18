@@ -431,6 +431,9 @@ function applySchemaSteps(db: Database, fromVersion: number): void {
   // whole-file count.
   addColumnIfMissing(db, 'acquisition_job_items', 'size_bytes', 'INTEGER');
   addColumnIfMissing(db, 'acquisition_job_items', 'bytes_transferred', 'INTEGER');
+  // When the item last moved — more bytes or a new state (#2048). Not
+  // `updated_at`: the addon mirror rewrites that on every report.
+  addColumnIfMissing(db, 'acquisition_job_items', 'progress_at', 'INTEGER');
   // Which addon job delivered this item (#1065). One card used to mean one addon
   // job, so every job-terminal sweep could say `WHERE job_id = ?`. Re-sourcing
   // puts a SECOND addon job on the same card, and without this column the first

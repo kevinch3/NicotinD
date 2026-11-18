@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'bun:test';
+import { describe, expect, it, beforeEach, setSystemTime } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { mkdtempSync, readdirSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
@@ -1293,6 +1293,45 @@ describe('byte progress mirroring (#805)', () => {
     await h.poller.tick();
     await h.poller.idle();
     expect(item().bytes_transferred).toBe(70);
+  });
+
+  it('moves progress_at on more bytes, never on a report that repeats itself (#2048)', async () => {
+    const report = (bytes: number, updatedAt: number) => [
+      makeJob({
+        updatedAt,
+        items: [{ ...makeJob().items[0]!, bytesTransferred: bytes, updatedAt }],
+      }),
+    ];
+    let jobsData = report(40, 2000);
+    const h = harness(() => jobsData);
+    await h.registry.enable('fixture-addon', 'admin');
+    const pollAt = async (t: number) => {
+      setSystemTime(new Date(t));
+      await h.poller.tick();
+      await h.poller.idle();
+    };
+    const item = () =>
+      h.db
+        .query<{ progress_at: number | null; updated_at: number }, []>(
+          `SELECT progress_at, updated_at FROM acquisition_job_items`,
+        )
+        .get()!;
+    try {
+      await pollAt(1_000_000);
+      expect(item().progress_at).toBe(1_000_000);
+
+      // The same bytes again: the row is rewritten, the clock is not.
+      jobsData = report(40, 3000);
+      await pollAt(1_600_000);
+      expect(item().updated_at).toBe(1_600_000);
+      expect(item().progress_at).toBe(1_000_000);
+
+      jobsData = report(55, 4000);
+      await pollAt(1_700_000);
+      expect(item().progress_at).toBe(1_700_000);
+    } finally {
+      setSystemTime();
+    }
   });
 });
 

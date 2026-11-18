@@ -879,6 +879,77 @@ export function markAutoResourceExhausted(db: Database, jobId: string, at = Date
   db.run(`UPDATE acquisition_jobs SET auto_resource_exhausted_at = ? WHERE id = ?`, [at, jobId]);
 }
 
+/** What `isCardStalled` sees of one card: its age and each live item's last movement. */
+export interface StallFacts {
+  createdAt: number;
+  /** Superseded rows are already left out: they belong to a peer the card gave up on. */
+  items: Array<{ state: AcquisitionJobItemState; progressAt: number }>;
+}
+
+/**
+ * Has this still-running card stopped moving long enough to ask another peer
+ * (#2048)? `progressAt` moves only on more bytes or a new state, so silence
+ * here means the peer, not the poll, went quiet.
+ */
+export function isCardStalled(facts: StallFacts, now: number, stallMs: number): boolean {
+  if (now - facts.createdAt < stallMs) return false;
+  // Organizing a landed file is the card working, not the peer stalling.
+  const working = facts.items.filter((i) => STALL_WORKING_STATES.has(i.state));
+  // Nothing left on a peer: the card is about to close, and closing has its own trigger.
+  if (!working.some((i) => i.state === 'queued' || i.state === 'downloading')) return false;
+  // One track still moving keeps the peer: track 9 queued behind track 3 is not a dead end.
+  return working.every((i) => now - i.progressAt >= stallMs);
+}
+
+const STALL_WORKING_STATES = new Set<AcquisitionJobItemState>([
+  'queued',
+  'downloading',
+  'completed',
+  'organized',
+]);
+
+/**
+ * Still-running album cards that have stopped moving (#2048): the same guards
+ * as `autoCompleteCandidates`, but `active` rather than `done`, and only once
+ * `isCardStalled` says the peer went quiet.
+ */
+export function stalledResourceCandidates(
+  db: Database,
+  opts: { maxAttempts: number; stallMs: number; now: number; jobId?: string },
+): string[] {
+  const jobs = db
+    .query<{ id: string; created_at: number }, [number, string | null, string | null]>(
+      `SELECT id, created_at FROM acquisition_jobs
+        WHERE state = 'active' AND kind IN ('album-hunt', 'auto-acquire')
+          AND cancel_requested_at IS NULL
+          AND auto_resource_exhausted_at IS NULL
+          AND auto_resource_attempts < ?
+          AND (? IS NULL OR id = ?)
+        ORDER BY created_at ASC
+        LIMIT 500`,
+    )
+    .all(opts.maxAttempts, opts.jobId ?? null, opts.jobId ?? null);
+  const items = db.query<{ state: AcquisitionJobItemState; progress_at: number }, [string]>(
+    // A row the mirror never re-reported has no clock yet; its last write is
+    // when it last moved, because the addon reports a job only when it moves.
+    `SELECT state, COALESCE(progress_at, updated_at) AS progress_at
+       FROM acquisition_job_items WHERE job_id = ? AND state <> 'superseded'`,
+  );
+  return jobs
+    .filter((j) =>
+      isCardStalled(
+        {
+          createdAt: j.created_at,
+          items: items.all(j.id).map((r) => ({ state: r.state, progressAt: r.progress_at })),
+        },
+        opts.now,
+        opts.stallMs,
+      ),
+    )
+    .map((j) => j.id)
+    .filter((id) => resourceableTitles(db, id).length > 0);
+}
+
 /**
  * Peers this job is already pulling from. The re-source search subtracts these:
  * a "different peer" that is the same peer is just the stuck download again.
@@ -945,9 +1016,9 @@ export function reserveResourcedItems(
   const now = Date.now();
   for (const title of titles) {
     db.run(
-      `INSERT INTO acquisition_job_items (job_id, addon_job_id, track_title, state, updated_at)
-       VALUES (?, ?, ?, 'queued', ?)`,
-      [jobId, addonJobId, title, now],
+      `INSERT INTO acquisition_job_items (job_id, addon_job_id, track_title, state, updated_at, progress_at)
+       VALUES (?, ?, ?, 'queued', ?, ?)`,
+      [jobId, addonJobId, title, now, now],
     );
   }
 }
