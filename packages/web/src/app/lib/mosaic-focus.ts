@@ -29,10 +29,42 @@ export function tapIntent(
   return 'focus';
 }
 
-/** Side of the focused tile, in px, for a stage whose shorter side is `stageMin`. */
-export function focusSide(stageMin: number): number {
-  const wanted = Math.min(320, Math.max(190, Math.round(stageMin * 0.6)));
-  return Math.min(wanted, stageMin - 32);
+/** How much larger than the tile it came from a focused tile is, at least. */
+export const FOCUS_LIFT = 1.08;
+/** Height kept free under a focused face that lists tracks. */
+export const PREVIEW_ROOM_PX = 150;
+
+export interface FocusStage {
+  w: number;
+  h: number;
+}
+
+/**
+ * Side of the focused tile, in px. Coming forward never makes a tile smaller:
+ * the side is the usual one (60% of the stage's shorter side, 190 to 320) or
+ * the tile's own drawn side at the centre plus a lift, whichever is larger,
+ * as far as the stage has room for it.
+ *
+ * @param drawnSide    the tile's on-screen side once it sits at the lens centre
+ * @param reserveBelow height the track list under the face needs
+ */
+export function focusSide(stage: FocusStage, drawnSide = 0, reserveBelow = 0): number {
+  const stageMin = Math.min(stage.w, stage.h);
+  const usual = Math.min(320, Math.max(190, Math.round(stageMin * 0.6)));
+  // A stage not laid out yet has no edge to keep clear of.
+  if (stageMin <= 32) return usual;
+  const room = Math.min(stage.w - 32, stage.h - 32 - 2 * reserveBelow);
+  const grown = Math.min(Math.round(drawnSide * FOCUS_LIFT), room);
+  return Math.min(Math.max(usual, grown), stageMin - 32);
+}
+
+/**
+ * The scale a dismissed focused tile settles back to: the tile it came from,
+ * floored so a small tile's focus fades out instead of collapsing.
+ */
+export function focusRestScale(side: number, drawnSide: number): number {
+  if (side <= 0) return 1;
+  return Math.min(1, Math.max(0.6, drawnSide / side));
 }
 
 /** The i18n key of the focused tile's tag, or null when it has nothing to say. */

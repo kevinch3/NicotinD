@@ -327,6 +327,82 @@ test.describe('mosaic home on a touch phone (#1642)', () => {
       for (let i = 0; i < times; i++) await page.mouse.wheel(0, deltaY);
     };
 
+    test('a zoomed-in tile comes forward no smaller than it is drawn, and lets go softly', async ({
+      page,
+    }) => {
+      await page.goto('/');
+      await expect(page.locator('[data-testid="mosaic-tile"]').first()).toBeVisible({
+        timeout: 10_000,
+      });
+      await wheel(page, -200, 12);
+      await expect.poll(() => zoomOf(page)).toBe('2.20');
+      // Zoomed in, a tile can be larger than the screen, so `restingTile`'s
+      // "wholly on screen" does not hold: take any point a song tile answers at.
+      const target = await page.evaluate(() => {
+        const s = document.querySelector('[data-testid="mosaic-stage"]')!.getBoundingClientRect();
+        for (let fy = 0.2; fy <= 0.8; fy += 0.1) {
+          for (let fx = 0.2; fx <= 0.8; fx += 0.1) {
+            const x = s.x + s.width * fx;
+            const y = s.y + s.height * fy;
+            const tile = document
+              .elementFromPoint(x, y)
+              ?.closest<HTMLElement>('[data-testid="mosaic-tile"]');
+            if (tile?.dataset['tileKind'] === 'song') return { x, y };
+          }
+        }
+        return null;
+      });
+      expect(target, 'a song tile on screen at 220%').not.toBeNull();
+      await page.touchscreen.tap(target!.x, target!.y);
+      const face = page.locator('[data-testid="mosaic-focus"] .mosaic-focus-face');
+      await expect(face).toBeVisible();
+
+      // Once the glide has settled, the face covers the tile at the stage centre,
+      // or is as large as the stage has room for. An invariant, not the regression:
+      // the fixture's tiles stay under the usual side even at 220%, so the case
+      // that opened smaller is pinned in mosaic-focus.spec.ts and the component spec.
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => {
+              const stage = document.querySelector('[data-testid="mosaic-stage"]')!;
+              const s = stage.getBoundingClientRect();
+              const at = { x: s.x + s.width / 2, y: s.y + s.height / 2 };
+              let centred = 0;
+              let nearest = Infinity;
+              for (const el of stage.querySelectorAll<HTMLElement>('[data-testid="mosaic-tile"]')) {
+                if (el.style.display === 'none') continue;
+                const r = (el.firstElementChild ?? el).getBoundingClientRect();
+                const d = Math.hypot(r.x + r.width / 2 - at.x, r.y + r.height / 2 - at.y);
+                if (d < nearest) {
+                  nearest = d;
+                  centred = r.width;
+                }
+              }
+              const side = document
+                .querySelector('.mosaic-focus-face')!
+                .getBoundingClientRect().width;
+              const room = Math.min(s.width, s.height) - 32;
+              return side - Math.min(centred, room);
+            }),
+          { timeout: 5_000 },
+        )
+        .toBeGreaterThanOrEqual(-1);
+
+      // Letting go plays the leave animation before the element goes.
+      await page.evaluate(() => {
+        const w = window as unknown as { __focusLeft?: boolean };
+        new MutationObserver(() => {
+          if (document.querySelector('.mosaic-focus-leaving')) w.__focusLeft = true;
+        }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+      });
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('mosaic-focus')).toHaveCount(0);
+      expect(
+        await page.evaluate(() => (window as unknown as { __focusLeft?: boolean }).__focusLeft),
+      ).toBe(true);
+    });
+
     test('the wheel zooms between 60% and 220%, and the page does not scroll', async ({ page }) => {
       await page.goto('/');
       await expect(page.locator('[data-testid="mosaic-tile"]').first()).toBeVisible({

@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   NO_PREVIEW,
   PREVIEW_COUNT,
+  FOCUS_LIFT,
+  focusRestScale,
   focusSide,
+  PREVIEW_ROOM_PX,
   focusTagKey,
   rotateLead,
   tapIntent,
@@ -63,10 +66,40 @@ describe('tapIntent', () => {
 
 describe('focusSide', () => {
   it('is 60% of the stage, held between 190 and 320, and never crowds a small stage', () => {
-    expect(focusSide(390)).toBe(234);
-    expect(focusSide(800)).toBe(320);
-    expect(focusSide(300)).toBe(190);
-    expect(focusSide(200)).toBe(168);
+    expect(focusSide({ w: 390, h: 700 })).toBe(234);
+    expect(focusSide({ w: 1400, h: 800 })).toBe(320);
+    expect(focusSide({ w: 300, h: 600 })).toBe(190);
+    expect(focusSide({ w: 200, h: 600 })).toBe(168);
+  });
+
+  it('never brings a tile forward smaller than it is drawn at the centre', () => {
+    // Zoomed in, a centre tile outgrows the usual 320: the face follows it, with a lift.
+    expect(focusSide({ w: 1400, h: 940 }, 680)).toBe(Math.round(680 * FOCUS_LIFT));
+    // A small tile still gets the usual side.
+    expect(focusSide({ w: 1400, h: 940 }, 120)).toBe(320);
+  });
+
+  it('grows only as far as the stage has room', () => {
+    expect(focusSide({ w: 1400, h: 700 }, 900)).toBe(668);
+    expect(focusSide({ w: 390, h: 700 }, 900)).toBe(358);
+    // A face that lists tracks leaves them room below itself.
+    expect(focusSide({ w: 1400, h: 940 }, 680, PREVIEW_ROOM_PX)).toBe(
+      940 - 32 - 2 * PREVIEW_ROOM_PX,
+    );
+    expect(focusSide({ w: 0, h: 0 }, 500)).toBe(190);
+    // The reserve limits the growth, never the usual side.
+    expect(focusSide({ w: 800, h: 400 }, 500, PREVIEW_ROOM_PX)).toBe(240);
+  });
+});
+
+describe('focusRestScale', () => {
+  it('is the tile the face came from, as a share of the face', () => {
+    expect(focusRestScale(400, 300)).toBe(0.75);
+  });
+
+  it('is floored for a small tile and never above 1 for one the stage could not fit', () => {
+    expect(focusRestScale(320, 60)).toBe(0.6);
+    expect(focusRestScale(668, 900)).toBe(1);
   });
 });
 

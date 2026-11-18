@@ -30,7 +30,8 @@ import type { Track } from '../../services/player.service';
 import { LANE_MIX, type MosaicTile } from '../../lib/mosaic-tiles';
 import type { PackedTile, Packing } from '../../lib/mosaic-packing';
 import { haptic } from '../../lib/haptics';
-import { NO_PREVIEW } from '../../lib/mosaic-focus';
+import { FOCUS_LIFT, NO_PREVIEW } from '../../lib/mosaic-focus';
+import { CENTER_SCALE } from '../../lib/mosaic-lens';
 import { OverflowReveal } from '../../lib/overflow-reveal';
 
 vi.mock('../../lib/haptics', async (importOriginal) => ({
@@ -942,6 +943,26 @@ describe('mosaic depth (#1638)', () => {
         c.frame();
       }
     };
+
+    it('a tile zoomed past the usual focus side comes forward larger, never smaller', async () => {
+      const { component, c, el } = await drawn();
+      c.byId.set(0, c.packing!.tiles[0]);
+      const stage = el.parentElement!;
+      Object.defineProperty(stage, 'clientWidth', { value: 1400 });
+      Object.defineProperty(stage, 'clientHeight', { value: 940 });
+      component.setZoom(2.2);
+      const drawnSide = 100 * CENTER_SCALE * 2.2;
+      expect(drawnSide).toBeGreaterThan(320);
+      component.focus(c.packing!.tiles[0].tile, el);
+      const f = component.focused()!;
+      expect(f.side).toBe(Math.round(drawnSide * FOCUS_LIFT));
+      expect(f.rest).toBeCloseTo(drawnSide / f.side, 5);
+
+      // At 100% the same tile is smaller than the usual side, and gets the usual side.
+      component.setZoom(1);
+      component.focus(c.packing!.tiles[0].tile, el);
+      expect(component.focused()!.side).toBe(320);
+    });
 
     it('a tap centres the tapped copy with a glide and brings it forward, and starts nothing (#2019)', async () => {
       const { component, c, el, player } = await drawn();

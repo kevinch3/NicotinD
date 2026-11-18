@@ -876,7 +876,8 @@
 
 /* The tile a tap brought forward (docs/mosaic-tile-focus-design.md): a real
    component over the stage centre, above the veil. It is the only tile with a
-   Play button, and zoom never resizes it. */
+   Play button. Its side is set when it comes forward; zooming after that
+   resizes the field behind it, not it. */
 .mosaic-focus {
   position: absolute;
   left: 50%;
@@ -886,11 +887,31 @@
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  width: min(100% - 32px, 360px);
+  width: min(100% - 32px, max(360px, var(--focus-side, 0px)));
   pointer-events: none;
 }
 .mosaic-focus > * {
   pointer-events: auto;
+}
+/* Let go: it settles back to the tile it came from while it fades, over the
+   same beat as the veil. Angular holds the element until the animation ends. */
+.mosaic-focus-leaving {
+  transform-origin: 50% calc(var(--focus-side, 190px) / 2);
+  animation: mosaic-focus-out 0.22s cubic-bezier(0.4, 0, 0.7, 0.2) forwards;
+}
+.mosaic-focus-leaving > * {
+  pointer-events: none;
+}
+@keyframes mosaic-focus-out {
+  to {
+    opacity: 0;
+    transform: translateX(-50%) scale(var(--focus-rest, 0.92));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mosaic-focus-leaving {
+    animation: none;
+  }
 }
 .mosaic-focus-face {
   position: relative;
