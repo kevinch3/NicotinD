@@ -1,0 +1,5 @@
+• downloads: a stalled download asks another peer by itself (#2049)
+• downloads: fetch a re-sourced card's finished files from the job that owns them (#2043)
+• library: remove the "New album added" banner (#2046)
+• mosaic: a tile never comes forward smaller, and lets go softly (#2044) (#2045)
+• web: lift a menu flyout clear of the player bar (#2047)

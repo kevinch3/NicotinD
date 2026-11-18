@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.134](https://github.com/kevinch3/NicotinD/compare/v0.8.133...v0.8.134) (2026-11-18)
+
+### Features
+
+* **downloads:** a stalled download asks another peer by itself ([#2049](https://github.com/kevinch3/NicotinD/issues/2049)) ([b95def9](https://github.com/kevinch3/NicotinD/commit/b95def963dc829406e455e170568a61b23079158)), references [#2048](https://github.com/kevinch3/NicotinD/issues/2048)
+
+### Bug Fixes
+
+* **downloads:** fetch a re-sourced card's finished files from the job that owns them ([#2043](https://github.com/kevinch3/NicotinD/issues/2043)) ([e4adcd0](https://github.com/kevinch3/NicotinD/commit/e4adcd0b492c15be90d89958514b4c873d073980))
+* **library:** remove the "New album added" banner ([#2046](https://github.com/kevinch3/NicotinD/issues/2046)) ([8b185d3](https://github.com/kevinch3/NicotinD/commit/8b185d3bed125a1ca662447ec62bc3ced099aef8))
+* **mosaic:** a tile never comes forward smaller, and lets go softly ([#2044](https://github.com/kevinch3/NicotinD/issues/2044)) ([#2045](https://github.com/kevinch3/NicotinD/issues/2045)) ([0797570](https://github.com/kevinch3/NicotinD/commit/0797570e3859b3b247d25d0d663139a22f948ecf))
+* **web:** lift a menu flyout clear of the player bar ([#2047](https://github.com/kevinch3/NicotinD/issues/2047)) ([246dc06](https://github.com/kevinch3/NicotinD/commit/246dc0601f13e5c3997555fbf807e33726c5087f))
 ## [0.8.133](https://github.com/kevinch3/NicotinD/compare/v0.8.132...v0.8.133) (2026-11-17)
 
 ### Features
