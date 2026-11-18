@@ -2285,9 +2285,11 @@ with no click. Both share `job-resource.ts`: `resolveResourceTarget`, `searchAlt
 **What prompted it.** On 2026-11-18 several cards sat at *Descargando · 7 of 8 · 3h ago* with no
 byte progress, and the manual button usually finished them straight away. The trigger above fires
 only when a card **closes**, and a hung card does not close until the 24 h idle valve
-(`ITEM_IDLE_VALVE_MS`) writes it off. The slskd addon has its own stall detector, but its
-`primaryStillWorking` blocks the fallback while the first peer holds any file in an active state,
-whether moving or not. That is an addon-side follow-up.
+(`ITEM_IDLE_VALVE_MS`) writes it off. The slskd addon's fallback also blocked every
+alternate while the first peer held any file in an active state, moving or not. Since addon #38
+a recorded alternate overtakes a primary still for 5 minutes
+([album-hunt.md](album-hunt.md#album-hunt--cross-peer-fallback-duplication-fix)), and this
+trigger is the second line behind it, with a fresh search.
 
 **What happens now.** `AutoCompleteService.sweepStalled` runs every minute. A running album card
 that `stalledResourceCandidates` returns goes through the same queue, search and `switchToPeer`
