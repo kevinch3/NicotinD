@@ -59,7 +59,9 @@ import { packMosaic, type PackedTile, type Packing } from '../../lib/mosaic-pack
 import {
   NO_PREVIEW,
   PREVIEW_COUNT,
+  focusRestScale,
   focusSide,
+  PREVIEW_ROOM_PX,
   focusTagKey,
   rotateLead,
   tapIntent,
@@ -175,6 +177,10 @@ export interface FocusedTile {
   tile: MosaicTile;
   /** Where the tapped face sat on screen, for the grow-in. */
   from: DOMRect | null;
+  /** The face's side, in px: never smaller than the tile drawn at the centre. */
+  side: number;
+  /** The scale the face settles back to when it is let go. */
+  rest: number;
   /** The tapped copy's centre on the plane: where Play anchors the field. */
   x: number;
   y: number;
@@ -269,10 +275,9 @@ export class MosaicHomeComponent implements OnInit {
     return f ? [f] : [];
   });
   readonly preview = signal<FocusPreview>(NO_PREVIEW);
-  readonly focusSidePx = signal(190);
-  readonly focusTop = computed(
-    () => `calc((100% - ${this.chromeInset()}px) / 2 - ${this.focusSidePx() / 2}px)`,
-  );
+  focusTop(side: number): string {
+    return `calc((100% - ${this.chromeInset()}px) / 2 - ${side / 2}px)`;
+  }
   private focusSeq = 0;
   private previewToken = 0;
   private previewPending: Promise<void> | null = null;
@@ -878,15 +883,27 @@ export class MosaicHomeComponent implements OnInit {
         : tile.kind === 'genre'
           ? 'bg-theme-surface-2 text-theme-secondary'
           : '';
+    const stage = this.stageRef()?.nativeElement;
+    const packed =
+      (el && this.byId.get(Number(el.dataset['tileId']))) ??
+      this.packing?.tiles.find((p) => p.tile.key === tile.key);
+    const drawn = (packed?.size ?? 0) * CENTER_SCALE * this.zoom;
+    const side = focusSide(
+      { w: stage?.clientWidth ?? 0, h: stage?.clientHeight ?? 0 },
+      drawn,
+      a.type === 'filter' || a.type === 'playlist' ? PREVIEW_ROOM_PX : 0,
+    );
     this.focused.set({
       seq: ++this.focusSeq,
       tile,
       from: (el?.firstElementChild ?? el)?.getBoundingClientRect() ?? null,
+      side,
+      rest: focusRestScale(side, drawn),
       x: at?.x ?? this.cx,
       y: at?.y ?? this.cy,
       title: this.label(tile),
       subtitle: track?.album ? `${tile.subtitle} · ${track.album}` : tile.subtitle,
-      background: gradient ? '' : this.faceBackground(tile, this.focusSidePx()),
+      background: gradient ? '' : this.faceBackground(tile, side),
       gradientClass: gradient,
       emoji: tile.emoji ?? '',
       tagKey: focusTagKey(tile),
@@ -1158,7 +1175,6 @@ export class MosaicHomeComponent implements OnInit {
     if (stageMin <= 1) return;
 
     const ref = sizingReference(stageMin);
-    this.focusSidePx.set(focusSide(stageMin));
     this.packing = packMosaic(list, (t) => tileSize(t.score, ref) * TILE_BASE);
     this.lensRadius = stageMin;
     this.cx = this.packing.W / 2;

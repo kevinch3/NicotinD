@@ -43,7 +43,10 @@
   <!-- The tile a tap brought forward (#2019): the only one that can start anything. -->
   @for (f of focusedList(); track f.seq) {
     <app-mosaic-focus
-      [style.top]="focusTop()"
+      animate.leave="mosaic-focus-leaving"
+      [style.top]="focusTop(f.side)"
+      [style.--focus-side.px]="f.side"
+      [style.--focus-rest]="f.rest"
       [title]="f.title"
       [subtitle]="f.subtitle"
       [background]="f.background"
@@ -51,7 +54,7 @@
       [emoji]="f.emoji"
       [tagKey]="f.tagKey"
       [preview]="preview()"
-      [side]="focusSidePx()"
+      [side]="f.side"
       [from]="f.from"
       [busy]="starting() !== null"
       [hasMenu]="f.hasMenu"

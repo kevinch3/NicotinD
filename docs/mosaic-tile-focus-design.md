@@ -114,8 +114,9 @@ within fixed limits while it does.
   packed side times the zoom is under 38 px the subtitle goes, under 28 px the title goes and the
   tile is cover only (a vibe keeps its emoji). No tile loses text at 100%. (The mock's 60 and
   44 px were measured after magnification, which the mock's missing lens stood in for.)
-- **The focused tile ignores zoom.** It and its controls (Play, tag, ⋯) are always the same
-  on-screen size; zooming while a tile is focused resizes the field behind it.
+- **The focused tile is sized when it comes forward** (see Decided 6), from the zoom at that
+  moment. Zooming while a tile is focused resizes the field behind it, not the tile, and its
+  controls (Play, tag, ⋯) are the same size at any zoom.
 
 How to hold the text cheaply: faces are cached HTML with the font size baked in
 (`titleSize = clampPx(s * 0.12, 9, 17)`), and the lens then scales the whole tile. Re-rendering
@@ -148,11 +149,19 @@ choosing this approach. No setting to restore one-tap play is proposed.
 4. **Play on a tile that is already playing** starts it again. The button has no playing state.
 5. **Any pan releases the focus.** There is no separate detent for it.
 6. **Focused side** is 60% of the stage's shorter side, between 190 and 320 px, and never closer
-   than 16 px to the stage edge.
+   than 16 px to the stage edge. **Coming forward never makes a tile smaller:** when the tile, as
+   drawn at the lens centre (packed side × centre magnification × zoom), is larger than that, the
+   side is the drawn side plus 8%, as far as the stage has room (and, for a face that lists
+   tracks, room for the list below it). `focusSide` in `lib/mosaic-focus.ts`. Before this a tile
+   zoomed past 320 px opened *smaller* than it already was.
 7. **Zoom changes how much of the plane the lens takes in, not the rim:** zooming out shows more
    tiles inside the same circle.
 8. **Zoom is not remembered.** Each visit starts at 100%.
 9. **The tile under the focus is not hidden;** the veil dims it and the focused tile covers it.
+   The one case it does not cover: a tile zoomed larger than the stage has room for.
+10. **Letting go is a settle, not a cut.** The face scales back to the tile it came from
+    (`focusRestScale`, floored at 60%) while it fades, over 220 ms beside the veil's own fade.
+    `animate.leave` holds the element for it; reduced motion removes it at once.
 
 ## Built
 
