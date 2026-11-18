@@ -423,6 +423,18 @@ That is also the concurrency cap: a wave cannot start while a previous wave is s
 
 **Overtaking is gated on byte progress, not sweep count.** A cap alone would let one dead peer wedge a job forever, so "in flight" means *in flight and still moving*. `isStalled(key, bytes)` keeps a per-transfer watermark (`${username}::${filename}` → `{bytes, since}`): progress resets the clock, and a transfer with no `bytesTransferred` movement for `stallThresholdMs` (default 120 s) stops counting as in-flight and may be overtaken. Watermarks are in-memory on purpose — a restart resets the clock, which only makes the service wait *longer* before overtaking, never sooner — and are dropped when a transfer leaves the active set so a re-enqueue starts fresh.
 
+**A stalled primary peer is overtaken too, but only by the cheap path (addon #38).** The primary
+used to veto every fallback while it held any file in an active state, moving or not. Now it is
+`working`, `stalled` or `idle`.
+- **Stalled** means `primaryStallThresholdMs` (default 5 min) with no new bytes. That is longer
+  than `stallThresholdMs` because a Soulseek upload queue is an honest wait.
+- **On a stall, a recorded alternate takes the missing tracks**, and the primary's frozen
+  transfers for those tracks are cancelled, so a late wake-up cannot deliver a duplicate.
+- **A stalled primary never fires a fresh per-track search and never exhausts the job.** The
+  host's own 10-minute stall trigger
+  ([download-pipeline.md](download-pipeline.md#a-stalled-download-asks-another-peer-too-2048))
+  does the searching, and an alternate that starts moving bytes keeps that trigger from firing.
+
 The incomplete-album surface lists these jobs via `GET /api/discography/jobs?state=exhausted|active|incomplete|all` (joined to `album_title`/`artist_name`).
 
 ---
