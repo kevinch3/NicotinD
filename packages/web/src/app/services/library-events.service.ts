@@ -66,8 +66,6 @@ export class LibraryEventsService {
   private readonly coverRevisions = inject(CoverRevisionsService);
 
   readonly connected = signal(false);
-  /** Album ids that just gained songs; consumers clear what they consumed. */
-  readonly landedAlbumIds = signal<ReadonlySet<string>>(new Set());
   readonly deletedSongIds = signal<ReadonlySet<string>>(new Set());
   /** Latest change per album/artist, keyed by id → seq (grows monotonically). */
   readonly changedAlbums = signal<ReadonlyMap<string, number>>(new Map());
@@ -115,12 +113,6 @@ export class LibraryEventsService {
   private isOffline(): boolean {
     const setup = this.injector.get(SetupService, null) as { isOffline?: () => boolean } | null;
     return typeof setup?.isOffline === 'function' ? setup.isOffline() : false;
-  }
-
-  /** Forget landed ids a consumer has acted on. */
-  consumeLanded(ids: Iterable<string>): void {
-    const drop = new Set(ids);
-    this.landedAlbumIds.update((s) => new Set([...s].filter((id) => !drop.has(id))));
   }
 
   private applyVisibility(): void {
@@ -191,7 +183,6 @@ export class LibraryEventsService {
     switch (ev.type) {
       case 'songs.landed':
         this.libraryApi.invalidateLibraryReads();
-        this.landedAlbumIds.update((s) => new Set([...s, ...ev.albumIds]));
         this.touch(this.changedAlbums, ev.albumIds, seq);
         break;
       case 'songs.deleted':

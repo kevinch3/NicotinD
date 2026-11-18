@@ -72,8 +72,9 @@ remote playback — library events there would couple two unrelated lifecycles. 
 and replay natively and already crosses the nginx edge (the admin processing stream); the 25 s
 `: ping` keeps it under the edge's 60 s read timeout.
 
-Consumers today: the Library "new album added" banner (`noteAlbumsLanded`, which lost its only
-caller when the review inbox went), deleted rows leaving every open list (`deletedSongIds`), the
+Consumers today: `songs.landed` drops the cached whole-library reads (no banner: song ids are
+path-derived, so a rename or retag "lands" songs too, and a "new album" prompt fired on those),
+deleted rows leaving every open list (`deletedSongIds`), the
 album page refetching when its album changes, and `artwork.changed` feeding `CoverRevisionsService`,
 the live cover-rev overlay every migrated cover URL reads (see "Cover identity" → "The web half") —
 so a cover set anywhere shows there at once, without any page hand-busting.
