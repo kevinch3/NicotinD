@@ -1026,8 +1026,6 @@
   "library.listErrorBody": "The request failed, so nothing is shown here rather than results that may not match your filters.",
   "library.listErrorTitle": "Couldn't load this list",
   "library.listRetry": "Try again",
-  "library.newAlbums.available": "New album added",
-  "library.newAlbums.refresh": "Show it",
   "library.search.albumsLabel": "Filter albums",
   "library.search.albumsPlaceholder": "Filter loaded albums…",
   "library.search.artistsLabel": "Filter artists",

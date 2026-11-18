@@ -27,8 +27,8 @@ pressed Get, by itself, once it lands**, and the listener is told once.
 3. **`done` → the job's own songs, in album order.** `GET /api/downloads/jobs/:id/songs` returns
    `{ jobId, state, songs }`: the non-hidden `library_songs` behind the job's
    `acquisition_job_items.song_id`, ordered album → disc → track → title. Keyed on the items, not
-   on the album, so two jobs filling one album never hand each other tracks — the Library banner's
-   `landedAlbumIds` could not answer this, since it names albums, not the job that filled them.
+   on the album, so two jobs filling one album never hand each other tracks — a `songs.landed`
+   event could not answer this, since it names albums, not the job that filled them.
    A `done` job is one with at least one scanned item (`recomputeStage`), so a partial album
    enqueues what landed.
 4. **Enqueue once, toast once.**

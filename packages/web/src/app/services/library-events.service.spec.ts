@@ -115,7 +115,6 @@ describe('LibraryEventsService', () => {
     const jobs: string[] = [];
     svc.jobsChanged$.subscribe((id) => jobs.push(id));
     src.emit('library', { seq: 4, at: 4, event: { type: 'job.changed', jobId: 'j1' } });
-    expect([...svc.landedAlbumIds()]).toEqual(['a1']);
     expect([...svc.deletedSongIds()]).toEqual(['s9']);
     expect(svc.changedAlbums().get('a1')).toBe(1);
     expect(svc.changedAlbums().get('a9')).toBe(2);
@@ -125,8 +124,6 @@ describe('LibraryEventsService', () => {
     expect(revs.live('album', 'ar1')).toBe(0);
     expect(jobs).toEqual(['j1']);
     expect(invalidate).toHaveBeenCalled();
-    svc.consumeLanded(['a1']);
-    expect(svc.landedAlbumIds().size).toBe(0);
   });
 
   it('a cover rev never rewinds: an older frame for the same album is ignored (#1666)', () => {

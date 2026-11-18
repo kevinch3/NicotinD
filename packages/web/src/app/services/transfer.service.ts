@@ -63,11 +63,6 @@ export class TransferService {
   readonly acquisitionJobs = signal<AcquisitionJobView[]>([]);
   readonly libraryDirty = signal(false);
   readonly deletedSongIds = signal<ReadonlySet<string>>(new Set());
-  /** Albums a curator just approved AND confirmed landed (issue #708) — narrower
-   *  than `libraryDirty` on purpose: it only ever holds ids a caller can point
-   *  to, so a listener can react without guessing what changed or resetting
-   *  state for events unrelated to what the viewer is looking at. */
-  readonly newlyLandedAlbumIds = signal<ReadonlySet<string>>(new Set());
 
   /**
    * Every unfinished card on Activity, read from the same merged feed the Downloads header counts,
@@ -105,15 +100,8 @@ export class TransferService {
 
   constructor() {
     // Pushed library changes feed the same signals the poller used to derive:
-    // a landed album lights the Library's "new album" banner, a deleted song
-    // leaves every open list, a job transition re-polls the feed at once.
-    effect(() => {
-      const landed = this.events.landedAlbumIds();
-      if (landed.size === 0) return;
-      this.noteAlbumsLanded([...landed]);
-      this.libraryApi.invalidateLibraryReads();
-      this.events.consumeLanded(landed);
-    });
+    // a deleted song leaves every open list, a job transition re-polls the
+    // feed at once.
     effect(() => {
       const deleted = this.events.deletedSongIds();
       if (deleted.size === 0) return;
@@ -151,19 +139,6 @@ export class TransferService {
 
   clearDeletedIds(): void {
     this.deletedSongIds.set(new Set());
-  }
-
-  /** Record album ids a curator just approved AND confirmed landed. Call only
-   *  with confirmed `landed: true` responses — never speculatively. */
-  noteAlbumsLanded(ids: string[]): void {
-    if (ids.length === 0) return;
-    this.newlyLandedAlbumIds.update((s) => new Set([...s, ...ids]));
-  }
-
-  /** Consumed by the Library page once the viewer acts on the "new album
-   *  added" banner (an explicit click, never an automatic reaction). */
-  clearNewlyLandedAlbumIds(): void {
-    this.newlyLandedAlbumIds.set(new Set());
   }
 
   private startScanPoll(): void {
