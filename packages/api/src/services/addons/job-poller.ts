@@ -361,9 +361,11 @@ export class AddonJobPoller {
     if (now - lastSweep < sweepInterval) return;
     this.kvSet(addonId, 'stranded_sweep_at', String(now));
 
+    // The item's own addon job, not the card's `source_ref`: a re-sourced card
+    // is served by several, and the one that opened it is usually released.
     const rows = db
-      .query<{ id: string; source_ref: string | null }, [string]>(
-        `SELECT DISTINCT j.id, j.source_ref
+      .query<{ id: string; source_ref: string | null; addon_job_id: string | null }, [string]>(
+        `SELECT DISTINCT j.id, j.source_ref, i.addon_job_id
            FROM acquisition_jobs j
            JOIN acquisition_job_items i ON i.job_id = j.id
           WHERE j.method = ? AND j.state = 'active'
@@ -373,7 +375,7 @@ export class AddonJobPoller {
 
     for (const row of rows) {
       if (handledCoreIds.has(row.id)) continue; // the poll above already ran it
-      const addonJobId = parseAddonJobId(row.source_ref, addonId);
+      const addonJobId = row.addon_job_id ?? parseAddonJobId(row.source_ref, addonId);
       if (!addonJobId) continue;
       let job: AddonJob;
       try {
