@@ -108,7 +108,7 @@ menu costs nothing for a submenu nobody opens, and it may be async.
 
 | Where | How a submenu shows |
 | --- | --- |
-| Desktop popover | a **flyout** beside the row, on the left when the right would leave the viewport (`flyoutSide`) |
+| Desktop popover | a **flyout** beside the row, on the left when the right would leave the viewport (`flyoutSide`), lifted once drawn so it ends above the player bar but never under the header (`flyoutShift`) |
 | Phone sheet, TV (`drillIn`) | it **replaces the list** under a Back row named after the submenu |
 | A desktop menu that scrolls | drill-in too: a flyout would be clipped |
 

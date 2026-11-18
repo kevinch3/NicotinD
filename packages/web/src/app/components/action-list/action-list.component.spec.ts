@@ -4,6 +4,7 @@ import {
   ActionListComponent,
   FLYOUT_WIDTH_PX,
   filterRows,
+  flyoutShift,
   flyoutSide,
   type MenuHeader,
 } from './action-list.component';
@@ -82,6 +83,22 @@ describe('flyoutSide', () => {
 
   it('stays on the right when neither side fits: clipped is better than off-screen left', () => {
     expect(flyoutSide({ left: 50, right: 350 }, 400)).toBe('right');
+  });
+});
+
+describe('flyoutShift', () => {
+  it('leaves a flyout that already ends above the player bar', () => {
+    expect(flyoutShift({ top: 300, bottom: 500 }, 1000, 120, 64)).toBe(0);
+  });
+
+  it('lifts a flyout that runs under the player bar by its overflow plus the margin', () => {
+    // Bar starts at 880; with an 8 px margin the flyout may end at 872.
+    expect(flyoutShift({ top: 800, bottom: 950 }, 1000, 120, 64)).toBe(78);
+  });
+
+  it('never lifts the top under the header, even when that leaves an overflow', () => {
+    expect(flyoutShift({ top: 100, bottom: 1100 }, 1000, 120, 64)).toBe(28);
+    expect(flyoutShift({ top: 60, bottom: 1100 }, 1000, 120, 64)).toBe(0);
   });
 });
 
@@ -213,6 +230,34 @@ describe('ActionListComponent (#2009)', () => {
       await settle();
       expect(el.querySelector('[data-testid="menu-flyout"]')).toBeNull();
       expect(back.stack.handleBack()).toBe(false);
+    });
+
+    it('lifts a flyout opened near the bottom clear of the player bar', async () => {
+      const bar = document.createElement('div');
+      bar.setAttribute('data-bottom-chrome', '');
+      document.body.appendChild(bar);
+      const vh = window.innerHeight;
+      const rect = (top: number, height: number) =>
+        ({ top, bottom: top + height, height, left: 0, right: 200, width: 200 }) as DOMRect;
+      const spy = vi
+        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+        .mockImplementation(function (this: HTMLElement) {
+          if (this === bar) return rect(vh - 100, 100);
+          if (this.dataset['testid'] === 'menu-flyout') return rect(vh - 150, 200);
+          return rect(0, 0);
+        });
+      try {
+        const { el, row, settle } = setup(MENU([]), false);
+        row('Go to artist')!.click();
+        await settle();
+        const flyout = el.querySelector<HTMLElement>('[data-testid="menu-flyout"]')!;
+        const opened = row('Go to artist')!.offsetTop;
+        // Ends at vh + 50, the bar starts at vh - 100: lifted 150 + the 8 px margin.
+        expect(parseFloat(flyout.style.top)).toBe(opened - 158);
+      } finally {
+        spy.mockRestore();
+        bar.remove();
+      }
     });
   });
 
