@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import type { AcquireAlbumDestination, AcquisitionJobView, TrackStatus } from '@nicotind/core';
 import { fold, sameAlbum } from '@nicotind/core';
-import { normalizeTitle, titlesOverlap } from '@nicotind/core';
+import { foldTitleText, normalizeTitle, titlesOverlap } from '@nicotind/core';
 import { albumIdFor } from './library-scanner.js';
 import { jobDestinationAlbums } from './job-destinations.js';
 import { pruneAttempts } from './acquisition-attempts.js';
@@ -526,8 +526,8 @@ export function markItemsScanned(db: Database, pathToSongId: Map<string, string>
  */
 export function reconcileOrganizedItems(db: Database): number {
   const rows = db
-    .query<{ id: number; job_id: string; relative_path: string }, []>(
-      `SELECT id, job_id, relative_path FROM acquisition_job_items
+    .query<{ id: number; job_id: string; relative_path: string; track_title: string | null }, []>(
+      `SELECT id, job_id, relative_path, track_title FROM acquisition_job_items
        WHERE state = 'organized' AND relative_path IS NOT NULL`,
     )
     .all();
@@ -536,25 +536,42 @@ export function reconcileOrganizedItems(db: Database): number {
   const now = Date.now();
   const touched = new Set<string>();
   let rescued = 0;
-  /**
-   * Accent-folded path → song id, built lazily and only when an exact match has
-   * already failed — see `resolveByFoldedPath`.
-   */
-  let foldedIndex: Map<string, string> | null = null;
-
-  const resolveByFoldedPath = (relativePath: string): string | null => {
-    if (!foldedIndex) {
-      foldedIndex = new Map();
-      for (const s of db
-        .query<{ id: string; path: string }, []>(`SELECT id, path FROM library_songs`)
-        .all()) {
-        // First writer wins: two paths folding alike is pathological, and
-        // picking either is better than dropping both.
-        if (!foldedIndex.has(fold(s.path))) foldedIndex.set(fold(s.path), s.id);
-      }
+  /** The library's songs, read once and only when an exact path match has failed. */
+  let index: {
+    /** Accent-folded path → song id — see `resolveByFoldedPath`. */
+    byPath: Map<string, string>;
+    /** Folded folder → folded song title → song id (#2051). */
+    byFolderTitle: Map<string, Map<string, string>>;
+  } | null = null;
+  const indexes = () => {
+    if (index) return index;
+    index = { byPath: new Map(), byFolderTitle: new Map() };
+    for (const s of db
+      .query<{ id: string; path: string; title: string }, []>(
+        `SELECT id, path, title FROM library_songs`,
+      )
+      .all()) {
+      // First writer wins: two paths folding alike is pathological, and
+      // picking either is better than dropping both.
+      if (!index.byPath.has(fold(s.path))) index.byPath.set(fold(s.path), s.id);
+      const titles = index.byFolderTitle.get(folderOf(s.path)) ?? new Map<string, string>();
+      if (!titles.has(titleKey(s.title))) titles.set(titleKey(s.title), s.id);
+      index.byFolderTitle.set(folderOf(s.path), titles);
     }
-    return foldedIndex.get(fold(relativePath)) ?? null;
+    return index;
   };
+
+  const resolveByFoldedPath = (relativePath: string): string | null =>
+    indexes().byPath.get(fold(relativePath)) ?? null;
+
+  // #2051: the scan kept another copy of this track in the same folder and
+  // dropped this one (a re-source landing "03 - Chantaje (feat. Maluma)" beside
+  // "03 - Chantaje"), so no row will ever carry this path. The track the item was
+  // fetching is in the library all the same.
+  const resolveByFolderTitle = (relativePath: string, title: string | null): string | null =>
+    title
+      ? (indexes().byFolderTitle.get(folderOf(relativePath))?.get(titleKey(title)) ?? null)
+      : null;
 
   for (const row of rows) {
     const exact = db
@@ -566,7 +583,10 @@ export function reconcileOrganizedItems(db: Database): number {
     // `scanning` for 23 h with four organized items whose files were present the
     // whole time under the accented spelling. Same `fold()` the search matcher
     // and hunt scorer already use for exactly this Latin-American accent gap.
-    const songId = exact?.id ?? resolveByFoldedPath(row.relative_path);
+    const songId =
+      exact?.id ??
+      resolveByFoldedPath(row.relative_path) ??
+      resolveByFolderTitle(row.relative_path, row.track_title);
     if (!songId) continue;
     db.run(
       `UPDATE acquisition_job_items SET state = 'scanned', song_id = ?, updated_at = ? WHERE id = ?`,
@@ -578,6 +598,9 @@ export function reconcileOrganizedItems(db: Database): number {
   for (const jobId of touched) recomputeStage(db, jobId);
   return rescued;
 }
+
+const folderOf = (path: string) => fold(path.slice(0, Math.max(0, path.lastIndexOf('/'))));
+const titleKey = (title: string) => foldTitleText(fold(title));
 
 /**
  * Post-scan album backfill for a **direct** grab (issue #223). A raw

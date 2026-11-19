@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.8.134",
+    "date": "2026-11-18",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.133...v0.8.134",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**downloads:** a stalled download asks another peer by itself ([#2049](https://github.com/kevinch3/NicotinD/issues/2049)) ([b95def9](https://github.com/kevinch3/NicotinD/commit/b95def963dc829406e455e170568a61b23079158)), references [#2048](https://github.com/kevinch3/NicotinD/issues/2048)"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**downloads:** fetch a re-sourced card's finished files from the job that owns them ([#2043](https://github.com/kevinch3/NicotinD/issues/2043)) ([e4adcd0](https://github.com/kevinch3/NicotinD/commit/e4adcd0b492c15be90d89958514b4c873d073980))",
+          "**library:** remove the \"New album added\" banner ([#2046](https://github.com/kevinch3/NicotinD/issues/2046)) ([8b185d3](https://github.com/kevinch3/NicotinD/commit/8b185d3bed125a1ca662447ec62bc3ced099aef8))",
+          "**mosaic:** a tile never comes forward smaller, and lets go softly ([#2044](https://github.com/kevinch3/NicotinD/issues/2044)) ([#2045](https://github.com/kevinch3/NicotinD/issues/2045)) ([0797570](https://github.com/kevinch3/NicotinD/commit/0797570e3859b3b247d25d0d663139a22f948ecf))",
+          "**web:** lift a menu flyout clear of the player bar ([#2047](https://github.com/kevinch3/NicotinD/issues/2047)) ([246dc06](https://github.com/kevinch3/NicotinD/commit/246dc0601f13e5c3997555fbf807e33726c5087f))"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.8.133",
     "date": "2026-11-17",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.132...v0.8.133",
@@ -993,19 +1015,6 @@
         "items": [
           "**analysis:** stop buffering a stderr line per 100 ms of audio in the loudness pass ([#1403](https://github.com/kevinch3/NicotinD/issues/1403)) ([930acee](https://github.com/kevinch3/NicotinD/commit/930acee2d4ed8260eb93955d8bcdb52f39e348fe)), references [#1312](https://github.com/kevinch3/NicotinD/issues/1312)",
           "**transcode:** carry the cover in the Opus encode instead of a remux after it ([#1402](https://github.com/kevinch3/NicotinD/issues/1402)) ([ee2cfe6](https://github.com/kevinch3/NicotinD/commit/ee2cfe6cc5a93b772fa90369d9461f5b368a170a)), closes [#1305](https://github.com/kevinch3/NicotinD/issues/1305)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.84",
-    "date": "2026-09-25",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.83...v0.8.84",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**scanner:** give the event loop a turn between the sync cycle's steps ([#1400](https://github.com/kevinch3/NicotinD/issues/1400)) ([25e1632](https://github.com/kevinch3/NicotinD/commit/25e1632634e539ccbc253f1df302fa96bb50356e)), references [#1399](https://github.com/kevinch3/NicotinD/issues/1399) [#1313](https://github.com/kevinch3/NicotinD/issues/1313)"
         ]
       }
     ]

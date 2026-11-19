@@ -163,6 +163,21 @@ in this order):
    (closing that job), and **2** stay unresolved — those are genuinely missing
    files, and the valve is the right answer for them. Folding must not invent a
    match, which is its own test.
+
+   **A copy the scan dropped (#2051).** Sometimes no row will ever carry an
+   item's path. A re-source can land `03 - Chantaje (feat. Maluma).opus` beside
+   the first peer's `03 - Chantaje.opus`. Both bind to one tracklist entry, so
+   the scanner keeps one file and drops the other. That left Shakira's *El
+   Dorado* at `scanning` for 23 hours with all 13 tracks in the library. A
+   path miss therefore falls back to the item's own `track_title`: a song in
+   the **same folder** whose folded title equals it serves the item.
+   - The same folder only. A live or second-disc folder is a different
+     edition.
+   - An equal title only, never a mere overlap. Mac DeMarco's
+     `116 - 20210306 4` is a different recording from the indexed
+     `20210306`, so it stays a loss for the valve to write off.
+
+   The duplicate file itself stays on disk.
 2. **The 24h idle valve.** Items idle past 24h are failed, so a restart or a
    vanished transfer can't strand a job. `NON_TERMINAL_STATES` already covers
    `organized`, not just `downloading`; it runs *after* the rescue so an item

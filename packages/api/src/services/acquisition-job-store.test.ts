@@ -266,7 +266,7 @@ function itemStates(id: string): string[] {
 }
 
 /** Insert a library song so scanned items can resolve; `landed=false` leaves landed_at NULL. */
-function seedSong(songId: string, path: string, landed: boolean): void {
+function seedSong(songId: string, path: string, landed: boolean, title = songId): void {
   db.run(
     `INSERT OR IGNORE INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
      VALUES ('al', 'Heathen', 'Bowie', 'art', 2, 0, 1)`,
@@ -274,7 +274,7 @@ function seedSong(songId: string, path: string, landed: boolean): void {
   db.run(
     `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, landed_at, synced_at)
      VALUES (?, 'al', ?, 'Bowie', 'art', 0, ?, 10, '2024-01-01', ?, 1)`,
-    [songId, songId, path, landed ? 1 : null],
+    [songId, title, path, landed ? 1 : null],
   );
 }
 
@@ -383,6 +383,57 @@ describe('reconcileOrganizedItems (#262)', () => {
       'Fonsi/Abrazar/12 - Se Supone.opus',
     );
     seedSong('s1', 'Someone Else/Other/01 - Different.opus', true);
+
+    expect(reconcileOrganizedItems(db)).toBe(0);
+    expect(getJob(db, id)!.items[0].state).toBe('organized');
+  });
+
+  /**
+   * #2051: a second copy of a track ("03 - Chantaje (feat. Maluma).opus") landed
+   * beside the first, and the scanner kept only one of them. The item's file has
+   * no song row under any spelling, but the track it was fetching is in the
+   * album's folder, so the card is done, not 6 failed tracks a day later.
+   */
+  it('rescues an item whose copy the scan dropped for a same-titled song in its folder', () => {
+    const id = seedJob();
+    markItemCompleted(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'));
+    markItemOrganized(
+      db,
+      transferKeyFor('peer1', 'a\\01 Sunday.flac'),
+      'Bowie/Heathen/01 - Sunday (feat. Someone).opus',
+    );
+    seedSong('s1', 'Bowie/Heathen/01 - Sunday.opus', true, 'Sunday');
+
+    expect(reconcileOrganizedItems(db)).toBe(1);
+    const item = getJob(db, id)!.items[0];
+    expect(item.state).toBe('scanned');
+    expect(item.songId).toBe('s1');
+  });
+
+  it('does not take a same-titled song from another folder', () => {
+    const id = seedJob();
+    markItemCompleted(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'));
+    markItemOrganized(
+      db,
+      transferKeyFor('peer1', 'a\\01 Sunday.flac'),
+      'Bowie/Heathen/01 - Sunday (feat. Someone).opus',
+    );
+    seedSong('s1', 'Bowie/Heathen (Live)/01 - Sunday.opus', true, 'Sunday');
+    seedSong('s2', 'Bowie/Heathen/Disc 2/01 - Sunday.opus', true, 'Sunday');
+
+    expect(reconcileOrganizedItems(db)).toBe(0);
+    expect(getJob(db, id)!.items[0].state).toBe('organized');
+  });
+
+  it('does not count a different song in the same folder as the track', () => {
+    const id = seedJob();
+    markItemCompleted(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'));
+    markItemOrganized(
+      db,
+      transferKeyFor('peer1', 'a\\01 Sunday.flac'),
+      'Bowie/Heathen/01 - Sunday 4.opus',
+    );
+    seedSong('s1', 'Bowie/Heathen/01 - Sunday Reprise.opus', true, 'Sunday Reprise');
 
     expect(reconcileOrganizedItems(db)).toBe(0);
     expect(getJob(db, id)!.items[0].state).toBe('organized');
