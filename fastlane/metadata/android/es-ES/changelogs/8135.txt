@@ -1,0 +1,1 @@
+• downloads: close a card whose copy the scan dropped for a same-titled song (#2052)

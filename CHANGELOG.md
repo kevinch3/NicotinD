@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.135](https://github.com/kevinch3/NicotinD/compare/v0.8.134...v0.8.135) (2026-11-19)
+
+### Bug Fixes
+
+* **downloads:** close a card whose copy the scan dropped for a same-titled song ([#2052](https://github.com/kevinch3/NicotinD/issues/2052)) ([fea6ae7](https://github.com/kevinch3/NicotinD/commit/fea6ae792564e3199e9e9f3ed89b38791166d0f1)), closes [#2051](https://github.com/kevinch3/NicotinD/issues/2051)
 ## [0.8.134](https://github.com/kevinch3/NicotinD/compare/v0.8.133...v0.8.134) (2026-11-18)
 
 ### Features
