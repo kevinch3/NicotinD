@@ -166,6 +166,31 @@ test.describe('mosaic home', () => {
     expect(await title.textContent()).toBe(before);
   });
 
+  test("the next song takes a tile a knight's move away, and the ring goes with it", async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const target = await restingTile(page, 'song');
+    await page.mouse.click(target.x, target.y);
+    await page.getByTestId('mosaic-focus-play').click();
+    const title = page.getByTestId('player-title');
+    await expect(title).not.toHaveText('', { timeout: 15_000 });
+
+    const ring = page.locator('[data-testid="mosaic-tile"].is-playing');
+    await expect(ring).toHaveCount(1);
+    const seedSlot = await ring.getAttribute('data-tile-id');
+    const seedTitle = await title.textContent();
+
+    await page.getByTestId('player-next').click();
+    await expect(title).not.toHaveText(seedTitle ?? '', { timeout: 15_000 });
+    const nextTitle = (await title.textContent())!.trim();
+    await expect(ring).toHaveCount(1);
+    expect(await ring.getAttribute('data-tile-id')).not.toBe(seedSlot);
+    await expect(ring).toContainText(nextTitle);
+    // The camera followed: the playing tile is on screen and the chip is not needed.
+    await expect(page.getByTestId('mosaic-now-playing')).toBeHidden();
+  });
+
   test('a vibe brought forward says when nothing matches, and cannot be played (#2019)', async ({
     page,
   }) => {

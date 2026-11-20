@@ -55,7 +55,15 @@ import {
   type MosaicTile,
   type PlayWeights,
 } from '../../lib/mosaic-tiles';
-import { packMosaic, type PackedTile, type Packing } from '../../lib/mosaic-packing';
+import { GAP, packMosaic, type PackedTile, type Packing } from '../../lib/mosaic-packing';
+import {
+  knightStep,
+  medianStep,
+  nearestSpot,
+  spotKey,
+  spotOnScreen,
+  type PlaneSpot,
+} from '../../lib/mosaic-follow';
 import {
   NO_PREVIEW,
   PREVIEW_COUNT,
@@ -68,6 +76,7 @@ import {
   type FocusPreview,
 } from '../../lib/mosaic-focus';
 import { MosaicFocusComponent } from './mosaic-focus.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import {
   CENTER_SCALE,
   TILE_BASE,
@@ -77,6 +86,7 @@ import {
   clampZoom,
   textLevel,
   wheelZoom,
+  type Placement,
   type TextLevel,
 } from '../../lib/mosaic-lens';
 import { createPinch } from '../../lib/pinch';
@@ -101,6 +111,10 @@ const SPRING_BACK_MS = 200;
 const LOCK_GIVE = 0.25;
 
 const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
+
+/** How far in from the stage's sides and ends the "Now playing" chip sits, in px. */
+const CHIP_EDGE_X = 76;
+const CHIP_EDGE_Y = 36;
 
 /** Hold duration that turns a press into the tile's menu. */
 const LONG_PRESS_MS = 450;
@@ -154,6 +168,23 @@ interface PoolRecord {
   stamp: number;
   /** Content key last written into the element; '' when freshly acquired. */
   content: string;
+  /** This copy shows what is playing: the ring is drawn on it. */
+  playing: boolean;
+}
+
+/**
+ * The copy of a tile that shows what is playing (docs/mosaic-follows-playback.md).
+ * Set when the mosaic starts playback; each next song moves it a knight's move
+ * away. `tile` is the face it shows instead of its own, null while that is
+ * still the tile that was tapped.
+ */
+interface PlayingSpot {
+  spot: PlaneSpot;
+  trackId: string | null;
+  tile: MosaicTile | null;
+  html: string;
+  /** Copies this radio already played on, so the walk does not double back. */
+  visited: Set<string>;
 }
 
 /**
@@ -223,7 +254,7 @@ export interface FocusedTile {
 @Component({
   selector: 'app-mosaic-home',
   standalone: true,
-  imports: [SkeletonComponent, EmptyLibraryComponent, MosaicFocusComponent],
+  imports: [SkeletonComponent, EmptyLibraryComponent, MosaicFocusComponent, TranslatePipe],
   templateUrl: './mosaic-home.component.html',
 })
 export class MosaicHomeComponent implements OnInit {
@@ -244,6 +275,7 @@ export class MosaicHomeComponent implements OnInit {
   private router = inject(Router);
 
   private stageRef = viewChild<ElementRef<HTMLDivElement>>('stage');
+  private chipRef = viewChild<ElementRef<HTMLButtonElement>>('nowChip');
 
   readonly loading = signal(true);
   readonly tiles = signal<MosaicTile[]>([]);
@@ -347,6 +379,16 @@ export class MosaicHomeComponent implements OnInit {
   private lockY = 0;
   /** This drag's detent, from the stage size and the pointer that started it. */
   private lockBreak = 0;
+
+  // --- The playing tile walks the field ---
+  private playing: PlayingSpot | null = null;
+  /** One knight step, in plane px: set per packing. */
+  private stepPx = 0;
+  /** The chip's last written state, so the loop writes it only when it changes. */
+  private chipShown = false;
+  private chipTitle = '';
+  /** The direction a next song is thrown in; a field so specs can pin it. */
+  private random = (): number => Math.random();
 
   // --- Connectivity ---
   /** Guards against a slow load landing after a newer one replaced it. */
@@ -494,6 +536,12 @@ export class MosaicHomeComponent implements OnInit {
       if (!untracked(this.covered)) return;
       const t = setTimeout(() => this.covered.set(false), MosaicHomeComponent.SHEET_SLIDE_MS);
       onCleanup(() => clearTimeout(t));
+    });
+
+    // The next song takes a tile a knight's move away, and the ring goes with it.
+    effect(() => {
+      const track = this.player.currentTrack();
+      untracked(() => this.onTrackChange(track));
     });
 
     // Rebuild the mosaic when connectivity changes, in either direction: lose
@@ -1026,6 +1074,100 @@ export class MosaicHomeComponent implements OnInit {
     const trackId = a.type === 'song' || a.type === 'offline' ? a.track.id : null;
     this.anchor = { x, y, trackId };
     this.glideTo(x, y, GLIDE_MS);
+    this.beginWalk(x, y);
+  }
+
+  /**
+   * The mosaic just started playback from the copy at (x, y): that copy wears
+   * the ring, and the walk starts there. Read the track after the player call,
+   * which sets it synchronously, so the seed is never mistaken for a next song.
+   */
+  private beginWalk(x: number, y: number): void {
+    const packing = this.packing;
+    const spot = packing && nearestSpot(packing.tiles, packing.W, x, y);
+    if (!spot) return;
+    const prev = this.playing;
+    // Play on the face the walk put there keeps that face, not the tile under it.
+    const same = prev !== null && spotKey(prev.spot) === spotKey(spot);
+    this.playing = {
+      spot,
+      trackId: this.player.currentTrack()?.id ?? null,
+      tile: same ? prev.tile : null,
+      html: same ? prev.html : '',
+      visited: new Set([spotKey(spot)]),
+    };
+    this.wake();
+  }
+
+  /**
+   * A new song: it takes the tile a knight's move away, and the tile it left
+   * goes back to what it was. The camera follows only while the playing tile
+   * is on screen and nothing is brought forward; otherwise it stays where the
+   * listener took it, and the chip points the way back.
+   */
+  private onTrackChange(track: Track | null): void {
+    const p = this.playing;
+    const packing = this.packing;
+    const stage = this.stageRef()?.nativeElement;
+    if (!p || !track || !packing || !stage || track.id === p.trackId) return;
+    const placements = visiblePlacements(
+      packing.tiles,
+      { x: this.cx, y: this.cy },
+      { w: stage.clientWidth, h: stage.clientHeight },
+      packing.W,
+      this.lensRadius,
+      this.zoom,
+    );
+    const follow = this.focused() === null && spotOnScreen(placements, p.spot);
+    const next = knightStep(packing.tiles, packing.W, p.spot, this.stepPx, this.random, p.visited);
+    if (!next) return;
+    p.visited.add(spotKey(next));
+    this.playing = { ...p, spot: next, trackId: track.id, tile: this.trackTile(track), html: '' };
+    if (follow) {
+      this.anchor = { x: next.x, y: next.y, trackId: track.id };
+      this.glideTo(next.x, next.y, GLIDE_MS);
+    } else {
+      // A lock left behind would spring the field back to a tile that no longer plays.
+      this.anchor = null;
+      this.wake();
+    }
+  }
+
+  /** The chip: bring the playing tile back, on the copy nearest where the listener is. */
+  returnToPlaying(): void {
+    const p = this.playing;
+    const packing = this.packing;
+    if (!p || !packing) return;
+    const packed = this.byId.get(p.spot.id);
+    if (!packed) return;
+    const spot = nearestSpot([packed], packing.W, this.cx, this.cy) ?? p.spot;
+    p.visited.add(spotKey(spot));
+    this.playing = { ...p, spot };
+    this.blurFocus();
+    this.anchor = { x: spot.x, y: spot.y, trackId: p.trackId };
+    this.glideTo(spot.x, spot.y, GLIDE_MS);
+  }
+
+  /** The face a next song wears: a song tile, offline when the field is the downloaded set. */
+  private trackTile(track: Track): MosaicTile {
+    return {
+      key: `playing:${track.id}`,
+      kind: 'song',
+      title: track.title,
+      subtitle: track.artist,
+      score: 0,
+      action: this.offline() ? { type: 'offline', track } : { type: 'song', track },
+      coverArt: track.coverArt,
+      albumId: track.albumId,
+      coverRev: track.coverRev,
+    };
+  }
+
+  /** What the playing copy shows instead of its own tile, if it is this one. */
+  private playingFaceAt(p: PackedTile, cell: string): MosaicTile | null {
+    const s = this.playing;
+    if (!s?.tile || s.spot.id !== p.id || `${s.spot.i},${s.spot.j}` !== cell) return null;
+    return s.tile;
   }
 
   /**
@@ -1114,6 +1256,8 @@ export class MosaicHomeComponent implements OnInit {
     const packed = this.byId.get(Number(el.dataset['tileId']));
     if (!packed) return null;
     const cell = el.dataset['cell'] ?? HOME_CELL;
+    const face = this.playingFaceAt(packed, cell);
+    if (face) return face;
     if (cell === HOME_CELL) return packed.tile;
     const state = this.cells.get(cell);
     if (state === 'base') return packed.tile;
@@ -1179,6 +1323,9 @@ export class MosaicHomeComponent implements OnInit {
     this.lensRadius = stageMin;
     this.cx = this.packing.W / 2;
     this.cy = this.packing.W / 2;
+    this.stepPx = medianStep(this.packing.tiles, GAP);
+    // Its spot names a slot of the old packing.
+    this.playing = null;
 
     this.html.clear();
     this.byId.clear();
@@ -1257,6 +1404,11 @@ export class MosaicHomeComponent implements OnInit {
    * this slot — the renderer simply skips those.
    */
   private contentFor(p: PackedTile, cell: string): TileContent | null {
+    const face = this.playingFaceAt(p, cell);
+    if (face && this.playing) {
+      this.playing.html ||= this.tileHtml(p, face);
+      return { key: face.key, html: this.playing.html, kind: face.kind };
+    }
     if (cell !== HOME_CELL) {
       const state = this.cells.get(cell) ?? this.enterCell(cell);
       if (state === 'loading') return { key: 'loading', html: LOADING_FACE_HTML, kind: 'loading' };
@@ -1321,7 +1473,15 @@ export class MosaicHomeComponent implements OnInit {
     el.setAttribute('data-testid', 'mosaic-tile');
     // A pooled element keeps the level of the tile it last was.
     el.dataset['text'] = 'full';
-    const rec: PoolRecord = { el, transform: '', opacity: '', text: 'full', stamp: 0, content: '' };
+    const rec: PoolRecord = {
+      el,
+      transform: '',
+      opacity: '',
+      text: 'full',
+      stamp: 0,
+      content: '',
+      playing: false,
+    };
     this.live.set(key, rec);
     return rec;
   }
@@ -1380,6 +1540,7 @@ export class MosaicHomeComponent implements OnInit {
     );
 
     this.stamp++;
+    const playingKey = this.playing ? spotKey(this.playing.spot) : null;
     for (const pl of placements) {
       const cell = `${pl.i},${pl.j}`;
       if (cell !== HOME_CELL) this.cellStamp.set(cell, this.stamp);
@@ -1414,12 +1575,19 @@ export class MosaicHomeComponent implements OnInit {
         rec.el.style.opacity = opacity;
         rec.opacity = opacity;
       }
+      const playing = pl.key === playingKey;
+      if (playing !== rec.playing) {
+        rec.el.classList.toggle('is-playing', playing);
+        rec.playing = playing;
+      }
     }
+    this.placeChip(placements, view);
 
     // Anything not touched this frame has left the lens — park it for reuse.
     for (const [key, rec] of this.live) {
       if (rec.stamp !== this.stamp) {
         if (rec.el === this.held) this.markHeld(null);
+        rec.el.classList.remove('is-playing');
         rec.el.style.display = 'none';
         this.pool.push(rec.el);
         this.live.delete(key);
@@ -1432,6 +1600,34 @@ export class MosaicHomeComponent implements OnInit {
       this.attachReveals();
     }
   };
+
+  /**
+   * The "Now playing" chip: shown while the playing tile is off screen, pinned
+   * to the stage's edge in the direction of it. Element writes, like the rest
+   * of the loop's.
+   */
+  private placeChip(placements: readonly Placement[], view: { w: number; h: number }): void {
+    const chip = this.chipRef()?.nativeElement;
+    if (!chip) return;
+    const p = this.playing;
+    const show = p !== null && !spotOnScreen(placements, p.spot);
+    if (show !== this.chipShown) {
+      chip.hidden = !show;
+      this.chipShown = show;
+    }
+    if (!p || !show) return;
+    const title = this.player.currentTrack()?.title ?? '';
+    if (title !== this.chipTitle) {
+      chip.setAttribute('aria-label', this.i18n.t('mosaic.nowPlayingLabel', { title }));
+      this.chipTitle = title;
+    }
+    const a = Math.atan2(p.spot.y - this.cy, p.spot.x - this.cx);
+    const rx = Math.max(0, view.w / 2 - CHIP_EDGE_X);
+    const ry = Math.max(0, view.h / 2 - CHIP_EDGE_Y);
+    chip.style.left = `${(view.w / 2 + Math.cos(a) * rx).toFixed(1)}px`;
+    chip.style.top = `${(view.h / 2 + Math.sin(a) * ry).toFixed(1)}px`;
+    chip.style.setProperty('--chip-angle', `${a.toFixed(3)}rad`);
+  }
 
   /**
    * Give every face on screen its name reveals (#1707), once the field is at

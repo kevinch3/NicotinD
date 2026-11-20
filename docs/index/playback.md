@@ -130,6 +130,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   field over every landing source; a tap brings a tile forward and only that tile starts its radio.
   Pure `mosaic-tiles`/`mosaic-packing`/`mosaic-lens`/`mosaic-focus` under a pooled rAF shell.
   `visiblePlacements`, `LANE_MIX`, `tapIntent`, `MosaicFocusComponent`. → [web-ui.md](../web-ui.md)
+- **The mosaic follows playback**: each next song takes a tile a knight's move from the playing one
+  and the ring and camera follow while it is on screen; a chip leads back otherwise.
+  `knightStep`, `spotOnScreen`, `returnToPlaying`. → [mosaic-follows-playback.md](../mosaic-follows-playback.md)
 - **Mosaic zoom**: the wheel and a two-finger pinch zoom the field; type holds its size and small
   faces drop their text. `wheelZoom`, `clampZoom`, `textLevel`, `createPinch`.
   → [web-ui.md](../web-ui.md)

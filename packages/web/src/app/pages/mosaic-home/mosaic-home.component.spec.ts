@@ -515,6 +515,13 @@ interface MosaicInternals {
   tileHtml(p: PackedTile, t: MosaicTile): string;
   repack(): void;
   moved: number;
+  anchorOn(x: number, y: number, tile: MosaicTile): void;
+  playing: {
+    spot: { id: number; i: number; j: number; x: number; y: number };
+    trackId: string | null;
+  } | null;
+  stepPx: number;
+  random: () => number;
 }
 
 const preservedMeta = (over: Partial<PreservedTrackMeta> = {}): PreservedTrackMeta => ({
@@ -1028,6 +1035,143 @@ describe('mosaic depth (#1638)', () => {
         pointer(component.drag, 'pointermove', 15);
         expect(Math.abs(c.cx)).toBeGreaterThan(15 * 0.5);
         pointer(component.drag, 'pointerup', 15);
+      });
+    });
+
+    describe('the playing tile walks the field', () => {
+      const chip = (fixture: { nativeElement: HTMLElement }) =>
+        fixture.nativeElement.querySelector<HTMLButtonElement>(
+          '[data-testid="mosaic-now-playing"]',
+        )!;
+      /** A 5×5 grid of 100px tiles, 120px apart, in a 600px patch; tile 12 is the middle. */
+      const walking = async () => {
+        const ctx = await drawn();
+        const stage = ctx.el.parentElement!;
+        Object.defineProperty(stage, 'clientWidth', { value: 900 });
+        Object.defineProperty(stage, 'clientHeight', { value: 900 });
+        const tiles = Array.from({ length: 25 }, (_, n) => ({
+          ...packedStub(n, 100),
+          x: 60 + (n % 5) * 120,
+          y: 60 + Math.floor(n / 5) * 120,
+        }));
+        ctx.c.packing = { W: 600, tiles };
+        ctx.c.byId = new Map(tiles.map((t) => [t.id, t]));
+        for (const t of tiles) ctx.c.html.set(`h:${t.id}`, ctx.c.tileHtml(t, t.tile));
+        ctx.c.stepPx = 120;
+        // Signal queries do not resolve under this JIT setup; stageRef is stubbed the same way.
+        const chipEl = chip(ctx.fixture);
+        Object.defineProperty(ctx.component, 'chipRef', {
+          value: () => ({ nativeElement: chipEl }),
+        });
+        ctx.c.random = () => 0; // the first knight's move: one right, two down
+        ctx.c.now = () => 0;
+        ctx.c.cx = 300;
+        ctx.c.cy = 300;
+        ctx.player.isPlaying.set(true);
+        ctx.player.currentTrack.set({ id: 'slot12', title: 'Seed', artist: 'A' } as Track);
+        ctx.c.anchorOn(300, 300, tiles[12].tile);
+        settleGlide(ctx.c, 0, 1_000);
+        return { ...ctx, stage, tiles };
+      };
+      const ringed = (stage: HTMLElement) =>
+        [...stage.querySelectorAll<HTMLElement>('.mosaic-tile.is-playing')].map(
+          (el) => `${el.dataset['tileId']}@${el.dataset['cell']}`,
+        );
+      const next = (ctx: Awaited<ReturnType<typeof walking>>, id = 'n1', title = 'Second Song') => {
+        ctx.c.now = () => 0;
+        ctx.player.currentTrack.set({ id, title, artist: 'B' } as Track);
+        TestBed.tick();
+      };
+
+      it('the tile Play started wears the ring, and the seed song is not a next song', async () => {
+        const { c, stage, fixture } = await walking();
+        TestBed.tick();
+        expect(ringed(stage)).toEqual(['12@0,0']);
+        expect(c.playing!.spot.id).toBe(12);
+        expect(chip(fixture).hidden).toBe(true);
+      });
+
+      it("a next song lands a knight's move away, wears that tile's face, and the camera follows", async () => {
+        const ctx = await walking();
+        next(ctx);
+        // One right, two down: (420, 540) is tile 23.
+        expect(ctx.c.playing!.spot).toMatchObject({ id: 23, i: 0, j: 0, x: 420, y: 540 });
+        expect(ctx.c.anchor).toMatchObject({ x: 420, y: 540, trackId: 'n1' });
+        settleGlide(ctx.c, 0, 1_000);
+        expect([ctx.c.cx, ctx.c.cy]).toEqual([420, 540]);
+        expect(ringed(ctx.stage)).toEqual(['23@0,0']);
+        const faces = [...ctx.stage.querySelectorAll<HTMLElement>('.mosaic-tile')];
+        const face = faces.find(
+          (el) => el.dataset['tileId'] === '23' && el.dataset['cell'] === '0,0',
+        )!;
+        expect(face.innerHTML).toContain('Second Song');
+        // The tile it left goes back to what it was, and the walk never doubles back.
+        expect(faces.filter((el) => el.innerHTML.includes('Second Song'))).toHaveLength(1);
+        next(ctx, 'n2', 'Third');
+        expect(ctx.c.playing!.spot.id).not.toBe(12);
+        expect(ctx.c.playing!.spot.id).not.toBe(23);
+      });
+
+      it('a tap on the walked-to face is that song, not the tile under it', async () => {
+        const ctx = await walking();
+        next(ctx);
+        settleGlide(ctx.c, 0, 1_000);
+        const el = [...ctx.stage.querySelectorAll<HTMLElement>('.mosaic-tile')].find(
+          (e) => e.dataset['tileId'] === '23' && e.dataset['cell'] === '0,0',
+        )!;
+        const e = new MouseEvent('click');
+        Object.defineProperty(e, 'target', { value: el });
+        const tile = ctx.c.tileFromEvent(e)!;
+        expect(tile.title).toBe('Second Song');
+        expect(tile.action).toMatchObject({ type: 'song', track: { id: 'n1' } });
+      });
+
+      it('panned away, the camera stays put, and the chip brings the playing tile back', async () => {
+        const ctx = await walking();
+        ctx.c.anchor = null;
+        ctx.c.cx = 300 + 3_000;
+        ctx.c.frame();
+        expect(chip(ctx.fixture).hidden).toBe(false);
+        next(ctx);
+        ctx.c.frame();
+        expect([ctx.c.cx, ctx.c.cy]).toEqual([3_300, 300]);
+        expect(ctx.c.anchor).toBeNull();
+        expect(chip(ctx.fixture).hidden).toBe(false);
+
+        chip(ctx.fixture).click();
+        settleGlide(ctx.c, 0, 1_000);
+        // The copy nearest where the listener is, not a glide back across the plane.
+        expect(Math.abs(ctx.c.cx - 3_300)).toBeLessThanOrEqual(300);
+        expect(ctx.c.playing!.spot.id).toBe(23);
+        expect(ctx.c.anchor).toMatchObject({ trackId: 'n1' });
+        expect(chip(ctx.fixture).hidden).toBe(true);
+        expect(ringed(ctx.stage)).toHaveLength(1);
+      });
+
+      it('a tile brought forward keeps the centre: the ring moves, the camera does not', async () => {
+        const ctx = await walking();
+        ctx.c.anchor = null;
+        ctx.component.focused.set({ seq: 1, tile: ctx.tiles[0].tile } as never);
+        next(ctx);
+        settleGlide(ctx.c, 0, 1_000);
+        expect([ctx.c.cx, ctx.c.cy]).toEqual([300, 300]);
+        expect(ctx.c.anchor).toBeNull();
+        expect(ctx.c.playing!.spot.id).toBe(23);
+      });
+
+      it('a playback the mosaic did not start leaves the field alone', async () => {
+        const { c, player, el } = await drawn();
+        player.currentTrack.set({ id: 'elsewhere', title: 'X', artist: 'Y' } as Track);
+        TestBed.tick();
+        c.frame();
+        expect(c.playing).toBeNull();
+        expect(ringed(el.parentElement!)).toEqual([]);
+      });
+
+      it('a repack forgets the walk: its spot named a slot of the old packing', async () => {
+        const ctx = await walking();
+        ctx.c.repack();
+        expect(ctx.c.playing).toBeNull();
       });
     });
 
