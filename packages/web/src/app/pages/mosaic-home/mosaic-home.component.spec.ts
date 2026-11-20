@@ -538,11 +538,11 @@ const preservedMeta = (over: Partial<PreservedTrackMeta> = {}): PreservedTrackMe
 });
 const internals = (c: unknown): MosaicInternals => c as MosaicInternals;
 
-const packedStub = (id: number, size: number): PackedTile => ({
+const packedStub = (id: number, size: number, title = ''): PackedTile => ({
   tile: {
     key: `slot:${id}`,
     kind: 'song',
-    title: '',
+    title,
     subtitle: '',
     score: 0.5,
     action: { type: 'song', track: { id: `slot${id}`, title: '', artist: '' } },
@@ -1050,7 +1050,7 @@ describe('mosaic depth (#1638)', () => {
         Object.defineProperty(stage, 'clientWidth', { value: 900 });
         Object.defineProperty(stage, 'clientHeight', { value: 900 });
         const tiles = Array.from({ length: 25 }, (_, n) => ({
-          ...packedStub(n, 100),
+          ...packedStub(n, 100, n === 12 ? 'Seed' : ''),
           x: 60 + (n % 5) * 120,
           y: 60 + Math.floor(n / 5) * 120,
         }));
@@ -1146,6 +1146,46 @@ describe('mosaic depth (#1638)', () => {
         expect(ctx.c.anchor).toMatchObject({ trackId: 'n1' });
         expect(chip(ctx.fixture).hidden).toBe(true);
         expect(ringed(ctx.stage)).toHaveLength(1);
+      });
+
+      it('the chip brings back the song that is playing, not what a discovery cell holds in that slot (#2054)', async () => {
+        const ctx = await walking();
+        // Far away, the slot's nearest copy is in a discovery cell with its own random song.
+        const stranger = { ...ctx.tiles[12].tile, key: 'song:stranger', title: 'Stranger' };
+        ctx.c.cells.set('5,0', new Map([[12, stranger]]));
+        ctx.c.anchor = null;
+        ctx.c.cx = 300 + 3_000;
+        ctx.c.frame();
+
+        chip(ctx.fixture).click();
+        settleGlide(ctx.c, 0, 1_000);
+        expect(ctx.c.playing!.spot).toMatchObject({ id: 12, i: 5, j: 0 });
+        const el = [...ctx.stage.querySelectorAll<HTMLElement>('.mosaic-tile.is-playing')][0];
+        expect(el.dataset['cell']).toBe('5,0');
+        expect(el.innerHTML).toContain('Seed');
+        expect(el.innerHTML).not.toContain('Stranger');
+      });
+
+      it('starting the walk does not redraw the face that was tapped', async () => {
+        const ctx = await walking();
+        const el = [...ctx.stage.querySelectorAll<HTMLElement>('.mosaic-tile.is-playing')][0];
+        const face = el.firstElementChild;
+        ctx.c.frame();
+        expect(el.firstElementChild).toBe(face);
+      });
+
+      it('a start from the accessible list pins the tile on a copy that held another song', async () => {
+        const ctx = await walking();
+        const stranger = { ...ctx.tiles[12].tile, key: 'song:stranger', title: 'Stranger' };
+        ctx.c.cells.set('1,0', new Map([[12, stranger]]));
+        ctx.c.cx = 900;
+        ctx.c.frame();
+        ctx.c.anchorOn(900, 300, ctx.tiles[12].tile);
+        settleGlide(ctx.c, 0, 1_000);
+        const el = [...ctx.stage.querySelectorAll<HTMLElement>('.mosaic-tile.is-playing')][0];
+        expect(el.dataset['cell']).toBe('1,0');
+        expect(el.innerHTML).toContain('Seed');
+        expect(el.innerHTML).not.toContain('Stranger');
       });
 
       it('a tile brought forward keeps the centre: the ring moves, the camera does not', async () => {

@@ -175,13 +175,16 @@ interface PoolRecord {
 /**
  * The copy of a tile that shows what is playing (docs/mosaic-follows-playback.md).
  * Set when the mosaic starts playback; each next song moves it a knight's move
- * away. `tile` is the face it shows instead of its own, null while that is
- * still the tile that was tapped.
+ * away. `tile` is the face it shows whatever its slot holds there: pinned from
+ * the start, because a discovery cell fills the same slot with another song
+ * (#2054). `key` is that face's content key; the tapped tile keeps the key it
+ * was drawn with, so starting playback does not redraw it.
  */
 interface PlayingSpot {
   spot: PlaneSpot;
   trackId: string | null;
-  tile: MosaicTile | null;
+  tile: MosaicTile;
+  key: string;
   html: string;
   /** Copies this radio already played on, so the walk does not double back. */
   visited: Set<string>;
@@ -1074,7 +1077,7 @@ export class MosaicHomeComponent implements OnInit {
     const trackId = a.type === 'song' || a.type === 'offline' ? a.track.id : null;
     this.anchor = { x, y, trackId };
     this.glideTo(x, y, GLIDE_MS);
-    this.beginWalk(x, y);
+    this.beginWalk(x, y, tile);
   }
 
   /**
@@ -1082,17 +1085,28 @@ export class MosaicHomeComponent implements OnInit {
    * the ring, and the walk starts there. Read the track after the player call,
    * which sets it synchronously, so the seed is never mistaken for a next song.
    */
-  private beginWalk(x: number, y: number): void {
+  private beginWalk(x: number, y: number, tile: MosaicTile): void {
     const packing = this.packing;
     const spot = packing && nearestSpot(packing.tiles, packing.W, x, y);
     if (!spot) return;
     const prev = this.playing;
-    // Play on the face the walk put there keeps that face, not the tile under it.
     const same = prev !== null && spotKey(prev.spot) === spotKey(spot);
+    const cell = `${spot.i},${spot.j}`;
+    const packed = this.byId.get(spot.id);
+    // The key the copy is drawn with, only when it already shows this tile:
+    // from the accessible list the nearest copy may be holding another song.
+    const drawn = packed && this.tileAt(packed, cell)?.key === tile.key;
     this.playing = {
       spot,
       trackId: this.player.currentTrack()?.id ?? null,
-      tile: same ? prev.tile : null,
+      tile: same ? prev.tile : tile,
+      key: same
+        ? prev.key
+        : drawn
+          ? cell === HOME_CELL
+            ? `h:${spot.id}`
+            : `${cell}:${spot.id}`
+          : tile.key,
       html: same ? prev.html : '',
       visited: new Set([spotKey(spot)]),
     };
@@ -1122,7 +1136,8 @@ export class MosaicHomeComponent implements OnInit {
     const next = knightStep(packing.tiles, packing.W, p.spot, this.stepPx, this.random, p.visited);
     if (!next) return;
     p.visited.add(spotKey(next));
-    this.playing = { ...p, spot: next, trackId: track.id, tile: this.trackTile(track), html: '' };
+    const tile = this.trackTile(track);
+    this.playing = { ...p, spot: next, trackId: track.id, tile, key: tile.key, html: '' };
     if (follow) {
       this.anchor = { x: next.x, y: next.y, trackId: track.id };
       this.glideTo(next.x, next.y, GLIDE_MS);
@@ -1166,7 +1181,7 @@ export class MosaicHomeComponent implements OnInit {
   /** What the playing copy shows instead of its own tile, if it is this one. */
   private playingFaceAt(p: PackedTile, cell: string): MosaicTile | null {
     const s = this.playing;
-    if (!s?.tile || s.spot.id !== p.id || `${s.spot.i},${s.spot.j}` !== cell) return null;
+    if (!s || s.spot.id !== p.id || `${s.spot.i},${s.spot.j}` !== cell) return null;
     return s.tile;
   }
 
@@ -1256,8 +1271,11 @@ export class MosaicHomeComponent implements OnInit {
     const packed = this.byId.get(Number(el.dataset['tileId']));
     if (!packed) return null;
     const cell = el.dataset['cell'] ?? HOME_CELL;
-    const face = this.playingFaceAt(packed, cell);
-    if (face) return face;
+    return this.playingFaceAt(packed, cell) ?? this.tileAt(packed, cell);
+  }
+
+  /** The tile a slot's copy in a cell holds, before any playing face is put over it. */
+  private tileAt(packed: PackedTile, cell: string): MosaicTile | null {
     if (cell === HOME_CELL) return packed.tile;
     const state = this.cells.get(cell);
     if (state === 'base') return packed.tile;
@@ -1407,7 +1425,7 @@ export class MosaicHomeComponent implements OnInit {
     const face = this.playingFaceAt(p, cell);
     if (face && this.playing) {
       this.playing.html ||= this.tileHtml(p, face);
-      return { key: face.key, html: this.playing.html, kind: face.kind };
+      return { key: this.playing.key, html: this.playing.html, kind: face.kind };
     }
     if (cell !== HOME_CELL) {
       const state = this.cells.get(cell) ?? this.enterCell(cell);
