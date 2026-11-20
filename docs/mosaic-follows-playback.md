@@ -33,6 +33,13 @@ edge, its arrow pointing at the tile; tapping it brings the playing face to the 
 camera and glides there, rather than crossing the plane (and fetching every discovery cell on the
 way).
 
+**The playing face is pinned from the start (#2054).** A discovery cell fills a slot with its own
+random song, so a copy's face depends on which cell it is in, and an evicted cell refetches new
+songs. The walk therefore never leans on the slot: `beginWalk` pins the tile Play started as the
+playing copy's face, and each step pins the new song's. The tapped copy keeps the content key it was
+drawn with, so starting playback does not redraw it; a start from the accessible list, whose nearest
+copy may hold another song, takes the tile's own key and is redrawn (`tileAt` decides which).
+
 The seed song is never mistaken for a next song: the player sets `currentTrack` synchronously, so
 `beginWalk` reads the seed's id right after the start call. A track change the mosaic did not start
 (no walk in progress) leaves the field alone. A repack forgets the walk, because its spot names a
