@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.136](https://github.com/kevinch3/NicotinD/compare/v0.8.135...v0.8.136) (2026-11-20)
+
+### Features
+
+* **mosaic:** the next song takes a tile a knight's move away, and the ring follows ([#2053](https://github.com/kevinch3/NicotinD/issues/2053)) ([38d0c3d](https://github.com/kevinch3/NicotinD/commit/38d0c3dda4026ab639b02901a04264c51bede40f))
+
+### Bug Fixes
+
+* **mosaic:** the Now playing chip brings back the song that is playing ([#2055](https://github.com/kevinch3/NicotinD/issues/2055)) ([34d8b7e](https://github.com/kevinch3/NicotinD/commit/34d8b7e07ed75ded2fd37a8aab630db08c397775)), closes [#2054](https://github.com/kevinch3/NicotinD/issues/2054)
 ## [0.8.135](https://github.com/kevinch3/NicotinD/compare/v0.8.134...v0.8.135) (2026-11-19)
 
 ### Bug Fixes

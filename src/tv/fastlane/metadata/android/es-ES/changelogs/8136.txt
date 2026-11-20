@@ -1,0 +1,2 @@
+• mosaic: the next song takes a tile a knight's move away, and the ring follows (#2053)
+• mosaic: the Now playing chip brings back the song that is playing (#2055)
