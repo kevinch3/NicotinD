@@ -969,6 +969,8 @@
   "mosaic.focus.play": "Start radio from {name}",
   "mosaic.focus.shuffle": "Shuffle",
   "mosaic.focus.startsWith": "Starts with",
+  "mosaic.nowPlaying": "Now playing",
+  "mosaic.nowPlayingLabel": "Back to {title}, now playing",
   "mosaic.tag.genre": "Top genre",
   "mosaic.tag.keepVibe": "Keep the vibe",
   "mosaic.tag.playlist": "Playlist",
