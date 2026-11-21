@@ -42,8 +42,13 @@ copy may hold another song, takes the tile's own key and is redrawn (`tileAt` de
 
 The seed song is never mistaken for a next song: the player sets `currentTrack` synchronously, so
 `beginWalk` reads the seed's id right after the start call. A track change the mosaic did not start
-(no walk in progress) leaves the field alone. A repack forgets the walk, because its spot names a
-slot of the old packing.
+(no walk in progress) leaves the field alone.
+
+**The walk resumes from the player.** The walk lives on the component, so leaving home drops it, and
+a repack (a return to home, a resize) cannot keep it anyway: its spot names a slot of the old
+packing. Instead every repack ends in `resumeWalk`: when the player has a current track, it takes
+the centre tile (`trackTile`), wears the ring and holds the lock, and the next song walks on from
+there. Coming back from the Library therefore shows what is playing without another tap.
 
 ## Cost
 

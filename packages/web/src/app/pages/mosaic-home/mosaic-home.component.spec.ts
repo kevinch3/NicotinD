@@ -32,6 +32,7 @@ import type { PackedTile, Packing } from '../../lib/mosaic-packing';
 import { haptic } from '../../lib/haptics';
 import { FOCUS_LIFT, NO_PREVIEW } from '../../lib/mosaic-focus';
 import { CENTER_SCALE } from '../../lib/mosaic-lens';
+import { nearestSpot, spotKey } from '../../lib/mosaic-follow';
 import { OverflowReveal } from '../../lib/overflow-reveal';
 
 vi.mock('../../lib/haptics', async (importOriginal) => ({
@@ -1208,10 +1209,33 @@ describe('mosaic depth (#1638)', () => {
         expect(ringed(el.parentElement!)).toEqual([]);
       });
 
-      it('a repack forgets the walk: its spot named a slot of the old packing', async () => {
+      it('a repack, or coming back home, picks the walk up from what is playing, on the centre tile', async () => {
         const ctx = await walking();
         ctx.c.repack();
+        const { packing, cx, cy } = ctx.c;
+        expect([cx, cy]).toEqual([packing!.W / 2, packing!.W / 2]);
+        const centre = nearestSpot(packing!.tiles, packing!.W, cx, cy)!;
+        expect(ctx.c.playing).toMatchObject({ trackId: 'slot12', spot: centre });
+        expect(ctx.c.anchor).toEqual({ x: centre.x, y: centre.y, trackId: 'slot12' });
+        ctx.c.frame();
+        const rings = [...ctx.stage.querySelectorAll<HTMLElement>('.mosaic-tile.is-playing')];
+        expect(rings).toHaveLength(1);
+        expect(rings[0].innerHTML).toContain('Seed');
+
+        // And the walk goes on from there.
+        next(ctx);
+        expect(ctx.c.playing!.trackId).toBe('n1');
+        expect(spotKey(ctx.c.playing!.spot)).not.toBe(spotKey(centre));
+      });
+
+      it('a repack with nothing playing draws no ring', async () => {
+        const ctx = await walking();
+        ctx.player.currentTrack.set(null);
+        TestBed.tick();
+        ctx.c.repack();
         expect(ctx.c.playing).toBeNull();
+        ctx.c.frame();
+        expect(ringed(ctx.stage)).toEqual([]);
       });
     });
 
