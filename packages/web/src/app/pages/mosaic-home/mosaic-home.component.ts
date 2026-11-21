@@ -1361,7 +1361,29 @@ export class MosaicHomeComponent implements OnInit {
     for (const rec of this.live.values()) rec.el.remove();
     this.live.clear();
     this.pool.length = 0;
+    this.resumeWalk();
     this.wake();
+  }
+
+  /**
+   * A fresh packing (a return to home, a resize) picks the walk up from the
+   * player rather than waiting for a tap: what is playing takes the centre tile.
+   */
+  private resumeWalk(): void {
+    const track = this.player.currentTrack();
+    const packing = this.packing;
+    const spot = track && packing && nearestSpot(packing.tiles, packing.W, this.cx, this.cy);
+    if (!track || !spot) return;
+    const tile = this.trackTile(track);
+    this.playing = {
+      spot,
+      trackId: track.id,
+      tile,
+      key: tile.key,
+      html: '',
+      visited: new Set([spotKey(spot)]),
+    };
+    this.anchor = { x: spot.x, y: spot.y, trackId: track.id };
   }
 
   private tileHtml(p: PackedTile, t: MosaicTile): string {

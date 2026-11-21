@@ -191,6 +191,34 @@ test.describe('mosaic home', () => {
     await expect(page.getByTestId('mosaic-now-playing')).toBeHidden();
   });
 
+  test('coming back from the Library, the ring is on the song that is playing, and walks on', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const target = await restingTile(page, 'song');
+    await page.mouse.click(target.x, target.y);
+    await page.getByTestId('mosaic-focus-play').click();
+    const title = page.getByTestId('player-title');
+    await expect(title).not.toHaveText('', { timeout: 15_000 });
+
+    await page.locator('a[href="/library"]:visible').first().click();
+    await expect(page).toHaveURL(/\/library/);
+    await page.locator('a[href="/"]:visible').first().click();
+    await expect(page).toHaveURL(/\/$/);
+
+    const ring = page.locator('[data-testid="mosaic-tile"].is-playing');
+    await expect(ring).toHaveCount(1);
+    await expect(ring).toContainText((await title.textContent())!.trim());
+    const slot = await ring.getAttribute('data-tile-id');
+
+    const before = await title.textContent();
+    await page.getByTestId('player-next').click();
+    await expect(title).not.toHaveText(before ?? '', { timeout: 15_000 });
+    await expect(ring).toHaveCount(1);
+    expect(await ring.getAttribute('data-tile-id')).not.toBe(slot);
+    await expect(ring).toContainText((await title.textContent())!.trim());
+  });
+
   test('a vibe brought forward says when nothing matches, and cannot be played (#2019)', async ({
     page,
   }) => {
