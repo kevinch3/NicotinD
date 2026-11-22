@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { livenessReport, probeRenderer, type ProbeTarget } from '../renderer-liveness';
+import {
+  livenessReport,
+  probeRenderer,
+  wedgeAnnotation,
+  type ProbeTarget,
+} from '../renderer-liveness';
 
 function target(evaluate: () => Promise<unknown>, closed = false): ProbeTarget {
   return { isClosed: () => closed, evaluate: evaluate as ProbeTarget['evaluate'] };
@@ -62,5 +67,23 @@ describe('livenessReport', () => {
 
   it('says a live renderer rules the wedge out', () => {
     expect(livenessReport('alive', 'http://x/', 3000)).toContain('not a wedged renderer');
+  });
+});
+
+describe('wedgeAnnotation', () => {
+  it('is a GitHub warning naming the test and the page', () => {
+    expect(
+      wedgeAnnotation('settings › opens', 'http://x/settings', { GITHUB_ACTIONS: 'true' }),
+    ).toBe('::warning title=Wedged renderer (#1185)::settings › opens at http://x/settings');
+  });
+
+  it('escapes what would end or corrupt the workflow command', () => {
+    expect(wedgeAnnotation('50% done\nnext', 'http://x/', { GITHUB_ACTIONS: 'true' })).toBe(
+      '::warning title=Wedged renderer (#1185)::50%25 done%0Anext at http://x/',
+    );
+  });
+
+  it('is nothing outside GitHub Actions', () => {
+    expect(wedgeAnnotation('t', 'http://x/', {})).toBeNull();
   });
 });

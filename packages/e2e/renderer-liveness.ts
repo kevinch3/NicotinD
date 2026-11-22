@@ -49,3 +49,26 @@ export function livenessReport(verdict: RendererVerdict, url: string, timeoutMs:
   };
   return `renderer: ${verdict}\nurl: ${url}\n${meaning[verdict]}\n`;
 }
+
+/**
+ * A GitHub Actions `::warning` line for a wedged renderer, or null when not
+ * running there.
+ *
+ * CI retries a failed test once, and a retry that passes leaves the run green.
+ * The report (and its `renderer-liveness` attachment) is uploaded only for a
+ * failed run, so a one-off wedge would never be seen. An annotation shows on
+ * a green run's summary too.
+ */
+export function wedgeAnnotation(
+  testTitle: string,
+  url: string,
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  if (!env.GITHUB_ACTIONS) return null;
+  // Workflow-command escaping: the message may not carry a raw newline or `%`.
+  const message = `${testTitle} at ${url}`
+    .replace(/%/g, '%25')
+    .replace(/\r/g, '%0D')
+    .replace(/\n/g, '%0A');
+  return `::warning title=Wedged renderer (#1185)::${message}`;
+}

@@ -357,6 +357,15 @@ same PR that hit it.
   that was blocked for a few seconds and recovered reads `alive`; only one that
   never comes back reads `wedged` (measured with a main-thread loop: 8 s reads
   `alive`, an endless one reads `wedged`).
+  **A wedge that a retry papers over is still announced.** CI retries a failed
+  test once, a passing retry leaves the run green, and the Playwright report is
+  uploaded only `if: failure()`, so the attachment of a one-off wedge was never
+  seen: from 2026-11-15 to 11-22, 187 green CI runs and 2 failures (both one
+  deterministic `theme.spec.ts` assertion), with no way to tell whether any
+  green run had hidden a wedge. A `wedged` verdict therefore also prints a
+  `::warning title=Wedged renderer (#1185)::` line (`wedgeAnnotation`), which
+  GitHub shows on the run summary whatever the conclusion. Find them with
+  `gh api repos/<owner>/<repo>/check-runs/<job-id>/annotations`.
 
 - **Five routes in one test is five routes in one 30s budget.** That budget is
   spent by *navigations*, not by assertions.
