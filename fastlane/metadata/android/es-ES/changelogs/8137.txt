@@ -1,0 +1,6 @@
+• library: get a better copy of a song, keeping its history (#2062)
+• library: measure the two replacement paths still waiting on numbers (#2067)
+• web: a song page at /library/songs/:id, and a share link to it (#2058)
+• covers: a cover cache write lands before the response, so a purge sticks (#2064)
+• library: the import and URL lanes carry a replaced song's history too (#2065)
+• mosaic: returning home picks up the song that is playing (#2056) (#2057)

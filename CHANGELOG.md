@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.137](https://github.com/kevinch3/NicotinD/compare/v0.8.136...v0.8.137) (2026-11-22)
+
+### Features
+
+* **library:** get a better copy of a song, keeping its history ([#2062](https://github.com/kevinch3/NicotinD/issues/2062)) ([36665c0](https://github.com/kevinch3/NicotinD/commit/36665c06ba035ca6bd292ad2d9f4d06c9469a68c)), closes [#2032](https://github.com/kevinch3/NicotinD/issues/2032)
+* **library:** measure the two replacement paths still waiting on numbers ([#2067](https://github.com/kevinch3/NicotinD/issues/2067)) ([95369ae](https://github.com/kevinch3/NicotinD/commit/95369ae6826da6a3ab333d6cb0adb4d563803f6d)), references [#2061](https://github.com/kevinch3/NicotinD/issues/2061) [#2059](https://github.com/kevinch3/NicotinD/issues/2059) [#2061](https://github.com/kevinch3/NicotinD/issues/2061)
+* **web:** a song page at /library/songs/:id, and a share link to it ([#2058](https://github.com/kevinch3/NicotinD/issues/2058)) ([425fa4a](https://github.com/kevinch3/NicotinD/commit/425fa4ac24424fdd3bb3ca4c5833e1038b0a2168)), closes [#2004](https://github.com/kevinch3/NicotinD/issues/2004), references [#2004](https://github.com/kevinch3/NicotinD/issues/2004)
+
+### Bug Fixes
+
+* **covers:** a cover cache write lands before the response, so a purge sticks ([#2064](https://github.com/kevinch3/NicotinD/issues/2064)) ([9492fc3](https://github.com/kevinch3/NicotinD/commit/9492fc353eb49d0bf5064d9afc5afbd9afce97a7)), closes [#2063](https://github.com/kevinch3/NicotinD/issues/2063), references [#1666](https://github.com/kevinch3/NicotinD/issues/1666)
+* **library:** the import and URL lanes carry a replaced song's history too ([#2065](https://github.com/kevinch3/NicotinD/issues/2065)) ([ac9dcae](https://github.com/kevinch3/NicotinD/commit/ac9dcaea515e9c11a72d75a68b15c08d0b41fc3d)), references [#2032](https://github.com/kevinch3/NicotinD/issues/2032) [#2061](https://github.com/kevinch3/NicotinD/issues/2061) [#2061](https://github.com/kevinch3/NicotinD/issues/2061)
+* **mosaic:** returning home picks up the song that is playing ([#2056](https://github.com/kevinch3/NicotinD/issues/2056)) ([#2057](https://github.com/kevinch3/NicotinD/issues/2057)) ([46567d4](https://github.com/kevinch3/NicotinD/commit/46567d445331b70632eac535a333edb2327cd91d))
 ## [0.8.136](https://github.com/kevinch3/NicotinD/compare/v0.8.135...v0.8.136) (2026-11-20)
 
 ### Features
