@@ -105,7 +105,7 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   intent finds the song and picks the copy (`TrackGetService`, `trackGetRoutes`). → [album-hunt.md](../album-hunt.md)
 - **A better copy keeps the song's history**: a track Get into the song's own album folder; a file
   the reconcile replaces carries its likes, playlists, plays and curation (`requestBetterCopy`,
-  `albumFolderOf`, `snapshotReplacedSongs`, `carryReplacedSongs`). → [download-pipeline.md](../download-pipeline.md)
+  `albumFolderOf`, `snapshotBatchReplacements`, `carryReplacedSongs`). → [download-pipeline.md](../download-pipeline.md)
 - **A Get is a server job**: one POST reserves the job row, core hunts, picks, retries an offline
   source and resumes after a restart (`AlbumGetService`, `albumGetRetryDelayMs`,
   `listReservedAlbumGets`, `GET_MIN_MATCH_PCT`, `getAlbum`). → [album-hunt.md](../album-hunt.md)

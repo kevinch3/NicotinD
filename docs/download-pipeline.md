@@ -275,9 +275,14 @@ of queueing a second hunt.
 
 Limits, on the record. The reconcile matches on disc and title, so a live take of the same title at a
 higher bitrate can still replace a studio one (#2059). A copy whose album-artist tag names someone else
-is filed under that artist and never meets the reconcile. And only the addon poller carries: the
-import and URL lanes run the same reconcile without it, and the scanner's own one-copy-per-album rule
-prunes a not-selected duplicate with only playlist and genre re-matching (#2061).
+is filed under that artist and never meets the reconcile. And the scanner's own one-copy-per-album
+rule still prunes a not-selected duplicate with only playlist and genre re-matching (#2061).
+
+**Every organize lane carries.** The addon poller, the import service (`LibraryImportService`) and
+the URL watcher (`AcquireWatcher`) all run the shared `organizeBatch`, so all three take
+`snapshotBatchReplacements` before their scan and `carryReplacedSongs` after it (#2061). Until then
+only the poller did, and an imported or URL-fetched copy that won the reconcile dropped the replaced
+song's history exactly as every lane had before #2032.
 
 ---
 

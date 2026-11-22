@@ -12,6 +12,7 @@ import {
 import { PluginRegistry } from './plugins/registry.js';
 import { pluginStagingDir } from './plugins/host-context.js';
 import type { CompletedDownloadFile } from './path-inference.js';
+import { songId } from './library-scanner.js';
 
 const DATA_DIR = '/tmp/nicotind-acquire-test';
 
@@ -1071,5 +1072,58 @@ describe('AcquireWatcher (playlist generation)', () => {
     expect(watcher.getJob(id)?.playlistId).toBeNull();
     const rows = db.query<{ c: number }, []>(`SELECT COUNT(*) AS c FROM playlists`).get();
     expect(rows?.c).toBe(0);
+  });
+});
+
+describe('a library song a fetched copy replaced (#2061)', () => {
+  it('keeps its playlist entries and plays on the copy that replaced it', async () => {
+    const h = makeHarness();
+    const HELD = 'Artist/Album/01 - track.mp3';
+    const FETCHED = 'Artist/Album/track.mp3';
+    h.db.run(
+      `INSERT INTO users (id, username, password_hash, role) VALUES ('u', 'u', 'x', 'admin')`,
+    );
+    h.db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, synced_at)
+       VALUES (?, 'alb', 'track', 'Artist', 'art', 60, ?, 1)`,
+      [songId(HELD), HELD],
+    );
+    h.db.run(`INSERT INTO playlists (id, name, user_id, kind, created_at, modified_at)
+              VALUES ('liked', 'Liked Songs', 'u', 'liked', 1, 1)`);
+    h.db.run(
+      `INSERT INTO playlist_songs (playlist_id, song_id, position, added_at) VALUES ('liked', ?, 0, 1)`,
+      [songId(HELD)],
+    );
+    h.db.run(
+      `INSERT INTO play_events (client_event_id, user_id, song_id, title, at, ms_played, reason, counted)
+       VALUES ('e1', 'u', ?, 'track', 1, 60000, 'ended', 1)`,
+      [songId(HELD)],
+    );
+    // The reconcile kept the fetched copy (the harness lands every file at FETCHED).
+    h.organize.mockImplementation(async (files: CompletedDownloadFile[]) => {
+      for (const f of files) f.relativePath = FETCHED;
+      return { supersededRelPaths: { [HELD]: FETCHED } };
+    });
+    h.scan.mockImplementation(async (relPaths: string[]) => {
+      for (const rel of relPaths) {
+        h.db.run(
+          `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, synced_at)
+           VALUES (?, 'alb', 'track', 'Artist', 'art', 60, ?, 2)`,
+          [songId(rel), rel],
+        );
+      }
+      h.db.run('DELETE FROM library_songs WHERE id = ?', [songId(HELD)]);
+    });
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'done');
+
+    const ids = (sql: string) =>
+      h.db
+        .query<{ song_id: string }, []>(sql)
+        .all()
+        .map((r) => r.song_id);
+    expect(ids('SELECT song_id FROM playlist_songs')).toEqual([songId(FETCHED)]);
+    expect(ids('SELECT song_id FROM play_events')).toEqual([songId(FETCHED)]);
   });
 });
