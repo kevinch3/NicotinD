@@ -1,5 +1,11 @@
+import { songCover } from '../../lib/cover-url';
 import { describe, it, expect } from 'vitest';
-import { mapSharedAlbum, mapSharedArtist, mapSharedPlaylist } from './share-view.lib';
+import {
+  mapSharedAlbum,
+  mapSharedArtist,
+  mapSharedPlaylist,
+  mapSharedSong,
+} from './share-view.lib';
 
 describe('mapSharedAlbum', () => {
   it('maps name, artist and the `song` array', () => {
@@ -110,5 +116,34 @@ describe('mapSharedPlaylist', () => {
     expect(view.tracks).toEqual([]);
     expect(view.cover).toBeNull();
     expect(view.subtitle).toBe('0 tracks');
+  });
+});
+
+// #2004: a shared song is one playable track under its own name.
+describe('mapSharedSong', () => {
+  const song = {
+    id: 's1',
+    title: 'Opening Static',
+    artist: 'E2E Test Artist',
+    album: 'E2E Test Album',
+    albumId: 'al1',
+    coverArt: 'cov1',
+    coverRev: 4,
+    duration: 30,
+  };
+
+  it('names the song, credits artist and album, and lists the song to play', () => {
+    const view = mapSharedSong(song);
+    expect(view.name).toBe('Opening Static');
+    expect(view.subtitle).toBe('E2E Test Artist · E2E Test Album');
+    expect(view.ogType).toBe('music.song');
+    expect(view.tracks).toEqual([
+      expect.objectContaining({ id: 's1', title: 'Opening Static', duration: 30 }),
+    ]);
+    expect(view.cover).toEqual(songCover(song));
+  });
+
+  it('credits the artist alone for a song with no album name', () => {
+    expect(mapSharedSong({ ...song, album: '' }).subtitle).toBe('E2E Test Artist');
   });
 });

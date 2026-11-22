@@ -22,6 +22,7 @@ import {
 } from '../lib/track-utils';
 import { SearchService } from './search.service';
 import { ToastService } from './toast.service';
+import { ShareLinkService } from './share-link.service';
 import { TranslateService } from './translate.service';
 import { COMPLETE_OUTCOME_KIND } from '../lib/album-complete-outcome';
 import type { NotOwnedRelatedArtist } from './api/api-types';
@@ -83,6 +84,7 @@ export class SongMenuService {
   private readonly api = inject(LibraryApiService);
   private readonly acquireSearch = inject(SearchService);
   private readonly toast = inject(ToastService);
+  private readonly shareLink = inject(ShareLinkService);
   private readonly i18n = inject(TranslateService);
   private readonly transfers = inject(TransferService);
   private readonly trackInfo = inject(TrackInfoService);
@@ -200,6 +202,16 @@ export class SongMenuService {
       group: 'info',
       action: () => this.trackInfo.open(infoTarget),
     });
+    // A link to the song's own page (#2004). Making one needs the server.
+    if (!this.offline()) {
+      actions.push({
+        label: 'Share',
+        labelKey: 'song.share',
+        icon: 'share',
+        group: 'info',
+        action: () => void this.shareLink.share('song', song.id, song.title),
+      });
+    }
 
     // A personal veto on the feeds (docs/radio.md "Per-user exclusions"): the
     // song stays in the library, it just stops being *proposed* to this listener.

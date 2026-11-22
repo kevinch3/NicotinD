@@ -979,6 +979,19 @@ For the same reason `artist-detail.component.spec.ts` asserts the merged grid at
 model level and leaves the tile's DOM to `album-tile.component.spec.ts`, where the
 tile is the root component.
 
+## A song has a page (#2004)
+
+`library/songs/:id` → `SongDetailComponent`, lazy like the album and artist pages. It exists so a
+song can be linked to and shared; what it shows and how Share reaches it is in
+[song-actions.md](song-actions.md#share-and-the-song-page-2004). The TV route tree has no song
+page: its `library/songs/:id` is a guard (`songToAlbumGuard`) that redirects to the song's album.
+Song titles elsewhere in the app do not link to the page yet.
+
+Only a 404 reads "not in the library" (`albumLoadFailureFor`, the album page's rule); a server error
+or a timeout shows a retry instead, because the song may well exist. Offline, the page hands over to
+the saved songs with `replaceUrl`, so Back does not land on it and bounce forward again. A failure
+that arrives after the user left the page, or for a song they have moved on from, does nothing.
+
 ## Genre chips are the editor (issue #684)
 
 The track-info sheet has always _rendered_ a song's full genre set as chips, primary

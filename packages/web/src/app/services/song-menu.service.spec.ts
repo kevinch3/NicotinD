@@ -9,6 +9,7 @@ import type {
   RelatedArtistsResponse,
 } from './api/api-types';
 import { ToastService } from './toast.service';
+import { ShareLinkService } from './share-link.service';
 import { TranslateService } from './translate.service';
 import {
   SongMenuService,
@@ -99,6 +100,7 @@ function setup(role: Role = 'user', excluded = false, acquisitionOn = true, iden
         },
       },
       { provide: ToastService, useValue: { show: vi.fn() } },
+      { provide: ShareLinkService, useValue: { share: vi.fn(async () => {}) } },
       {
         provide: TranslateService,
         useValue: {
@@ -142,10 +144,23 @@ describe('SongMenuService.build', () => {
       'Add to playlist',
       'Save offline',
       'Song info',
+      'Share',
       "Don't recommend this",
       'Report this track',
       'Get more',
     ]);
+  });
+
+  // #2004: a link to the song's own page.
+  it('Share makes a link to the song, and is hidden offline', () => {
+    const { svc } = setup();
+    svc
+      .build(song({ id: 's7', title: 'Seven' }), {})
+      .find((a) => a.label === 'Share')!
+      .action();
+    expect(TestBed.inject(ShareLinkService).share).toHaveBeenCalledWith('song', 's7', 'Seven');
+    TestBed.inject(OfflineModeService).serverUnreachable.set(true);
+    expect(labels(song(), svc)).not.toContain('Share');
   });
 
   // #2013: acquirers get a path from a song to more by its artist.
@@ -400,6 +415,7 @@ describe('SongMenuService.build', () => {
       'goto',
       'keep',
       'keep',
+      'info',
       'info',
       'feedback',
       'feedback',

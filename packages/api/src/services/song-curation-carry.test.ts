@@ -215,6 +215,26 @@ describe('the registry, and the tables it newly covers', () => {
     expect(r.dropped['library_lyrics']).toBe(1);
   });
 
+  it('carries a song share link, and only a song one (#2004)', () => {
+    db.run(`INSERT INTO users (id, username, password_hash, role) VALUES ('u', 'u', 'x', 'admin')`);
+    db.run(
+      `INSERT INTO share_tokens (token, resource_type, resource_id, created_by, created_at)
+       VALUES ('t-song', 'song', 'old', 'u', 1), ('t-album', 'album', 'old', 'u', 1)`,
+    );
+    const r = carrySongCuration(db, { fromId: 'old', toId: 'new' });
+    expect(
+      db
+        .query<{ token: string; resource_id: string }, []>(
+          'SELECT token, resource_id FROM share_tokens ORDER BY token',
+        )
+        .all(),
+    ).toEqual([
+      { token: 't-album', resource_id: 'old' },
+      { token: 't-song', resource_id: 'new' },
+    ]);
+    expect(r.moved['share_tokens']).toBe(1);
+  });
+
   it('carries an exclude decision', () => {
     db.run(
       `INSERT INTO recommendation_feedback (user_id, song_id, kind, at) VALUES ('u', 'old', 'exclude', 1)`,

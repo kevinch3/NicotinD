@@ -2,7 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
-export type ShareResourceType = 'playlist' | 'album' | 'artist';
+export type ShareResourceType = 'playlist' | 'album' | 'artist' | 'song';
 
 export interface ShareActivation {
   jwt: string;

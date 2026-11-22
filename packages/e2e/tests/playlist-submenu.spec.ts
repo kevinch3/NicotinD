@@ -29,6 +29,8 @@ test.describe('Add to playlist submenu', () => {
     await rows.nth(0).getByTestId('track-row-menu-toggle').click();
     const parent = rows.nth(0).getByTestId('track-action-Add to playlist');
     await expect(parent).toHaveAttribute('aria-haspopup', 'menu');
+    const menuHeightBefore = (await rows.nth(0).getByTestId('track-row-menu').boundingBox())!
+      .height;
     await parent.click();
     const flyout = page.getByTestId('menu-flyout');
     await expect(flyout).toBeVisible();
@@ -43,7 +45,7 @@ test.describe('Add to playlist submenu', () => {
     const parentBox = (await parent.boundingBox())!;
     expect(Math.abs(flyBox.y - parentBox.y)).toBeLessThan(12);
     // And it did not stretch the menu it hangs beside.
-    expect(menuBox.height).toBeLessThan(520);
+    expect(Math.abs(menuBox.height - menuHeightBefore)).toBeLessThan(2);
 
     await flyout.getByTestId('track-action-New playlist').fill(NAME);
     await flyout.getByTestId('track-action-New playlist').press('Enter');

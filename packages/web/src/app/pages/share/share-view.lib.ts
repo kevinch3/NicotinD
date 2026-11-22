@@ -34,7 +34,7 @@ export interface ShareResourceView {
   coverImage?: string;
   tracks: ShareTrack[];
   ogDescription: string;
-  ogType: 'music.album' | 'music.playlist' | 'profile';
+  ogType: 'music.album' | 'music.playlist' | 'music.song' | 'profile';
   /** Artist bio excerpt, shown above the track list on an artist share. */
   bio?: string;
 }
@@ -50,6 +50,18 @@ function toTracks(raw: any[]): ShareTrack[] {
     albumId: s.albumId,
     track: s.track,
   }));
+}
+
+/** A shared song (#2004): the song is the whole track list, so the guest can play it. */
+export function mapSharedSong(song: any): ShareResourceView {
+  return {
+    name: song.title,
+    subtitle: song.album ? `${song.artist} · ${song.album}` : song.artist,
+    cover: songCover(song),
+    tracks: toTracks([song]),
+    ogDescription: song.artist,
+    ogType: 'music.song',
+  };
 }
 
 export function mapSharedAlbum(album: any): ShareResourceView {

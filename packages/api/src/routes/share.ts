@@ -3,9 +3,9 @@ import { randomBytes } from 'node:crypto';
 import * as jose from 'jose';
 import type { MiddlewareHandler } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
-import { getDatabase } from '../db.js';
+import { getDatabase, SHARE_RESOURCE_TYPES } from '../db.js';
 
-export type ShareResourceType = 'playlist' | 'album' | 'artist';
+export type ShareResourceType = (typeof SHARE_RESOURCE_TYPES)[number];
 
 interface ShareTokenRow {
   token: string;
@@ -17,7 +17,7 @@ interface ShareTokenRow {
   expires_at: number | null;
 }
 
-const SHAREABLE_TYPES: ReadonlySet<string> = new Set(['playlist', 'album', 'artist']);
+const SHAREABLE_TYPES: ReadonlySet<string> = new Set(SHARE_RESOURCE_TYPES);
 
 export async function mintShareJwt(
   creatorId: string,
@@ -44,7 +44,7 @@ export function shareRoutes(jwtSecret: string, auth: MiddlewareHandler) {
       return c.json({ error: 'resourceType and resourceId are required' }, 400);
     }
     if (!SHAREABLE_TYPES.has(body.resourceType)) {
-      return c.json({ error: 'resourceType must be playlist, album or artist' }, 400);
+      return c.json({ error: 'resourceType must be playlist, album, artist or song' }, 400);
     }
 
     const user = c.get('user');
