@@ -41,9 +41,15 @@ export class ShareLinkService {
       return;
     }
     if (sheet) {
-      // Dismissing the sheet rejects; that is the user's answer, not an error.
-      await sheet({ title, url }).catch(() => {});
-      return;
+      try {
+        await sheet({ title, url });
+        return;
+      } catch (err) {
+        // Dismissing the sheet rejects with AbortError: the user's answer, not
+        // an error. Anything else (the activation lapsed during the POST, a
+        // share target refused) falls through to the clipboard.
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+      }
     }
     try {
       await navigator.clipboard.writeText(url);

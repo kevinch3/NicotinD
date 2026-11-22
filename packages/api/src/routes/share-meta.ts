@@ -111,12 +111,13 @@ export function buildShareMetaTags(input: ShareMetaTagInput): string {
  * `</head>` is touched.
  */
 export function injectShareMeta(html: string, tagsHtml: string, title: string): string {
-  const titled = html.replace(
-    /<title>[^<]*<\/title>/,
-    `<title>${escapeHtmlAttr(title)} — NicotinD</title>`,
-  );
+  // Function replacers, not strings: a replacement string expands `$&`, `$'`
+  // and friends, and these values are tags from peers' files ("$'" in a title
+  // would splice the rest of the page into the <title>).
+  const titleTag = `<title>${escapeHtmlAttr(title)} — NicotinD</title>`;
+  const titled = html.replace(/<title>[^<]*<\/title>/, () => titleTag);
   const block = `    ${tagsHtml}\n  </head>`;
-  return titled.includes('</head>') ? titled.replace('</head>', block) : titled;
+  return titled.includes('</head>') ? titled.replace('</head>', () => block) : titled;
 }
 
 /**

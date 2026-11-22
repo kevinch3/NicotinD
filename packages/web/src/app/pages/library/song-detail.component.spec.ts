@@ -113,8 +113,35 @@ describe('SongDetailComponent', () => {
     const env = setup(() => throwError(() => ({ status: 0 })));
     env.offline.set(true);
     await env.settle();
-    expect(env.router.navigate).toHaveBeenCalledWith(['/library'], { queryParams: { find: '' } });
+    // Replacing the entry: pushing it would make Back land here and bounce forward again.
+    expect(env.router.navigate).toHaveBeenCalledWith(['/library'], {
+      queryParams: { find: '' },
+      replaceUrl: true,
+    });
     expect(env.c.state()).toBe('loading');
+  });
+
+  it('a server error is not a missing song: it offers a retry that reloads', async () => {
+    let fail = true;
+    const { el, settle } = setup(() => (fail ? throwError(() => ({ status: 502 })) : of(SONG)));
+    await settle();
+    expect(q(el, 'song-page-not-found')).toBeNull();
+    expect(q(el, 'song-page-unavailable')!.textContent).toContain('songPage.unavailable');
+    fail = false;
+    q(el, 'song-page-retry')!.click();
+    await settle();
+    expect(q(el, 'song-page-title')!.textContent).toContain('Opening Static');
+  });
+
+  it('a late failure for a page already left neither redirects nor overwrites', async () => {
+    const pending = new Subject<Song>();
+    const env = setup(() => pending);
+    env.fixture.detectChanges();
+    env.offline.set(true);
+    env.fixture.destroy();
+    pending.error({ status: 0 });
+    await Promise.resolve();
+    expect(env.router.navigate).not.toHaveBeenCalled();
   });
 
   it('Play plays the song alone, and Start radio seeds a radio from it', async () => {
@@ -149,6 +176,19 @@ describe('SongDetailComponent', () => {
     first.next(SONG);
     first.complete();
     await settle();
+    expect(c.song()!.title).toBe('Second Wind');
+  });
+
+  it('drops a late failure for the old song too', async () => {
+    const first = new Subject<Song>();
+    const { c, params, settle } = setup((id) =>
+      id === 's1' ? first : of({ ...SONG, id: 's2', title: 'Second Wind' }),
+    );
+    params.next(convertToParamMap({ id: 's2' }));
+    await settle();
+    first.error({ status: 404 });
+    await settle();
+    expect(c.state()).toBe('ready');
     expect(c.song()!.title).toBe('Second Wind');
   });
 });

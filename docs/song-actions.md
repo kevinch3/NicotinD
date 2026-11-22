@@ -246,6 +246,8 @@ everywhere else it copies the link and says so. It is hidden offline.
   path to the same clipboard (`nativeShare` checks for a coarse pointer).
 - The Android app's WebView has no Web Share API, so it copies too. A real share sheet there needs
   a native plugin, which this did not add.
+- Dismissing the share sheet (an `AbortError`) ends there. Any other refusal, such as the tap's user
+  activation lapsing while the link was being made, falls back to the clipboard.
 - If the clipboard refuses, the toast shows the link itself.
 
 The link opens `/share/:token`. A crawler gets a `music.song` card (title, "Song • artist •

@@ -8,6 +8,7 @@ import { EntityLinkComponent } from '../../components/entity-link/entity-link.co
 import { IconComponent } from '../../components/icon/icon.component';
 import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
+import { albumLoadFailureFor } from '../../lib/album-load-state';
 import { songCover } from '../../lib/cover-url';
 import { offlineFind } from '../../lib/route-utils';
 import { formatTime } from '../../lib/format-time';
@@ -22,7 +23,8 @@ import { OfflineModeService } from '../../services/offline-mode.service';
 import { PlayerService } from '../../services/player.service';
 import { SongMenuService } from '../../services/song-menu.service';
 
-type PageState = 'loading' | 'ready' | 'not-found';
+/** `not-found` is a 404 only; any other failure is `unavailable`, with a retry. */
+type PageState = 'loading' | 'ready' | 'not-found' | 'unavailable';
 
 /**
  * A song's own page (#2004), so a song can be linked to and shared. It shows
@@ -65,26 +67,47 @@ export class SongDetailComponent {
     return seconds ? formatTime(seconds) : null;
   });
 
+  private destroyed = false;
+
   constructor() {
+    const destroyRef = inject(DestroyRef);
+    destroyRef.onDestroy(() => (this.destroyed = true));
     this.route.paramMap
-      .pipe(takeUntilDestroyed(inject(DestroyRef)))
+      .pipe(takeUntilDestroyed(destroyRef))
       .subscribe((params) => void this.load(params.get('id') ?? ''));
+  }
+
+  retry(): void {
+    void this.load(this.route.snapshot.paramMap.get('id') ?? '');
   }
 
   private async load(id: string): Promise<void> {
     this.state.set('loading');
     this.song.set(null);
+    let song: Song;
     try {
-      const song = await firstValueFrom(this.api.getSong(id));
-      // A slower answer for a song the user already left.
-      if (this.route.snapshot.paramMap.get('id') !== id) return;
-      this.song.set(song);
-      this.state.set('ready');
-    } catch {
-      // The page needs the server. Offline, the saved songs are what there is.
-      if (this.offline.isOffline()) return void this.router.navigate(...offlineFind(''));
-      this.state.set('not-found');
+      song = await firstValueFrom(this.api.getSong(id));
+    } catch (err) {
+      // A late failure for a song the user left, or a page already gone, must
+      // not redirect them or overwrite the page they are on.
+      if (this.isStale(id)) return;
+      if (this.offline.isOffline()) {
+        // The page needs the server; offline, the saved songs are what there
+        // is. Replace this entry, or Back would land here and bounce forward.
+        const [commands, extras] = offlineFind('');
+        void this.router.navigate(commands, { ...extras, replaceUrl: true });
+        return;
+      }
+      this.state.set(albumLoadFailureFor(err) === 'missing' ? 'not-found' : 'unavailable');
+      return;
     }
+    if (this.isStale(id)) return;
+    this.song.set(song);
+    this.state.set('ready');
+  }
+
+  private isStale(id: string): boolean {
+    return this.destroyed || this.route.snapshot.paramMap.get('id') !== id;
   }
 
   play(): void {

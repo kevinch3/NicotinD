@@ -1299,6 +1299,8 @@
   "songPage.play": "Play",
   "songPage.backToLibrary": "Back to the library",
   "songPage.more": "More actions",
+  "songPage.retry": "Try again",
+  "songPage.unavailable": "Couldn't load this song. The server may be unreachable.",
   "song.addToPlaylist": "Add to playlist",
   "song.likeAll": "Like all",
   "song.dontRecommendMany": "Don't recommend these",

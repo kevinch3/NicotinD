@@ -76,6 +76,12 @@ export const SONG_CARRY_TABLES: readonly SongCarryTable[] = [
     why: 'regenerable at ~5s each, which is hours across a whole-library pass',
   },
   {
+    table: 'share_tokens',
+    column: 'resource_id',
+    scope: `resource_type = 'song'`,
+    why: 'a song share link (#2004); left behind, a link sent before a transcode or a rename opens a song that no longer exists',
+  },
+  {
     table: 'curation_flags',
     column: 'target_id',
     scope: `target_kind = 'song'`,

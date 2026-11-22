@@ -1299,6 +1299,8 @@
   "songPage.play": "Reproducir",
   "songPage.backToLibrary": "Volver a la biblioteca",
   "songPage.more": "Más acciones",
+  "songPage.retry": "Reintentar",
+  "songPage.unavailable": "No se pudo cargar esta canción. Puede que el servidor no responda.",
   "song.addToPlaylist": "Añadir a una lista",
   "song.likeAll": "Me gustan todas",
   "song.dontRecommendMany": "No recomendar estas",

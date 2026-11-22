@@ -132,6 +132,17 @@ describe('injectShareMeta', () => {
     expect(out).toContain('<meta property="og:title" content="Z" />\n  </head>');
     expect(out.indexOf('og:title')).toBeLessThan(out.indexOf('</head>'));
   });
+
+  it("keeps a title's `$` sequences literal instead of expanding them", () => {
+    // Tags come from peers' files; as a replacement *string*, `$'` splices in
+    // everything after the match and `$&` the matched text.
+    const title = "Ca$h $' $& $$";
+    const tags = `<meta property="og:title" content="${title}" />`;
+    const out = injectShareMeta(INDEX_HTML, tags, title);
+    expect(out).toContain(`<title>${escapeHtmlAttr(title)} — NicotinD</title>`);
+    expect(out).toContain(`${tags}\n  </head>`);
+    expect(out.match(/<\/head>/g)).toHaveLength(1);
+  });
 });
 
 describe('publicOrigin', () => {

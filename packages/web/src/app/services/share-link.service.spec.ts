@@ -62,6 +62,17 @@ describe('ShareLinkService', () => {
     expect(show).not.toHaveBeenCalled();
   });
 
+  it('copies the link instead when the share sheet fails for another reason', async () => {
+    const { svc, http, show } = setup();
+    const done = svc.share('song', 's1', 'T', async () => {
+      throw new DOMException('no user activation', 'NotAllowedError');
+    });
+    http.expectOne('/api/share').flush({ url: 'https://host/share/abc' });
+    await done;
+    expect(writeText).toHaveBeenCalledWith('https://host/share/abc');
+    expect(show).toHaveBeenCalledWith({ kind: 'success', message: 'share.copied' });
+  });
+
   it('shows the link itself when the clipboard refuses', async () => {
     const { svc, http, show } = setup();
     writeText.mockRejectedValue(new Error('denied'));

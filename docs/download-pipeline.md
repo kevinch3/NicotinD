@@ -462,15 +462,19 @@ alone.
 #### Which tables, and who decides
 
 `SONG_CARRY_TABLES` and `SONG_CARRY_EXEMPT` are the two lists. A polymorphic `(target_kind, target_id)`
-pair counts as a song column too, and its entry must carry a `scope` selecting the song rows, or the
-carry would also move an artist or album row sharing the id (#1475).
+or `(resource_type, resource_id)` pair counts as a song column too, and its entry must carry a `scope`
+selecting the song rows, or the carry would also move an artist or album row sharing the id (#1475).
+The second pair is `share_tokens` (#2004): a song share link carries its song id, and an unopened link
+never expires, so a link sent before a transcode or a rename would otherwise open a song that no
+longer exists.
 **`check:song-carry-coverage` reads the denominator from the live schema** — `applySchema` into an
 in-memory database, then `pragma_table_info` over every table — so a table added later is in scope
 whether or not anyone remembered the registry. Both directions fail: an unclassified column, and a
 registered entry the schema no longer has.
 
 Carried, because nothing else restores them: `playlist_songs`, `library_lyrics` (synced LRC offsets
-exist only here), `recommendation_feedback`, `curation_flags`, `curation_flag_reports`, plus
+exist only here), `recommendation_feedback`, `curation_flags`, `curation_flag_reports`, song
+`share_tokens`, plus
 `library_embeddings` and
 `library_song_descriptors` — regenerable, but the first is ~46% of the database and the second is
 hours of recompute across a whole-library pass.
