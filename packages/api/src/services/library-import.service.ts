@@ -144,6 +144,7 @@ function importSourceErrorMessage(code: ImportSourceErrorCode): string {
 // lives in `disk-space.ts` now, with the other two copies.
 export type { StatfsFn } from './disk-space.js';
 import { freeBytes, type StatfsFn } from './disk-space.js';
+import { carryReplacedSongs, snapshotBatchReplacements } from './song-replace-carry.js';
 
 export interface LibraryImportServiceOptions {
   db: Database;
@@ -735,8 +736,11 @@ export class LibraryImportService {
       if (album) acc.destAlbums.set(album.albumId, album);
     }
     if (relPaths.length > 0) {
+      // Read before the scan prunes their rows: library songs an imported copy replaced.
+      const replaced = snapshotBatchReplacements(this.db, result.supersededRelPaths, relPaths);
       updateImportJob(this.db, id, { stage: 'scanning' });
       await this.options.scanIncremental(relPaths);
+      carryReplacedSongs(this.db, replaced);
     }
 
     // Disk-truth deletion (move mode): a staged copy that no longer exists was

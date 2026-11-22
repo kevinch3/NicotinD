@@ -26,11 +26,7 @@ import {
 } from '../acquisition-job-store.js';
 import { materializeAddonPlaylist } from '../addon-playlist.js';
 import { PlaylistService } from '../playlist.service.js';
-import {
-  carryReplacedSongs,
-  replacedLibraryFiles,
-  snapshotReplacedSongs,
-} from '../song-replace-carry.js';
+import { carryReplacedSongs, snapshotBatchReplacements } from '../song-replace-carry.js';
 
 const log = createLogger('addon-job-poller');
 
@@ -930,8 +926,11 @@ export class AddonJobPoller {
     // Before the loop below re-points a collapsed item at its survivor: the
     // paths this batch placed tell a library file an incoming one replaced from
     // an incoming file that lost. Read now, before the scan prunes their rows.
-    const incoming = new Set(batch.flatMap((f) => (f.relativePath ? [f.relativePath] : [])));
-    const replaced = snapshotReplacedSongs(db, replacedLibraryFiles(superseded, incoming));
+    const replaced = snapshotBatchReplacements(
+      db,
+      superseded,
+      batch.flatMap((f) => (f.relativePath ? [f.relativePath] : [])),
+    );
 
     const acquiredAt = Date.now();
     const relPaths: string[] = [];

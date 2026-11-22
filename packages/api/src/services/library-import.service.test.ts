@@ -19,7 +19,7 @@ import { basename, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { applySchema } from '../db.js';
 import type { CompletedDownloadFile } from './path-inference.js';
-import { albumIdFor } from './library-scanner.js';
+import { albumIdFor, songId } from './library-scanner.js';
 import type { OrganizeResult } from './library-organizer.js';
 import {
   ImportAlreadyRunningError,
@@ -600,5 +600,64 @@ describe('submitStaged — the browser-upload entry point', () => {
   it('refuses a path outside the upload staging root', () => {
     const { service } = makeService();
     expect(() => service.submitStaged(sourceDir, {})).toThrow(ImportSourceInvalidError);
+  });
+});
+
+describe('a library song an imported copy replaced (#2061)', () => {
+  it('keeps its playlist entries and plays on the copy that replaced it', async () => {
+    const HELD = 'Artist/Album/01 - one.mp3';
+    const IMPORTED = 'Artist/Album/01 one.mp3';
+    db.run(`INSERT INTO users (id, username, password_hash, role) VALUES ('u', 'u', 'x', 'admin')`);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, starred, synced_at)
+       VALUES (?, 'alb', 'one', 'Artist', 'art', 60, ?, '2026-01-01', 1)`,
+      [songId(HELD), HELD],
+    );
+    db.run(`INSERT INTO playlists (id, name, user_id, kind, created_at, modified_at)
+            VALUES ('pl', 'Mine', 'u', 'user', 1, 1)`);
+    db.run(
+      `INSERT INTO playlist_songs (playlist_id, song_id, position, added_at) VALUES ('pl', ?, 0, 1)`,
+      [songId(HELD)],
+    );
+    db.run(
+      `INSERT INTO play_events (client_event_id, user_id, song_id, title, at, ms_played, reason, counted)
+       VALUES ('e1', 'u', ?, 'one', 1, 60000, 'ended', 1)`,
+      [songId(HELD)],
+    );
+    seed('Artist/Album/01 one.mp3');
+    const fake = fakeOrganize();
+    const { service } = makeService({
+      // The reconcile kept the imported copy and deleted the library's.
+      organize: async (files) => ({
+        ...(await fake.organize(files)),
+        supersededRelPaths: { [HELD]: IMPORTED },
+      }),
+      // The album reconcile: index the new file, prune the row whose file is gone.
+      scan: async (relPaths) => {
+        for (const rel of relPaths) {
+          db.run(
+            `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, synced_at)
+             VALUES (?, 'alb', 'one', 'Artist', 'art', 60, ?, 2)`,
+            [songId(rel), rel],
+          );
+        }
+        db.run('DELETE FROM library_songs WHERE id = ?', [songId(HELD)]);
+      },
+    });
+    const job = await waitForTerminal(service, service.submit(sourceDir));
+    expect(job.state).toBe('done');
+
+    const ids = (sql: string) =>
+      db
+        .query<{ song_id: string }, []>(sql)
+        .all()
+        .map((r) => r.song_id);
+    expect(ids('SELECT song_id FROM playlist_songs')).toEqual([songId(IMPORTED)]);
+    expect(ids('SELECT song_id FROM play_events')).toEqual([songId(IMPORTED)]);
+    expect(
+      db
+        .query<{ starred: string }, [string]>('SELECT starred FROM library_songs WHERE id = ?')
+        .get(songId(IMPORTED)),
+    ).toEqual({ starred: '2026-01-01' });
   });
 });

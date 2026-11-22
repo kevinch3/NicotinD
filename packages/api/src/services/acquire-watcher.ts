@@ -13,6 +13,7 @@ import { PlaylistService } from './playlist.service.js';
 import { resolveAcquireJobTracks, type AcquireJobTrackRow } from './acquire-playlist.js';
 import { probeAudioFile } from './transcode.js';
 import { mapPool } from './library-scanner.js';
+import { carryReplacedSongs, snapshotBatchReplacements } from './song-replace-carry.js';
 
 /** Map an acquisition plugin id to an AcquisitionMethod; unknown ids → 'unknown'. */
 function methodForBackend(backend: string): AcquisitionMethod {
@@ -42,7 +43,9 @@ export interface AcquireWatcherOptions {
   /** Resolves which enabled plugin handles a URL + drives its resolve capability. */
   registry: PluginRegistry;
   /** organizeBatch mutates file.relativePath in-place to the post-move path. */
-  organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown>;
+  organizeBatch: (
+    files: CompletedDownloadFile[],
+  ) => Promise<{ supersededRelPaths?: Record<string, string> } | void>;
   scanIncremental: (relPaths: string[]) => Promise<void>;
   /**
    * Optional best-effort enrichment of loose singles/EPs (Lidarr/MusicBrainz
@@ -294,8 +297,14 @@ export class AcquireWatcher {
     }));
     try {
       this.setStage(id, 'organizing');
-      await this.options.organizeBatch(files);
+      const organized = await this.options.organizeBatch(files);
       const relPaths = files.map((f) => f.relativePath).filter((p): p is string => Boolean(p));
+      // Read before the scan prunes their rows: library songs a fetched copy replaced.
+      const replaced = snapshotBatchReplacements(
+        this.db,
+        organized ? organized.supersededRelPaths : undefined,
+        relPaths,
+      );
       // Record acquisition provenance + the landing dir, keyed on the final path.
       const acquiredAt = Date.now();
       const method = methodForBackend(pluginId);
@@ -322,6 +331,7 @@ export class AcquireWatcher {
         this.setDestAlbums(id, destAlbums);
         this.setStage(id, 'scanning');
         await this.options.scanIncremental(relPaths);
+        carryReplacedSongs(this.db, replaced);
         if (this.options.enrichSingles) await this.options.enrichSingles(relPaths);
       }
       // The card's bitrate chip (docs/download-pipeline.md → "Bitrate on

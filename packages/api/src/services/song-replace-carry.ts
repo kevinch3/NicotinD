@@ -66,6 +66,21 @@ export function snapshotReplacedSongs(
 }
 
 /**
+ * Every lane that runs the shared `organizeBatch` calls this before its scan,
+ * with the batch's `supersededRelPaths` and the paths the batch placed, and
+ * `carryReplacedSongs` after it. Three lanes do (the addon poller, the import
+ * service, the URL watcher); a fourth that skipped it would lose a replaced
+ * song's history again (#2061).
+ */
+export function snapshotBatchReplacements(
+  db: Database,
+  superseded: Readonly<Record<string, string>> | undefined,
+  placed: Iterable<string>,
+): ReplacedSong[] {
+  return snapshotReplacedSongs(db, replacedLibraryFiles(superseded ?? {}, new Set(placed)));
+}
+
+/**
  * Carry a replaced song's state onto the copy that took its place (#2032).
  *
  * Song ids are `sha1(path)`, so a better copy that wins the folder reconcile
