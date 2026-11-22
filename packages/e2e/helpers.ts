@@ -3,7 +3,12 @@ import { expect, test as base } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { E2E_MUSIC_DIR } from './fixture-music';
-import { RENDERER_PROBE_TIMEOUT_MS, livenessReport, probeRenderer } from './renderer-liveness';
+import {
+  RENDERER_PROBE_TIMEOUT_MS,
+  livenessReport,
+  probeRenderer,
+  wedgeAnnotation,
+} from './renderer-liveness';
 
 export { expect };
 export type { APIRequestContext, BrowserContext, Locator, Page } from '@playwright/test';
@@ -58,14 +63,16 @@ export const test = base.extend<{ freshPlaybackSession: void }>({
     await use(page);
     if (testInfo.status === testInfo.expectedStatus) return;
     const verdict = await probeRenderer(page);
+    const url = page.isClosed() ? '(closed)' : page.url();
     await testInfo.attach('renderer-liveness', {
-      body: livenessReport(
-        verdict,
-        page.isClosed() ? '(closed)' : page.url(),
-        RENDERER_PROBE_TIMEOUT_MS,
-      ),
+      body: livenessReport(verdict, url, RENDERER_PROBE_TIMEOUT_MS),
       contentType: 'text/plain',
     });
+    // Seen even when the retry passes and no report is uploaded. GitHub reads a
+    // workflow command only at the start of a line, hence the leading newline.
+    const annotation =
+      verdict === 'wedged' ? wedgeAnnotation(testInfo.titlePath.join(' › '), url) : null;
+    if (annotation) console.log(`\n${annotation}`);
   },
 });
 
