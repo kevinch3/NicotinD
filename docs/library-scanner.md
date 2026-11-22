@@ -283,6 +283,16 @@ binding of two recordings (#1034), a title collision (#1089). It is written to
 `library_sync_state` and surfaced as the health report's `disk` dimension, because a disk rule
 that only `audit-library.ts` reports is a dimension no curation pass ever works (#955).
 
+The same dimension carries two measurements for open decisions. `sameTrackDuplicates`
+(`recordSameTrackDuplicates`, every full scan): how many walked files a same-track keeper serves,
+and how many **indexed** songs the scan pruned because a keeper newly took their place. Such a prune
+keeps only the playlist and genre re-match, so the second count is how often a song's history is
+dropped on this path (#2061). `replacementDurations` (cumulative, written by `carryReplacedSongs`):
+each replacement the folder reconcile made, bucketed by how far the new copy's duration is from the
+old one's, within 2 s, within 10 s, or beyond. The reconcile matches on disc and title, so the
+beyond-10 s bucket estimates how often a different recording, such as a live take, replaced a song
+(#2059). Both are read over MCP (`get_library_health`, `disk`) before either path changes.
+
 **This clears the symptom and measures it; it does not claim the cause.** The unreadable-directory
 path is a proven mechanism for the shape, not proof it produced these particular 496 rows — #968
 stays open for that.

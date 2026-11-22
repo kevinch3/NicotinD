@@ -1151,12 +1151,17 @@ export class LibraryScanner {
         'walk incomplete — skipping the prune so unreached files are not deleted (#968)',
       );
     }
+    // Counted before the prune removes them: indexed songs this scan drops
+    // because a same-track keeper now serves their file (#2061).
+    const notSelectedRows =
+      incomplete.length === 0 ? this.countIndexedSameTrackDuplicates(built) : 0;
     const result = this.persist(built, startedAt, incomplete.length === 0);
     await this.restampArt(built.albums.map((a) => a.id));
     const recovered = this.recoverPresentOrphanedCacheRows(files);
     if (recovered > 0)
       log.info({ recovered }, 'cleared orphaned_at on scan-cache rows still on disk');
     this.recordUnindexedFiles(files, built);
+    this.recordSameTrackDuplicates(built, notSelectedRows);
     log.info({ ...result, walkIncomplete: incomplete.length > 0 }, 'Full scan complete');
     optimizeDatabase(this.db);
     return result;
@@ -1304,6 +1309,31 @@ export class LibraryScanner {
         'files on disk with no library row and no same-track keeper',
       );
     return unindexed.length;
+  }
+
+  /** Songs with a row now whose file the selector just ruled a same-track duplicate. */
+  private countIndexedSameTrackDuplicates(built: BuiltLibrary): number {
+    const has = this.db.query('SELECT 1 FROM library_songs WHERE id = ?');
+    return built.sameTrackDuplicates.filter((d) => has.get(songId(d.relPath))).length;
+  }
+
+  /**
+   * Record, for the health report's `disk` dimension, how many walked files the
+   * selector served through a same-track keeper and how many indexed songs this
+   * scan pruned for that reason (#2061). Such a prune carries nothing but the
+   * playlist and genre re-match, so the second number is how often a song's
+   * history is dropped this way, which decides whether that path earns a carry.
+   */
+  private recordSameTrackDuplicates(built: BuiltLibrary, notSelectedRowsPruned: number): void {
+    this.db.run(
+      `INSERT INTO library_sync_state (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      [
+        'scan_same_track_duplicates',
+        JSON.stringify({ files: built.sameTrackDuplicates.length, notSelectedRowsPruned }),
+        Date.now(),
+      ],
+    );
   }
 
   /**
