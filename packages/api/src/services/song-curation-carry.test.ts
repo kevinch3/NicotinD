@@ -225,17 +225,27 @@ describe('the registry, and the tables it newly covers', () => {
     ).toEqual([{ song_id: 'new' }]);
   });
 
-  it('leaves play_events alone — history is defended by snapshot, not by carry', () => {
+  it("carries play_events, keeping each event's own snapshot (#2032)", () => {
     db.run(
       `INSERT INTO play_events (client_event_id, user_id, song_id, title, artist, album, at, ms_played, reason, counted)
-       VALUES ('e1', 'u', 'old', 'T', 'A', 'Al', 1, 1000, 'played', 1)`,
+       VALUES ('e1', 'u', 'old', 'T', 'A', 'Al', 1, 1000, 'played', 1),
+              ('e2', 'u', 'old', 'T', 'A', 'Al', 2, 1000, 'played', 1)`,
     );
-    carrySongCuration(db, { fromId: 'old', toId: 'new' });
-    // Re-pointing it would be wrong: the event records what was played then,
-    // and title/artist/album are copied onto the row for exactly this reason.
-    expect(db.query<{ song_id: string }, []>('SELECT song_id FROM play_events').all()).toEqual([
-      { song_id: 'old' },
+    const r = carrySongCuration(db, { fromId: 'old', toId: 'new' });
+    // Popular and the skip exclusions count plays by song id; the snapshot
+    // columns are what was played then and stay as they were.
+    expect(
+      db
+        .query<{ song_id: string; title: string }, []>(
+          'SELECT song_id, title FROM play_events ORDER BY id',
+        )
+        .all(),
+    ).toEqual([
+      { song_id: 'new', title: 'T' },
+      { song_id: 'new', title: 'T' },
     ]);
+    expect(r.moved['play_events']).toBe(2);
+    expect(r.dropped['play_events']).toBeUndefined();
   });
 
   describe('song-level review flags (#1475)', () => {

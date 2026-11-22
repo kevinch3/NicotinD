@@ -226,9 +226,8 @@ export function stageRenames(renames: readonly PlannedRename[], musicDir: string
  * `carrySongCuration` exempts these because its other callers re-encode or
  * re-scan: the scan rebuilds artists and genres, and a new encode is a new file
  * for the failure ledger. A rename rescans nothing and the file is the same
- * bytes, so each of these would otherwise just be lost. `play_events` moves
- * too: its snapshot columns defend history *text*, but play counts and the
- * recently-played demotion join on `song_id`.
+ * bytes, so each of these would otherwise just be lost. (`play_events` used to
+ * be listed here; it is in `SONG_CARRY_TABLES` since #2032.)
  */
 export const RENAME_ALSO_MOVES: readonly SongCarryTable[] = [
   {
@@ -247,7 +246,6 @@ export const RENAME_ALSO_MOVES: readonly SongCarryTable[] = [
     column: 'song_id',
     why: 'the row is rewritten, not rebuilt from tags, so the pending writes still apply',
   },
-  { table: 'play_events', column: 'song_id', why: 'play counts and recency join on song_id' },
   {
     table: 'acquisition_job_items',
     column: 'song_id',

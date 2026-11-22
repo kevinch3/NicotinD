@@ -112,6 +112,7 @@ follow-up work, not part of the gate fix.
 | `GET`    | `/api/library/identify/available`        | Whether an identify (AcoustID) source is configured         |
 | `POST`   | `/api/library/songs/:id/identify`        | Fingerprint-identify a song via AcoustID (curator)          |
 | `POST`   | `/api/library/songs/:id/identify/apply`  | Write the approved identify tags + rescan (curator)         |
+| `POST`   | `/api/library/songs/:id/improve`         | Get a better copy: a track Get named after the song's `<Artist>/<Album>` folder (curator; 202 `started`, 200 `in-flight`, 422 for a loose single) |
 | `GET`    | `/api/library/songs/:id/lyrics`          | Plain + synced lyrics                                       |
 | `GET`    | `/api/library/events`                    | Server-sent library events (landed/deleted/changed/artwork/job), `Last-Event-ID` replay |
 | `POST`   | `/api/library/songs/:id/lyrics/fetch`    | Fetch lyrics from enabled plugins                           |

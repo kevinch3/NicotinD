@@ -119,6 +119,8 @@ import {
   libraryHealthWithLidarr,
 } from '../services/library-health.js';
 import { completeAlbum, type CompleteAlbumDeps } from '../services/album-complete.js';
+import { requestBetterCopy } from '../services/song-improve.js';
+import type { TrackGetAnswer, TrackGetRequest } from '../services/track-get.service.js';
 import { applyAlbumCover } from '../services/album-cover-mutate.js';
 import { coverRoutePath } from '../services/cover-rev.js';
 import {
@@ -475,6 +477,8 @@ export interface LibraryRoutesOptions {
   /** The MCP `complete_album` seams, for the album page's Complete action
    *  (issue #737). Absent → the action answers 503. */
   acquisition?: Omit<CompleteAlbumDeps, 'db' | 'lidarr'>;
+  /** The one-click track Get (#1885), for "get a better copy" of a song (#2032). */
+  requestTrackGet?: (req: TrackGetRequest) => TrackGetAnswer;
 }
 
 interface AlbumRow {
@@ -720,6 +724,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     writeTags,
     readTags,
     acquisition,
+    requestTrackGet,
   } = options;
   // A deleted file's slskd share entry doesn't go away on its own — see
   // ShareRescanScheduler. Debounced so an album/bulk delete triggers one
@@ -1267,6 +1272,33 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       'acquisition-disabled': 403,
       'lidarr-unconfigured': 503,
       unresolvable: 422,
+    } as const;
+    return c.json({ error: res.error, reason: res.reason }, status[res.reason]);
+  });
+
+  // "Get a better copy" (#2032): a track Get for the song's own artist, title
+  // and album; the folder reconcile keeps the better file and the poller
+  // carries the song's history onto it. The MCP `improve_song` tool's twin.
+  app.post('/songs/:id/improve', (c) => {
+    requireCurator(c);
+    if (!acquisition || !requestTrackGet) {
+      return c.json({ error: 'Acquisition not available' }, 503);
+    }
+    const res = requestBetterCopy(
+      {
+        db: getDatabase(),
+        isAcquisitionEnabled: acquisition.isAcquisitionEnabled,
+        requestTrackGet,
+      },
+      c.req.param('id'),
+      { actor: c.get('user') },
+    );
+    if (res.ok) return c.json(res, res.outcome === 'started' ? 202 : 200);
+    const status = {
+      'song-not-found': 404,
+      'not-in-album-folder': 422,
+      'acquisition-disabled': 403,
+      'source-unavailable': 503,
     } as const;
     return c.json({ error: res.error, reason: res.reason }, status[res.reason]);
   });
