@@ -22,6 +22,7 @@ import {
   mapSharedAlbum,
   mapSharedArtist,
   mapSharedPlaylist,
+  mapSharedSong,
   type ShareTrack,
 } from './share-view.lib';
 import { OverflowRevealDirective } from '../../directives/overflow-reveal.directive';
@@ -33,6 +34,8 @@ export function inAppShareRoute(type: ShareResourceType, id: string): string {
       return `/library/albums/${id}`;
     case 'artist':
       return `/library/artists/${id}`;
+    case 'song':
+      return `/library/songs/${id}`;
     default:
       return `/library/playlists/${id}`;
   }
@@ -125,6 +128,11 @@ export class ShareViewComponent implements OnInit, OnDestroy {
           ),
         ]);
         view = mapSharedArtist(artistRes.artist ?? artistRes, songs ?? []);
+      } else if (resourceType === 'song') {
+        const song = await firstValueFrom(
+          this.http.get<any>(`/api/library/songs/${resourceId}`, { headers }),
+        );
+        view = mapSharedSong(song);
       } else {
         const pl = await firstValueFrom(
           this.http.get<any>(`/api/playlists/${resourceId}`, { headers }),

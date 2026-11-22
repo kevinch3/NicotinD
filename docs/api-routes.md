@@ -135,8 +135,8 @@ follow-up work, not part of the gate fix.
 | `GET`    | `/api/playlists/:id`                     | Get playlist (songs)                                        |
 | `POST`   | `/api/playlists/:id/songs`               | Add songs (idempotent)                                      |
 | `DELETE` | `/api/playlists/:id/songs/:songId`       | Remove a song                                               |
-| `GET`    | `/api/share/:token`                      | Read-only share view (album/playlist/artist)                |
-| `POST`   | `/api/share`                             | Mint a share token (short-lived, read-only)                 |
+| `GET`    | `/api/share/:token`                      | Read-only share view (album/playlist/artist/song)           |
+| `POST`   | `/api/share`                             | Mint a share token; `resourceType` is one of `SHARE_RESOURCE_TYPES` |
 | `GET`    | `/api/radio-polls/public/:token`         | Public radio-eval poll view (+ short-lived media JWT)       |
 | `POST`   | `/api/radio-polls/public/:token/votes`   | Anonymous poll votes (upsert per rater/candidate)           |
 | `POST`   | `/api/admin/radio-polls`                 | Create a poll — freezes scenarios (admin)                   |

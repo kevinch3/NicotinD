@@ -13,7 +13,7 @@ keeps its own bespoke row markup, and the **Now Playing sheet** its own `⋯`
 ## Common actions (always present when the data supports them)
 
 Order: Like/Unlike → Add to queue → Play next → Start radio → Go to artist* → Go to album* →
-Add to playlist → Save offline → Song info → Don't recommend this / Recommend again →
+Add to playlist → Save offline → Song info → Share → Don't recommend this / Recommend again →
 Report this track.
 (*artist/album links appear only when the song carries `artistId`/`albumId` and
 the context doesn't hide them. Since every rendered album and artist **name** is
@@ -66,6 +66,7 @@ closing differs per menu. `[tall]="true"` gives the 44px row.
 | Add to playlist | `list-music` |
 | Save offline / Remove download | `download` |
 | Song info | `info` |
+| Share | `share` |
 | Don't recommend this / Recommend again | `thumbs-down` / `thumbs-up` |
 | Report this track | `flag` |
 | Remove from library | `delete` |
@@ -85,7 +86,7 @@ next (`startsGroup` in `lib/menu-groups.ts`). The groups, in order (`MENU_GROUPS
 | `play` | Like, Add to queue, Play next, Start radio |
 | `goto` | Go to artist, Go to album |
 | `keep` | Add to playlist, Save offline |
-| `info` | Song info |
+| `info` | Song info, Share |
 | `feedback` | Don't recommend this, Report this track |
 | `role` | Get more ▸, Curate ▸ |
 | `remove` | Remove from playlist; inside Curate ▸, Remove from library |
@@ -234,6 +235,28 @@ and a lone selected one, keep their own menu.
 - The bar's own icon buttons stay as the fast path; they still call each page's handlers.
   "Remove from playlist" for a selection is only on the bar.
 - Shift-click range selection already existed (`createSelection().toggleRange`).
+
+## Share, and the song page (#2004)
+
+**Share** makes a link to the song (`ShareLinkService.share('song', id, title)` →
+`POST /api/share`). On a touch device with the Web Share API it opens the device's share sheet;
+everywhere else it copies the link and says so. It is hidden offline.
+
+- A desktop always copies, even where the browser has a share sheet: there the sheet is a slower
+  path to the same clipboard (`nativeShare` checks for a coarse pointer).
+- The Android app's WebView has no Web Share API, so it copies too. A real share sheet there needs
+  a native plugin, which this did not add.
+- Dismissing the share sheet (an `AbortError`) ends there. Any other refusal, such as the tap's user
+  activation lapsing while the link was being made, falls back to the clipboard.
+- If the clipboard refuses, the toast shows the link itself.
+
+The link opens `/share/:token`. A crawler gets a `music.song` card (title, "Song • artist •
+album", the album's cover); a guest gets the share view with the one song to play; someone logged
+in lands on **`/library/songs/:id`**, the song's own page (`SongDetailComponent`): cover, title,
+every credited artist and the album as links, year and duration, Play, Start radio and the song's
+menu. An unknown id says the song is not in the library. Offline the page cannot load, so it
+leaves for the saved songs. On TV there is no song page: `songToAlbumGuard` sends the link to the
+song's album.
 
 ## Entity menus: albums, artists, genres, playlists (#1298)
 

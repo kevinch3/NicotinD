@@ -81,6 +81,12 @@ export const SONG_CARRY_TABLES: readonly SongCarryTable[] = [
     why: "listening history. The title/artist/album snapshot keeps Stats readable, but the artist page's Popular block and the skip-based exclusions count plays by song id, so an uncarried re-mint drops the song from both (#2032)",
   },
   {
+    table: 'share_tokens',
+    column: 'resource_id',
+    scope: `resource_type = 'song'`,
+    why: 'a song share link (#2004); left behind, a link sent before a transcode or a rename opens a song that no longer exists',
+  },
+  {
     table: 'curation_flags',
     column: 'target_id',
     scope: `target_kind = 'song'`,

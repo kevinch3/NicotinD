@@ -44,7 +44,7 @@ describe('POST /api/share — generate', () => {
     const res = await app.request('/api/share', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ resourceType: 'song', resourceId: 'x1' }),
+      body: JSON.stringify({ resourceType: 'genre', resourceId: 'x1' }),
     });
     expect(res.status).toBe(400);
   });
@@ -60,6 +60,23 @@ describe('POST /api/share — generate', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { url: string };
     expect(body.url).toMatch(/\/share\/[A-Za-z0-9_-]{22}$/);
+  });
+
+  // #2004: a song is shareable, and activation hands its type and id back.
+  it('returns a share URL for a song, which activates as a song', async () => {
+    const app = buildApp();
+    const token = await signJwt({ sub: 'u1', username: 'alice', role: 'user' }, SECRET);
+    const res = await app.request('/api/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ resourceType: 'song', resourceId: 'song-1' }),
+    });
+    expect(res.status).toBe(200);
+    const { url } = (await res.json()) as { url: string };
+    const shareToken = url.split('/').pop()!;
+    const activated = await app.request(`/api/share/activate/${shareToken}`, { method: 'POST' });
+    expect(activated.status).toBe(200);
+    expect(await activated.json()).toMatchObject({ resourceType: 'song', resourceId: 'song-1' });
   });
 
   // Issue #229: artists are a shareable resource type.

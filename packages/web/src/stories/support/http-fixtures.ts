@@ -56,6 +56,12 @@ const ROUTES: Array<[RegExp, () => unknown]> = [
   // does `@for (r of provenance())` throws "not iterable" — which is exactly how
   // the track-info-sheet stories first failed. Returning the right *shape* per
   // route is the fixture's whole job.
+  // The song page's own song. Scoped to one id: the list route below answers
+  // every other `/songs/:id`, and the track-info stories were drawn against that.
+  [
+    /\/api\/library\/songs\/song-page-demo$/,
+    () => ({ ...demoSongs[0], id: 'song-page-demo', year: 2024 }),
+  ],
   [/\/api\/library\/songs\/[^/]+\/provenance$/, () => demoProvenance],
   [/\/api\/library\/songs\/[^/]+\/lyrics$/, () => demoLyrics],
   [/\/api\/library\/identify\/available$/, () => ({ available: true })],

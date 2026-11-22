@@ -9,6 +9,11 @@ describe('check:song-carry-coverage denominator', () => {
     expect(found).toContain('audit_log.target_id');
   });
 
+  it('sees a song share link through its (resource_type, resource_id) pair (#2004)', () => {
+    const found = schemaSongColumns().map((f) => `${f.table}.${f.column}`);
+    expect(found).toContain('share_tokens.resource_id');
+  });
+
   it('still sees the song-named columns', () => {
     const found = schemaSongColumns().map((f) => `${f.table}.${f.column}`);
     expect(found).toContain('playlist_songs.song_id');

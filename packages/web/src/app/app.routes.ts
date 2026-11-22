@@ -1,6 +1,8 @@
 import { lazy } from './lib/stale-chunk';
 import { inject } from '@angular/core';
-import { RedirectFunction, Router, Routes } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
+import { type CanActivateFn, RedirectFunction, Router, Routes } from '@angular/router';
+import { LibraryApiService } from './services/api/library-api.service';
 import { isTvBuild } from './lib/platform';
 import {
   authGuard,
@@ -32,6 +34,19 @@ function redirectToInstall(): RedirectFunction {
       queryParams: { install: queryParams['catalog'] ?? queryParams['id'] },
     });
 }
+
+/** Sends a song link to the song's album; home when the song is unknown. */
+export const songToAlbumGuard: CanActivateFn = async (route) => {
+  const router = inject(Router);
+  try {
+    const song = await firstValueFrom(
+      inject(LibraryApiService).getSong(route.paramMap.get('id') ?? ''),
+    );
+    return router.createUrlTree(['/library/albums', song.albumId]);
+  } catch {
+    return router.createUrlTree(['/']);
+  }
+};
 
 export const routes: Routes = [
   {
@@ -215,6 +230,12 @@ export const routes: Routes = [
         ),
       },
       {
+        path: 'library/songs/:id',
+        loadComponent: lazy(() =>
+          import('./pages/library/song-detail.component').then((m) => m.SongDetailComponent),
+        ),
+      },
+      {
         path: 'library/artists/:id',
         loadComponent: lazy(() =>
           import('./pages/library/artist-detail.component').then((m) => m.ArtistDetailComponent),
@@ -352,6 +373,8 @@ function tvShellRoute() {
           import('./pages/tv/tv-album.component').then((m) => m.TvAlbumComponent),
         ),
       },
+      // TV has no song page: a song link lands on the song's album (#2004).
+      { path: 'library/songs/:id', canActivate: [songToAlbumGuard], children: [] },
       {
         path: 'player',
         loadComponent: lazy(() =>

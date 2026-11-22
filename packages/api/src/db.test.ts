@@ -232,11 +232,85 @@ describe('applySchema — share_tokens artist CHECK broadening (#229)', () => {
     expect(() =>
       db.run(
         `INSERT INTO share_tokens (token, resource_type, resource_id, created_by, created_at)
-         VALUES ('bad', 'song', 'x', 'u1', 7)`,
+         VALUES ('bad', 'genre', 'x', 'u1', 7)`,
       ),
     ).toThrow();
     // Idempotent.
     expect(() => applySchema(db)).not.toThrow();
+  });
+});
+
+// #2004: a song is shareable. A database stamped at version 1 carries the
+// three-value CHECK and must be rebuilt once, keeping its rows.
+describe('applySchema — share_tokens song CHECK broadening (#2004)', () => {
+  const insert = (db: Database, token: string, type: string) =>
+    db.run(
+      `INSERT INTO share_tokens (token, resource_type, resource_id, created_by, created_at)
+       VALUES (?, ?, 'x', 'u1', 1)`,
+      [token, type],
+    );
+  const threeValueTable = `
+    CREATE TABLE share_tokens (
+      token             TEXT    PRIMARY KEY,
+      resource_type     TEXT    NOT NULL CHECK (resource_type IN ('playlist', 'album', 'artist')),
+      resource_id       TEXT    NOT NULL,
+      created_by        TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at        INTEGER NOT NULL,
+      first_accessed_at INTEGER,
+      expires_at        INTEGER
+    )`;
+
+  it('allows a song share row on a fresh database, and still rejects an unknown type', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(`INSERT INTO users (id, username, password_hash) VALUES ('u1', 'a', 'h')`);
+    expect(() => insert(db, 't', 'song')).not.toThrow();
+    expect(() => insert(db, 'bad', 'genre')).toThrow();
+  });
+
+  it('rebuilds a version-1 table once, keeping its rows and the window they carry', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(`INSERT INTO users (id, username, password_hash) VALUES ('u1', 'a', 'h')`);
+    // Put the database back in the shape version 1 shipped.
+    db.run('DROP TABLE share_tokens');
+    db.run(threeValueTable);
+    db.run(
+      `INSERT INTO share_tokens (token, resource_type, resource_id, created_by, created_at, first_accessed_at, expires_at)
+       VALUES ('keep', 'artist', 'art1', 'u1', 5, 6, 7)`,
+    );
+    db.run('PRAGMA user_version = 1');
+    expect(() => insert(db, 'early', 'song')).toThrow();
+
+    const backups: Array<[number, number]> = [];
+    applySchema(db, { onBeforeMigrate: (from, to) => backups.push([from, to]) });
+
+    expect(backups).toEqual([[1, SCHEMA_VERSION]]);
+    expect(readSchemaVersion(db)).toBe(SCHEMA_VERSION);
+    expect(db.query(`SELECT * FROM share_tokens WHERE token = 'keep'`).get()).toMatchObject({
+      resource_type: 'artist',
+      resource_id: 'art1',
+      created_at: 5,
+      first_accessed_at: 6,
+      expires_at: 7,
+    });
+    expect(() => insert(db, 'now', 'song')).not.toThrow();
+    expect(
+      db.query(`SELECT name FROM sqlite_master WHERE name = 'share_tokens_old'`).get(),
+    ).toBeNull();
+  });
+
+  it('never rebuilds again once the database is at version 2', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(`INSERT INTO users (id, username, password_hash) VALUES ('u1', 'a', 'h')`);
+    // A table that would match the rebuild's test, on a database already past it.
+    db.run('DROP TABLE share_tokens');
+    db.run(threeValueTable);
+    const backups: number[] = [];
+    applySchema(db, { onBeforeMigrate: (from) => backups.push(from) });
+    expect(backups).toEqual([]);
+    expect(() => insert(db, 't', 'song')).toThrow();
   });
 });
 
