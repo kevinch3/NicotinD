@@ -2,7 +2,8 @@
 
 What happens between a merge and each place NicotinD runs, read from `.github/workflows/*` on
 master at `3d8adc23` (2026-11-16) and checked against run history. Written for #1671. The second
-half proposes a beta channel; **nothing in this document changes pipeline behaviour**.
+half proposes a beta channel, which was decided against on 2026-11-22 (no Android beta, so no beta
+at all); **nothing in this document changes pipeline behaviour**.
 
 The reasons behind individual steps stay in the docs that own them:
 [releasing.md](releasing.md), [deployment.md](deployment.md), [fdroid.md](fdroid.md),
@@ -172,7 +173,14 @@ Ordered by what they would cost a beta channel first.
 
 ## Beta channel: proposal
 
-Not built. It needs the answers below first.
+**Decided 2026-11-22: not built.** The owner answered question 7 below *no*: no one-way `versionCode`
+change, so Android has no beta. Every other platform's default already needs no beta (question 3
+keeps F-Droid main stable, 4 leaves iOS unsigned, 5 says `:edge` serves self-hosters), and a
+desktop-only beta was sized in #1671 and judged not worth a second publish path on its own. So the
+pipeline keeps one stable channel, plus `:edge`. What #1671 shipped is this document and the two
+pre-release guards from #1981 (`deploy.yml` skips `v*-*` tags, `pages.yml` excludes pre-releases),
+which stay so that a stray pre-release tag cannot publish. The proposal below is kept as the record
+of what a beta would cost, if the question is reopened.
 
 **What a beta is.** A tag `vX.Y.Z-beta.N`, published as a GitHub **pre-release**. One pipeline,
 with the tag pattern deciding what each job does. Not a branch: a branch would need its own gates.
@@ -223,6 +231,7 @@ unaffected. A new check should pin the two accidental properties from finding 2.
 6. May a stable fix ship to one platform without rebuilding the others? Default: no; keep one
    release, one set of artifacts.
 7. Accept the one-way `versionCode` change? There is no default: without it Android has no beta.
+   **Answered 2026-11-22: no.**
 
 ### Order of work, once answered
 
