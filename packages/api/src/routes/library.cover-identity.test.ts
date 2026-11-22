@@ -18,7 +18,7 @@
 import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { JwtPayload } from '@nicotind/core';
@@ -169,6 +169,22 @@ describe('#1666 artist portrait: cover identity travels with the bytes', () => {
 
     expect(etagAfter).not.toBe(etagBefore); // precondition: the bytes did change
     expect(coverIdentity(after.artist)).not.toEqual(coverIdentity(before.artist));
+  });
+
+  it('a thumbnail is cached before its response returns, so a replacement purge sticks (#2063)', async () => {
+    // A write still in flight after the response could land after the next
+    // upload purged the key, putting the old thumbnail back under it. That made
+    // the test above fail in CI on its etag precondition, by timing.
+    const app = makeApp();
+    await uploadPortrait(app, await png(255, 0, 0));
+    await etagOf(app, '/api/cover/artist-1?size=200');
+    // `size=200` falls in the 320 bucket (COVER_SIZE_BUCKETS).
+    const thumbs = () =>
+      readdirSync(join(dataDir, 'cover-cache')).filter((f) => f.startsWith('artist-1@320'));
+    expect(thumbs()).toHaveLength(1);
+
+    await uploadPortrait(app, await png(0, 0, 255));
+    expect(thumbs()).toHaveLength(0);
   });
 
   it('replacing a portrait changes the cover identity the Artists grid reads (GET /artists)', async () => {
