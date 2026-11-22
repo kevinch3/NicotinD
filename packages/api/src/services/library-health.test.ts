@@ -1139,3 +1139,30 @@ describe('libraryHealth — artwork tiers (issue #952)', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe('disk: replacement measurements (#2059, #2061)', () => {
+  it('reads null before anything was measured', () => {
+    const disk = libraryHealth(db).dimensions.disk.metric;
+    expect(disk.sameTrackDuplicates).toBeNull();
+    expect(disk.replacementDurations).toBeNull();
+  });
+
+  it('reports what the last full scan and the carry recorded', () => {
+    const put = (key: string, value: unknown) =>
+      db.run(`INSERT INTO library_sync_state (key, value, updated_at) VALUES (?, ?, 1)`, [
+        key,
+        JSON.stringify(value),
+      ]);
+    put('scan_same_track_duplicates', { files: 12, notSelectedRowsPruned: 2 });
+    put('reconcile_replacement_durations', {
+      total: 5,
+      within2s: 3,
+      within10s: 1,
+      beyond10s: 1,
+      unknown: 0,
+    });
+    const disk = libraryHealth(db).dimensions.disk.metric;
+    expect(disk.sameTrackDuplicates).toEqual({ files: 12, notSelectedRowsPruned: 2 });
+    expect(disk.replacementDurations).toMatchObject({ total: 5, beyond10s: 1 });
+  });
+});

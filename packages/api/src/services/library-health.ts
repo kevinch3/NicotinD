@@ -30,6 +30,7 @@ import { jobCanonicalTracklists, type JobCanonicalTracklist } from './acquisitio
 import { duplicateSongFacts, type DuplicateSongFacts } from './duplicate-songs.js';
 import { normalizeForGrouping } from './album-grouping.js';
 import { artistIdFor } from './library-scanner.js';
+import { REPLACEMENT_DURATIONS_KEY, type ReplacementDurations } from './song-replace-carry.js';
 
 /**
  * Library health report — the one aggregation of every curation dimension:
@@ -287,6 +288,16 @@ export interface LibraryHealthReport {
         wronglyOrphaned: number | null;
         /** When the scan that produced these numbers finished. */
         measuredAt: number | null;
+        /**
+         * The last full scan's same-track duplicates (#2061): files a keeper serves, and indexed
+         * songs it pruned for that reason, whose history only the playlist/genre re-match keeps.
+         */
+        sameTrackDuplicates: { files: number; notSelectedRowsPruned: number } | null;
+        /**
+         * Every replacement the reconcile made and the carry moved, by how far the new copy's
+         * duration is from the old one's (#2059): far apart suggests a different recording.
+         */
+        replacementDurations: ReplacementDurations | null;
       };
       remediation: string;
     };
@@ -391,18 +402,30 @@ function artworkTiers(
   return { missing, missingMultiTrack, noEmbeddedArt: candidates.length, unrenderable };
 }
 
-/** Disk-side facts the last full scan recorded. Nulls mean "no scan has run". */
-function diskFacts(db: Database): { wronglyOrphaned: number | null; measuredAt: number | null } {
-  const row = db
-    .query<{ value: string; updated_at: number }, [string]>(
-      'SELECT value, updated_at FROM library_sync_state WHERE key = ?',
-    )
-    .get('scan_cache_wrongly_orphaned');
-  if (!row) return { wronglyOrphaned: null, measuredAt: null };
-  const n = Number(row.value);
+/** Disk-side facts the scans and the carry recorded. Nulls mean "not measured yet". */
+function diskFacts(db: Database): LibraryHealthReport['dimensions']['disk']['metric'] {
+  const read = (key: string) =>
+    db
+      .query<{ value: string; updated_at: number }, [string]>(
+        'SELECT value, updated_at FROM library_sync_state WHERE key = ?',
+      )
+      .get(key);
+  const json = <T>(key: string): T | null => {
+    const row = read(key);
+    if (!row) return null;
+    try {
+      return JSON.parse(row.value) as T;
+    } catch {
+      return null;
+    }
+  };
+  const orphaned = read('scan_cache_wrongly_orphaned');
+  const n = orphaned ? Number(orphaned.value) : NaN;
   return {
     wronglyOrphaned: Number.isFinite(n) ? n : null,
-    measuredAt: row.updated_at ?? null,
+    measuredAt: orphaned?.updated_at ?? null,
+    sameTrackDuplicates: json('scan_same_track_duplicates'),
+    replacementDurations: json(REPLACEMENT_DURATIONS_KEY),
   };
 }
 

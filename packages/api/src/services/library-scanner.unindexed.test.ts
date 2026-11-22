@@ -160,3 +160,31 @@ describe('findSameAlbumKeepers', () => {
     expect(findSameAlbumKeepers(db, ['Other/Album/02 - Song (Live).opus']).size).toBe(0);
   });
 });
+
+describe('scanFull same-track duplicate measurement (#2061)', () => {
+  const facts = () =>
+    JSON.parse(
+      db
+        .query<{ value: string }, []>(
+          "SELECT value FROM library_sync_state WHERE key = 'scan_same_track_duplicates'",
+        )
+        .get()!.value,
+    ) as { files: number; notSelectedRowsPruned: number };
+
+  it('counts an indexed song a newly arrived keeper pushes out, on that scan only', async () => {
+    const scanner = new LibraryScanner(musicDir, db);
+    putTagged('Various Artists/El Madrileño (La Sobremesa)/17 - Yate.opus', SOBREMESA);
+    await scanner.scanFull();
+    expect(facts()).toEqual({ files: 0, notSelectedRowsPruned: 0 });
+
+    // A tie the smaller relPath wins: the indexed copy becomes the duplicate and its row is pruned.
+    putTagged('C. Tangana/El Madrileño (La Sobremesa)/17 - Yate.opus', SOBREMESA);
+    await scanner.scanFull();
+    expect(songPaths()).toEqual(['C. Tangana/El Madrileño (La Sobremesa)/17 - Yate.opus']);
+    expect(facts()).toEqual({ files: 1, notSelectedRowsPruned: 1 });
+
+    // The next scan finds the same duplicate but nothing left to prune.
+    await scanner.scanFull();
+    expect(facts()).toEqual({ files: 1, notSelectedRowsPruned: 0 });
+  });
+});

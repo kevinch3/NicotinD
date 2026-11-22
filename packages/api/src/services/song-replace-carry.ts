@@ -36,7 +36,7 @@ export interface ReplacedSong {
   fromPath: string;
   toPath: string;
   /** The old row's own columns, or null when the row was already gone. */
-  held: { starred: string | null; hidden: number } | null;
+  held: { starred: string | null; hidden: number; duration: number } | null;
 }
 
 /**
@@ -57,8 +57,8 @@ export function snapshotReplacedSongs(
   return replaced.map(({ fromPath, toPath }) => {
     const fromId = songId(fromPath);
     const held = db
-      .query<{ starred: string | null; hidden: number }, [string]>(
-        'SELECT starred, hidden FROM library_songs WHERE id = ?',
+      .query<{ starred: string | null; hidden: number; duration: number }, [string]>(
+        'SELECT starred, hidden, duration FROM library_songs WHERE id = ?',
       )
       .get(fromId);
     return { fromId, toId: songId(toPath), fromPath, toPath, held: held ?? null };
@@ -136,6 +136,7 @@ export function carryReplacedSongs(db: Database, replaced: ReadonlyArray<Replace
         });
       }
       carried += 1;
+      recordReplacementDuration(db, song);
       log.info(
         { fromPath: song.fromPath, toPath: song.toPath },
         'carried a replaced song onto the copy that replaced it',
@@ -149,4 +150,54 @@ export function carryReplacedSongs(db: Database, replaced: ReadonlyArray<Replace
     }
   }
   return carried;
+}
+
+/** Cumulative duration agreement between a replaced song and its replacement (#2059). */
+export interface ReplacementDurations {
+  total: number;
+  within2s: number;
+  within10s: number;
+  beyond10s: number;
+  /** The old row was already pruned, so its duration was not caught. */
+  unknown: number;
+}
+
+export const REPLACEMENT_DURATIONS_KEY = 'reconcile_replacement_durations';
+
+/**
+ * Tally how far a replacement's duration is from the song it replaced. The
+ * reconcile matches on disc and title only, so a live take can replace a studio
+ * one (#2059); a duration far off is the cheapest sign of a different
+ * recording, and this counts how often it happens before that deleting pass
+ * changes. Best-effort: a failed tally never fails the carry.
+ */
+function recordReplacementDuration(db: Database, song: ReplacedSong): void {
+  try {
+    const fresh = db
+      .query<{ duration: number }, [string]>('SELECT duration FROM library_songs WHERE id = ?')
+      .get(song.toId);
+    const row = db
+      .query<{ value: string }, [string]>('SELECT value FROM library_sync_state WHERE key = ?')
+      .get(REPLACEMENT_DURATIONS_KEY);
+    const t: ReplacementDurations = row
+      ? (JSON.parse(row.value) as ReplacementDurations)
+      : { total: 0, within2s: 0, within10s: 0, beyond10s: 0, unknown: 0 };
+    t.total += 1;
+    const oldDuration = song.held?.duration ?? 0;
+    const newDuration = fresh?.duration ?? 0;
+    if (!oldDuration || !newDuration) t.unknown += 1;
+    else {
+      const delta = Math.abs(oldDuration - newDuration);
+      if (delta <= 2) t.within2s += 1;
+      else if (delta <= 10) t.within10s += 1;
+      else t.beyond10s += 1;
+    }
+    db.run(
+      `INSERT INTO library_sync_state (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      [REPLACEMENT_DURATIONS_KEY, JSON.stringify(t), Date.now()],
+    );
+  } catch (err) {
+    log.debug({ err }, 'replacement duration tally failed');
+  }
 }

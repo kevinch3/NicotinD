@@ -5,6 +5,7 @@ import { songId } from './library-scanner.js';
 import { upsertGenreOverride } from './genre-overrides.js';
 import {
   carryReplacedSongs,
+  REPLACEMENT_DURATIONS_KEY,
   replacedLibraryFiles,
   snapshotReplacedSongs,
 } from './song-replace-carry.js';
@@ -165,5 +166,32 @@ describe('carrying a replaced song (#2032)', () => {
     // The old album lost its only song, so it goes too instead of rendering an empty card.
     expect(count(`SELECT COUNT(*) AS c FROM library_albums WHERE id = 'alb'`)).toBe(0);
     expect(count('SELECT COUNT(*) AS c FROM playlist_songs WHERE song_id = ?', newId)).toBe(2);
+  });
+});
+
+describe('replacement duration tally (#2059)', () => {
+  const tally = () =>
+    JSON.parse(
+      db
+        .query<{ value: string }, [string]>('SELECT value FROM library_sync_state WHERE key = ?')
+        .get(REPLACEMENT_DURATIONS_KEY)!.value,
+    );
+  const replaceWith = (newDuration: number, pruneFirst = false) => {
+    db.run('DELETE FROM library_songs');
+    song(oldId, OLD); // duration 180
+    if (pruneFirst) db.run('DELETE FROM library_songs WHERE id = ?', [oldId]);
+    const snap = snapshotReplacedSongs(db, [{ fromPath: OLD, toPath: NEW }]);
+    db.run('DELETE FROM library_songs WHERE id = ?', [oldId]);
+    song(newId, NEW);
+    db.run('UPDATE library_songs SET duration = ? WHERE id = ?', [newDuration, newId]);
+    carryReplacedSongs(db, snap);
+  };
+
+  it('buckets each carried replacement by how far its duration moved', () => {
+    replaceWith(181); // the same recording, re-encoded
+    replaceWith(186);
+    replaceWith(240); // a live take a minute longer
+    replaceWith(181, true); // the old row was pruned before the snapshot
+    expect(tally()).toEqual({ total: 4, within2s: 1, within10s: 1, beyond10s: 1, unknown: 1 });
   });
 });
