@@ -233,7 +233,11 @@ export function streamingRoutes(
   /** Build a cover Response, downsizing to the requested `size` bucket when one
    *  was given. The resized variant is cached under `<baseKey>@<size>` so repeat
    *  thumbnail hits read one small file; a resize failure falls back to the full
-   *  image so a cover is never lost to a bad encode. */
+   *  image so a cover is never lost to a bad encode.
+   *
+   *  Every cache write on this route is awaited, not fired and forgotten (#2063):
+   *  a write still in flight after the response could land after a cover
+   *  replacement purged the key, putting the old picture back under it. */
   async function respondCover(
     baseKey: string,
     art: CoverArt,
@@ -245,7 +249,7 @@ export function streamingRoutes(
     if (sizedCached) return coverResponse(sizedCached);
     try {
       const resized = await resizeCover(art.data, size);
-      void cacheCover(coverCacheDir, sizedKey, resized).catch((err) =>
+      await cacheCover(coverCacheDir, sizedKey, resized).catch((err) =>
         log.debug({ err, baseKey, size }, 'sized cover cache write failed'),
       );
       return coverResponse(resized);
@@ -324,7 +328,7 @@ export function streamingRoutes(
         headers: { 'cache-control': 'public, max-age=300' },
       });
     }
-    void cacheCover(coverCacheDir, key, remote).catch((err) =>
+    await cacheCover(coverCacheDir, key, remote).catch((err) =>
       log.debug({ err, key }, 'remote cover cache write failed'),
     );
     return respondCover(key, remote, size);
@@ -358,7 +362,7 @@ export function streamingRoutes(
           headers: { 'cache-control': 'public, max-age=300' },
         });
       }
-      void cacheCover(coverCacheDir, embKey, pic).catch((err) =>
+      await cacheCover(coverCacheDir, embKey, pic).catch((err) =>
         log.debug({ err, id }, 'embedded cover cache write failed'),
       );
       return respondCover(embKey, pic, size);
@@ -395,7 +399,7 @@ export function streamingRoutes(
       if (hit) return hit;
       const remote = await fetchRemoteCover(canonicalUrl);
       if (remote) {
-        void cacheCover(coverCacheDir, cacheKey, remote).catch((err) =>
+        await cacheCover(coverCacheDir, cacheKey, remote).catch((err) =>
           log.debug({ err, id }, 'canonical cover cache write failed'),
         );
         return respondCover(cacheKey, remote, size);
@@ -441,13 +445,13 @@ export function streamingRoutes(
 
     const key = diskArtCacheKey(art.data);
     if (source && (ref?.stamp !== source.stamp || ref.key !== key)) {
-      void writeDiskArtRef(coverCacheDir, id, { stamp: source.stamp, key }).catch((err) =>
+      await writeDiskArtRef(coverCacheDir, id, { stamp: source.stamp, key }).catch((err) =>
         log.debug({ err, id }, 'cover ref write failed'),
       );
     }
     // Another id of the same album may already have stored these bytes.
     if (!(await readCachedCover(coverCacheDir, key))) {
-      void cacheCover(coverCacheDir, key, art).catch((err) =>
+      await cacheCover(coverCacheDir, key, art).catch((err) =>
         log.debug({ err, id }, 'cover cache write failed'),
       );
     }

@@ -344,6 +344,18 @@ no open tab (they see the rev on their next fetch); a re-landed entity sits at r
 bump, and rev 0 is the bare, unversioned URL, so within the 24 h cache TTL it can still show the
 previous incarnation's cover, as every cover did before #1666.
 
+### A purge must outlive the write it purges (#2063)
+
+The server's own cover cache (`<dataDir>/cover-cache`) is purged by key when a cover is replaced
+(`purgeDiskArtCache`, `purgeCanonicalCache`), and refilled by `/cover/:id` on the next miss. The
+refill used to be fire-and-forget (`void cacheCover(…)`): the response went out first and the file
+landed later. A replacement that came in between purged the key, then the earlier write put the old
+picture back under it, and the next request served it. CI caught it by timing: the #1666 portrait
+test failed on its etag precondition on one run in many. Every cache write on the cover route is now
+awaited (a small file, a millisecond or two on a miss that already paid a resize), so a response
+means its cache entry is on disk and a later purge removes it for good. The deterministic test reads
+the cache directory between the requests instead of hoping for the timing.
+
 ## Server-side memos — all TTL-bounded by design
 
 None of these take an explicit invalidation; each trades a bounded staleness window for avoiding
