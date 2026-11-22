@@ -99,11 +99,12 @@ path. It copies every column, so starred, hidden, analysis and tag edits survive
 rescan, because a rescan would depend on the file's tags parsing back identically. Then:
 
 - `carrySongCuration` moves `SONG_CARRY_TABLES` (including `curation_flags` and
-  `curation_flag_reports` on `target_kind = 'song'`), the song genre override and `acquisitions`.
+  `curation_flag_reports` on `target_kind = 'song'`, and `play_events` since #2032), the song genre
+  override and `acquisitions`.
 - `RENAME_ALSO_MOVES` covers the tables that `carrySongCuration` exempts because its other callers
   re-encode or re-scan: `library_song_artists`, `library_song_genres`, the analysis-failure ledger,
-  pending tag writes, `play_events` (play counts and recency join on `song_id`), and
-  `acquisition_job_items` (addon playlists).
+  pending tag writes, and `acquisition_job_items` (addon playlists). It listed `play_events` too
+  until the shared list took it.
 - `RENAME_KEEPS` records what stays put: the radio-poll measurements, the provenance log and the
   audit log.
 
@@ -240,6 +241,43 @@ to is known, not guessed at by re-matching filenames.
 
 Note what is *not* a failure here: the user asked for tracks they already owned, and the organizer was
 right to decline a second copy. Only the bookkeeping was wrong.
+
+### A better copy keeps the song's history (#2032)
+
+The same map carries the opposite case: a **library** file that lost to an incoming one, because the
+incoming copy ranks higher (lossless, then bitrate). The reconcile deleting the worse file is existing
+behaviour for every duplicate; what was missing was the song's identity. Song ids are `sha1(path)`, so
+the winner is a new song, and the album-scoped scan's prune (`pruneAlbumOrphans`) re-matched only genre
+overrides by title, artist and duration. Likes, playlist membership, plays, lyrics and album overrides
+stayed keyed to an id nothing had.
+
+`replacedLibraryFiles` picks those pairs out of `supersededRelPaths` (loser not placed by this batch,
+winner placed by it). `snapshotReplacedSongs` reads each old row's `starred`/`hidden` **before** the
+scan, because the prune deletes the row and those two columns with it; every other song-keyed table
+survives the prune by id. A pair is kept even when its row is already gone: the library watcher starts
+a full scan seconds after a transcode removes its source, and if that scan prunes the old row first,
+only the two columns are lost, not the history. After the scan, `carryReplacedSongs` restores the two
+columns (when they were caught) and runs `carrySongCuration`, the same carry the transcode and the
+multi-disc rename use, so `check:song-carry-coverage` covers this caller with no list of its own. A new
+file the scan did not index is left alone (there is no row to carry to). An old row the prune kept,
+because the new copy was filed under another album row, is dropped and its album pruned, so the song
+is not listed twice.
+
+**Asking for one.** `requestBetterCopy` (`services/song-improve.ts`), behind
+`POST /api/library/songs/:id/improve` and the MCP `improve_song` tool, starts a track Get named after
+the song's own `<Artist>/<Album>` **folder** (`albumFolderOf`), not its album row: an override or a
+split renames the row while the file stays put, and only a copy that lands in the same folder meets
+the reconcile (`applyJobCanonicalName` names the destination after the job's album). A song outside
+such a folder (a loose single in `Singles`, which the reconcile never collapses, or a layout the
+organizer did not make) is refused with `not-in-album-folder` rather than duplicated. Nothing here
+ranks quality itself. An active, uncancelled track Get for the same song answers `in-flight` instead
+of queueing a second hunt.
+
+Limits, on the record. The reconcile matches on disc and title, so a live take of the same title at a
+higher bitrate can still replace a studio one (#2059). A copy whose album-artist tag names someone else
+is filed under that artist and never meets the reconcile. And only the addon poller carries: the
+import and URL lanes run the same reconcile without it, and the scanner's own one-copy-per-album rule
+prunes a not-selected duplicate with only playlist and genre re-matching (#2061).
 
 ---
 
@@ -474,16 +512,20 @@ registered entry the schema no longer has.
 
 Carried, because nothing else restores them: `playlist_songs`, `library_lyrics` (synced LRC offsets
 exist only here), `recommendation_feedback`, `curation_flags`, `curation_flag_reports`, song
-`share_tokens`, plus
-`library_embeddings` and
+`share_tokens`, `play_events`, plus `library_embeddings` and
 `library_song_descriptors` — regenerable, but the first is ~46% of the database and the second is
 hours of recompute across a whole-library pass.
 
 Exempt, each on the record: `library_song_artists` and `library_song_genres` are rebuilt from tags
 by the scan; `library_song_analysis_failures` is a ledger about a file no longer at that id;
-`play_events` is defended by snapshot instead, since title/artist/album are copied onto the event
-for exactly this reason; `radio_poll_scenarios` and `radio_poll_votes` are **recorded measurements**
-and re-pointing them would rewrite what was actually asked and answered.
+`radio_poll_scenarios` and `radio_poll_votes` are **recorded measurements** and re-pointing them
+would rewrite what was actually asked and answered.
+
+`play_events` was exempt until #2032, on the grounds that the title/artist/album snapshot on each
+event keeps history readable across a re-mint. That holds for Stats, but the artist page's Popular
+block (`artist-top-songs.ts`) and the skip-based exclusions (`feedback-store.ts`) count plays **by
+song id**, so every transcode, multi-disc rename and file replacement silently dropped the song's
+plays from both. The event's own snapshot is untouched; only its `song_id` follows the song.
 
 One blind spot, named rather than hidden: `library_genre_overrides` keys on `key`, not `song_id`, so
 a name-based sweep cannot see it. It is carried by its own statement and the gate prints that

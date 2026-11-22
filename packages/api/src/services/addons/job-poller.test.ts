@@ -26,6 +26,7 @@ import {
   supersedeItems,
 } from '../acquisition-job-store.js';
 import type { CompletedDownloadFile } from '../path-inference.js';
+import { songId } from '../library-scanner.js';
 
 const MANIFEST: AddonManifest = {
   id: 'fixture-addon',
@@ -82,6 +83,10 @@ function harness(
     strandedSweepIntervalMs?: number;
     /** Organized relPath → the copy the dedupe kept in its place (#1032). */
     supersede?: Record<string, string>;
+    /** A library path the dedupe deleted → the incoming path that replaced it (#2032). */
+    supersedeLibrary?: Record<string, string>;
+    /** What the scan does to the library, e.g. index the new file and prune the old (#2032). */
+    scanEffect?: (db: Database, relPaths: string[]) => void;
     /** Called once per organizeBatch; true makes that call throw (#1025). */
     organizeFails?: () => boolean;
   } = {},
@@ -135,11 +140,12 @@ function harness(
           const winner = opts.supersede?.[f.relativePath];
           if (winner) supersededRelPaths[f.relativePath] = winner;
         }
-        return { supersededRelPaths };
+        return { supersededRelPaths: { ...supersededRelPaths, ...opts.supersedeLibrary } };
       },
     },
     scan: (relPaths) => {
       scanned.push(relPaths);
+      opts.scanEffect?.(db, relPaths);
     },
     onIngestReceipt: (r) => {
       receipts.push(r);
@@ -302,6 +308,94 @@ describe('AddonJobPoller', () => {
       expect(item.relative_path).toBe('Artist/Album/01 - Song One.mp3');
       // And the scan is asked about a file that exists, so the item can resolve.
       expect(h.scanned[0]).toEqual(['Artist/Album/01 - Song One.mp3']);
+    });
+
+    describe('a library song an incoming copy replaced (#2032)', () => {
+      const HELD = 'Artist/Album/01 - Song One.mp3';
+      const INCOMING = 'Artist/Album/01 Song One.mp3';
+      const done = () =>
+        makeJob({
+          state: 'done',
+          updatedAt: 4000,
+          items: [{ ...makeJob().items[0]!, state: 'completed', fileReady: true, updatedAt: 4000 }],
+        });
+      const seedHeld = (db: Database) => {
+        db.run(`INSERT INTO users (id, username, password_hash, role, created_at)
+                VALUES ('u', 'u', 'x', 'admin', '2026-01-01')`);
+        db.run(`INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+                VALUES ('alb', 'Album', 'Artist', 'art', 1, 180, 1)`);
+        db.run(
+          `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, starred, synced_at)
+           VALUES (?, 'alb', 'Song One', 'Artist', 'art', 180, ?, '2026-01-01', 1)`,
+          [songId(HELD), HELD],
+        );
+        db.run(`INSERT INTO playlists (id, name, user_id, kind, created_at, modified_at)
+                VALUES ('liked', 'Liked Songs', 'u', 'liked', 1, 1)`);
+        db.run(
+          `INSERT INTO playlist_songs (playlist_id, song_id, position, added_at) VALUES ('liked', ?, 0, 1)`,
+          [songId(HELD)],
+        );
+        db.run(
+          `INSERT INTO play_events (client_event_id, user_id, song_id, title, at, ms_played, reason, counted)
+           VALUES ('e1', 'u', ?, 'Song One', 1, 180000, 'ended', 1)`,
+          [songId(HELD)],
+        );
+      };
+      const likedSongIds = (db: Database) =>
+        db
+          .query<{ song_id: string }, []>(
+            `SELECT song_id FROM playlist_songs WHERE playlist_id = 'liked'`,
+          )
+          .all()
+          .map((r) => r.song_id);
+
+      it('moves its like, plays and star onto the copy that replaced it', async () => {
+        h = harness(() => jobsData, undefined, {
+          supersedeLibrary: { [HELD]: INCOMING },
+          // The album reconcile: index the new file, prune the row whose file is gone.
+          scanEffect: (db, relPaths) => {
+            for (const rel of relPaths) {
+              db.run(
+                `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, synced_at)
+                 VALUES (?, 'alb', 'Song One', 'Artist', 'art', 180, ?, 2)`,
+                [songId(rel), rel],
+              );
+            }
+            db.run('DELETE FROM library_songs WHERE id = ?', [songId(HELD)]);
+          },
+        });
+        seedHeld(h.db);
+        await h.registry.enable('fixture-addon', 'admin');
+        jobsData = [done()];
+        await h.poller.tick();
+        await h.poller.idle();
+
+        expect(h.scanned[0]).toEqual([INCOMING]);
+        expect(likedSongIds(h.db)).toEqual([songId(INCOMING)]);
+        expect(
+          h.db.query<{ song_id: string }, []>('SELECT song_id FROM play_events').all(),
+        ).toEqual([{ song_id: songId(INCOMING) }]);
+        expect(
+          h.db
+            .query<{ starred: string }, [string]>('SELECT starred FROM library_songs WHERE id = ?')
+            .get(songId(INCOMING)),
+        ).toEqual({ starred: '2026-01-01' });
+      });
+
+      it('leaves the held song untouched when the incoming copy is the one that lost', async () => {
+        h = harness(() => jobsData, undefined, { supersede: { [INCOMING]: HELD } });
+        seedHeld(h.db);
+        await h.registry.enable('fixture-addon', 'admin');
+        jobsData = [done()];
+        await h.poller.tick();
+        await h.poller.idle();
+
+        expect(h.scanned[0]).toEqual([HELD]);
+        expect(likedSongIds(h.db)).toEqual([songId(HELD)]);
+        expect(
+          h.db.query<{ song_id: string }, []>('SELECT song_id FROM play_events').all(),
+        ).toEqual([{ song_id: songId(HELD) }]);
+      });
     });
 
     it('leaves the recorded path alone when nothing was superseded', async () => {

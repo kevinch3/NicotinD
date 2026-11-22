@@ -854,6 +854,8 @@ export function createApp({
         isAcquisitionEnabled: acquisitionOn,
         minMatchPct: config.watchlist.minMatchPct,
         lidarr,
+        // Called per tool call, after `trackGet` exists further down.
+        requestTrackGet: (req) => trackGet.request(req),
       },
     ),
   );
@@ -952,6 +954,7 @@ export function createApp({
         isAcquisitionEnabled: acquisitionOn,
         minMatchPct: config.watchlist.minMatchPct,
       },
+      requestTrackGet: (req) => trackGet.request(req),
       // Same provider chain the windowed artist-image task uses, so the
       // on-demand fill isn't a Lidarr-only shortcut (issue #250).
       lookupArtistImageSpotify: (name) =>

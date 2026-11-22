@@ -82,8 +82,14 @@ This is the same reasoning as the per-song side tables in
 **`title`/`artist`/`album` are snapshotted onto the event.** Same cause, opposite direction: without
 the snapshot, a re-minted id would orphan the row and a year review would silently lose the track —
 the failure that produced 17 dangling `playlist_songs` rows. ~60 bytes buys a self-contained log
-that aggregates by artist name even when `song_id` no longer resolves, and needs no repointing
-machinery at all.
+that aggregates by artist name even when `song_id` no longer resolves.
+
+The snapshot keeps the *text* readable; it does not keep per-song counts. The artist page's Popular
+block and the skip-based exclusions count plays by `song_id`, so since #2032 `play_events` is also
+in `SONG_CARRY_TABLES`: every id change the system makes itself (a transcode, a multi-disc rename, a
+better copy replacing a file) moves the events' `song_id` onto the new song. The snapshot columns
+are never rewritten. A move the system does not see, such as a file renamed by hand, still leaves
+its events to the snapshot.
 
 `client_event_id` is `UNIQUE`, and writes are `INSERT OR IGNORE`. That is what makes an offline
 flush safe to retry: the same event legitimately arrives twice and must not become two plays.

@@ -95,6 +95,7 @@ audit-logged.
 | `list_review_flags` | read | the open human-review queue, oldest first, with `servable` / `targetMissing` / `snoozedUntil` |
 | `resolve_review_flag` | curate | `services/curation-flags.ts` `resolveCurationFlag` + `curation.flag` audit |
 | `complete_album` | curate, **destructive** | `services/album-acquire.ts` `acquireAlbum` (only-missing-tracks hunt) + `album.acquire` audit |
+| `improve_song` | curate, **destructive** | `services/song-improve.ts` `requestBetterCopy` (a track Get named after the song's `<Artist>/<Album>` folder) + `song.improve` audit |
 | `delete_song` | curate, **destructive** | `services/library-deletion.ts` `deleteOne` + `song.delete` audit |
 | `delete_album` | curate, **destructive** | `services/library-deletion.ts` `deleteAlbum` + `album.delete` audit |
 | `split_artist` | curate, **destructive** | `services/artist-identity-mutate.ts` `mutateArtistIdentity` (split mode) + re-bucket + `verifyIdentityApplied` + `artist.identity` audit |
@@ -488,6 +489,25 @@ Extracting these exposed that the HTTP album routes recorded **no audit at all**
 `/hide`, `/unhide` and both cover routes now `recordAudit` as `album.metadata` /
 `album.classify` / `album.cover` — the same action names the MCP tools write with
 their `agent:<tokenId>` actor.
+
+### `improve_song` (#2032) — a better copy of one song
+
+The answer to a listener's bad-quality report. It starts a track Get named after
+the song's own `<Artist>/<Album>` folder through `requestBetterCopy`, the same
+service behind `POST /api/library/songs/:id/improve`, so the copy lands beside
+the old file, where the folder reconcile keeps the better one and deletes the
+other. A loose single is refused (`not-in-album-folder`): nothing would replace
+it in place. When the new copy wins, the poller carries the song's
+likes, playlist membership, plays, lyrics and curation onto it
+(docs/download-pipeline.md, "A better copy keeps the song's history").
+
+Same contract as `complete_album`: `destructive: true` because the `confirm` gate
+is the per-song approval for spending bandwidth and contacting peers, refused
+with the kill-switch off, and not on the `refiner:auto` allowlist. Outcomes are
+`started` and `in-flight` (an active track Get for the same song), each with the
+`jobId` to follow; whether the copy was better is read off the job afterwards.
+The reconcile matches on disc and title, so the tool says plainly that a live take
+can replace a studio one of the same title: check the candidate before asking.
 
 ### `complete_album` (issue #735) — acquisition behind the destructive gate
 

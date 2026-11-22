@@ -16,6 +16,7 @@ import { AddonRequestError, type AddonClient } from '../services/addons/client.j
 import { getMbid, isMbidTombstoned, upsertMbid } from '../services/mbid-store.js';
 import type { LyricsResult } from '@nicotind/core';
 import type { PluginRegistry } from '../services/plugins/registry.js';
+import type { TrackGetRequest } from '../services/track-get.service.js';
 import { getLyrics } from '../services/lyrics-store.js';
 import { libraryEvents, type StampedEvent } from '../services/library-events.js';
 import {
@@ -2896,5 +2897,117 @@ describe('unattended runs: log, lock and revert (#1516 P2)', () => {
   it('answers null for a run that does not exist', async () => {
     expect(await revertAgentRun(testDb, {}, 'nope', 'u1')).toBeNull();
     expect(getAgentRun(testDb, 'nope')).toBeNull();
+  });
+});
+
+describe('improve_song (#2032)', () => {
+  const requests: TrackGetRequest[] = [];
+  const ctx = (acquisition: Partial<McpToolContext['acquisition']> = {}): McpToolContext => ({
+    db: testDb,
+    identity: { tokenId: 't', userId: 'u1', scope: 'refiner:curate' },
+    deletion: { musicDir, shareRescan: new ShareRescanScheduler(async () => {}) },
+    artistIdentity: { dataDir: undefined, runSync: undefined },
+    songGenre: { musicDir },
+    metadata: { musicDir },
+    curation: {},
+    acquisition: {
+      getAddon: () => null,
+      isAcquisitionEnabled: () => true,
+      minMatchPct: 80,
+      requestTrackGet: (req) => {
+        requests.push(req);
+        testDb.run(
+          `INSERT INTO acquisition_jobs (id, kind, method, state, stage, artist_name, album_title, display_title, created_at, updated_at)
+           VALUES ('job-1', 'track-search', 'fixture-addon', 'active', 'resolving', ?, ?, ?, 1, 1)`,
+          [req.artist, req.album ?? null, req.title],
+        );
+        return { status: 'accepted', jobId: 'job-1' };
+      },
+      ...acquisition,
+    },
+  });
+  const call = async (c: McpToolContext, args: Record<string, unknown>) =>
+    JSON.parse((await dispatchTool(c, 'improve_song', args)).content[0]!.text) as Record<
+      string,
+      unknown
+    >;
+
+  beforeEach(() => {
+    requests.length = 0;
+    testDb.run('DELETE FROM acquisition_jobs');
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('al-box', 'Box Natiruts', 'Natiruts', 'nat', 1, 0, 1)`,
+    );
+    testDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, synced_at)
+       VALUES ('s-glam', 'al-box', 'Glamour Tropical', 'Natiruts', 'nat', 200, 'Natiruts/Box Natiruts/01.mp3', 1)`,
+    );
+  });
+
+  it('is listed, and refuses without confirm: true', async () => {
+    const { token } = mintAgentToken(testDb, { userId: 'u1', name: 'a' });
+    const list = (await (await rpc(token, 'tools/list')).json()) as {
+      result: { tools: Array<{ name: string }> };
+    };
+    expect(list.result.tools.map((t) => t.name)).toContain('improve_song');
+    const body = (await (
+      await rpc(token, 'tools/call', { name: 'improve_song', arguments: { songId: 's-glam' } })
+    ).json()) as { result: { content: Array<{ text: string }>; isError?: boolean } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0]!.text).toContain('confirm');
+    expect(requests).toHaveLength(0);
+  });
+
+  it("hunts the song's own artist, title and album, and audits it", async () => {
+    expect(await call(ctx(), { songId: 's-glam', confirm: true })).toEqual({
+      ok: true,
+      outcome: 'started',
+      jobId: 'job-1',
+    });
+    expect(requests).toEqual([
+      { artist: 'Natiruts', title: 'Glamour Tropical', album: 'Box Natiruts', userId: 'u1' },
+    ]);
+    const audit = testDb
+      .query<{ action: string; target_id: string; detail: string }, []>(
+        'SELECT action, target_id, detail FROM audit_log',
+      )
+      .all();
+    expect(audit).toEqual([
+      {
+        action: 'song.improve',
+        target_id: 's-glam',
+        detail: 'Natiruts — Glamour Tropical: started job=job-1 (via MCP agent)',
+      },
+    ]);
+  });
+
+  it('answers in-flight instead of hunting the same song twice', async () => {
+    await call(ctx(), { songId: 's-glam', confirm: true });
+    expect(await call(ctx(), { songId: 's-glam', confirm: true })).toEqual({
+      ok: true,
+      outcome: 'in-flight',
+      jobId: 'job-1',
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  it('refuses with the kill-switch off, and for an unknown song, without hunting', async () => {
+    expect(
+      await call(ctx({ isAcquisitionEnabled: () => false }), { songId: 's-glam', confirm: true }),
+    ).toEqual({ error: 'Acquisition is disabled on this server', reason: 'acquisition-disabled' });
+    expect(await call(ctx(), { songId: 'nope', confirm: true })).toEqual({
+      error: 'Song not found',
+      reason: 'song-not-found',
+    });
+    expect(requests).toHaveLength(0);
+  });
+
+  it('says so when no source is registered', async () => {
+    const none = ctx({ requestTrackGet: () => ({ status: 'no-addon' }) });
+    expect(await call(none, { songId: 's-glam', confirm: true })).toEqual({
+      error: 'No acquisition addon registered',
+      reason: 'source-unavailable',
+    });
   });
 });

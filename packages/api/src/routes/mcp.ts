@@ -40,6 +40,8 @@ import { splitAlbum, type SplitGroup } from '../services/album-split.js';
 import { VALID_CLASSIFICATIONS, type Classification } from '../services/library-curator.js';
 import type { LibraryCurator } from '../services/library-curator.js';
 import { completeAlbum } from '../services/album-complete.js';
+import { requestBetterCopy } from '../services/song-improve.js';
+import type { TrackGetAnswer, TrackGetRequest } from '../services/track-get.service.js';
 import { normalizeArtistForGrouping } from '../services/album-grouping.js';
 import { getArtistOrigin } from '../services/artist-origins.js';
 import { mutateArtistOrigin } from '../services/artist-origin-mutate.js';
@@ -135,6 +137,8 @@ export interface McpToolContext {
     isAcquisitionEnabled: () => boolean;
     minMatchPct: number;
     lidarr?: Lidarr | null;
+    /** The one-click track Get, for `improve_song` (#2032). */
+    requestTrackGet?: (req: TrackGetRequest) => TrackGetAnswer;
   };
 }
 
@@ -1387,6 +1391,42 @@ export const MCP_TOOLS: McpTool[] = [
       if (!res.ok) return JSON.stringify({ error: res.error });
       const { outcome, detail, lidarrAlbumId } = res;
       return JSON.stringify({ ok: true, outcome, detail, lidarrAlbumId });
+    },
+  },
+  {
+    name: 'improve_song',
+    description:
+      "Get a better copy of ONE song (e.g. a listener's bad-quality report): starts a track Get named after the song's own Artist/Album folder, so the copy lands beside the old file (a loose single in a Singles folder is refused: nothing would replace it in place). The folder reconcile keeps the better file (lossless, then bitrate) and deletes the other; when the new copy wins, the song's likes, playlist membership, plays, lyrics and curation move onto it. Returns outcome 'started' or 'in-flight' (a Get for this song is already running), each with the jobId to follow. It does NOT check that the copy found is the same recording (a live take can replace a studio one of the same title), and a copy filed outside the album folder is a plain duplicate. Requires confirm: true — it spends bandwidth and contacts peers. Refused when the server's acquisition kill-switch is off. Audit-logged.",
+    access: 'curate',
+    destructive: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        songId: { type: 'string' },
+        confirm: { type: 'boolean', description: 'Must be true — per-song curator approval.' },
+      },
+      required: ['songId', 'confirm'],
+    },
+    handler: ({ db, identity, acquisition }, args) => {
+      const songId = str(args.songId).trim();
+      if (!songId) return JSON.stringify({ error: 'songId is required' });
+      if (!acquisition.requestTrackGet) {
+        return JSON.stringify({ error: 'Acquisition not available', reason: 'source-unavailable' });
+      }
+      const res = requestBetterCopy(
+        {
+          db,
+          isAcquisitionEnabled: acquisition.isAcquisitionEnabled,
+          requestTrackGet: acquisition.requestTrackGet,
+        },
+        songId,
+        {
+          actor: { sub: identity.userId, username: `agent:${identity.tokenId}` },
+          via: 'via MCP agent',
+        },
+      );
+      if (!res.ok) return JSON.stringify({ error: res.error, reason: res.reason });
+      return JSON.stringify({ ok: true, outcome: res.outcome, jobId: res.jobId });
     },
   },
   {
