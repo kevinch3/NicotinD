@@ -102,6 +102,7 @@ const configFieldSchema = z.object({
   type: z.enum(['text', 'password']),
   placeholder: z.string().optional(),
   help: z.string().optional(),
+  multiline: z.boolean().optional(),
 });
 
 /** Parses an untrusted manifest response body. Shape only — coherence is

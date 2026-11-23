@@ -55,6 +55,12 @@ export interface PluginConfigField {
   /** Short helper text shown under the input. */
   help?: string;
   /**
+   * Render a textarea instead of a one-line input, for values that are files
+   * (a pasted cookies.txt). An `<input>` drops newlines on paste. Additive: a
+   * core that predates it strips the key and renders the one-line input.
+   */
+  multiline?: boolean;
+  /**
    * Value to use when the stored config has this key blank or absent. A form
    * saved with an optional input left empty persists `""`, which would
    * otherwise overwrite a code-side default (`??` does not fire for `""`).

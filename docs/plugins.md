@@ -395,8 +395,9 @@ Uploads()`, `options.get()` (new JSON options accessor), and `application.getInf
   fetched independently (`Promise.all` + `.catch`) so one failure degrades to zeros, never a 500.
   The panel polls every ~3s while the tab is visible.
 - **Generic config-field editor**: a plugin manifest may declare `configFields` (UI descriptors:
-  `{ key, label, type: 'text'|'password', placeholder?, help?, defaultValue? }`). The card renders a small form
-  from them; `GET /api/plugins` echoes `configFields` + a `configured` map (which keys have a stored
+  `{ key, label, type: 'text'|'password', placeholder?, help?, defaultValue?, multiline? }`). The card renders a small form
+  from them (`multiline` swaps the input for a textarea, for a pasted file such as the yt-dlp
+  addon's `cookies.txt`, #2068; an `<input>` drops newlines on paste); `GET /api/plugins` echoes `configFields` + a `configured` map (which keys have a stored
   value) + `config` (non-secret prefill values only — **`password` fields are never returned**).
   A blank password input is omitted on save, and `registry.setConfig` **merges** the update over the
   stored config, so "leave the secret blank to keep it" round-trips safely. The build-submit /

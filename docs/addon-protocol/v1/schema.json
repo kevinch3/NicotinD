@@ -67,6 +67,9 @@
               },
               "help": {
                 "type": "string"
+              },
+              "multiline": {
+                "type": "boolean"
               }
             },
             "required": [

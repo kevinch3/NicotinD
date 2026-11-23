@@ -120,16 +120,31 @@
                   <span class="text-status-done">&bull; {{ 'extensions.configuredBadge' | t }}</span>
                 }
               </span>
-              <input
-                [type]="f.type === 'password' ? 'password' : 'text'"
-                [placeholder]="f.placeholder ?? ''"
-                [ngModel]="draftValue(f.key)"
-                (ngModelChange)="fieldChange.emit({ key: f.key, value: $event })"
-                [name]="plugin.id + '-' + f.key"
-                [attr.data-testid]="'plugin-config-' + f.key"
-                autocomplete="off"
-                class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface border border-theme text-sm text-theme-primary focus:outline-none focus:border-theme-accent"
-              />
+              @if (f.multiline) {
+                <textarea
+                  rows="4"
+                  wrap="off"
+                  spellcheck="false"
+                  [placeholder]="f.placeholder ?? ''"
+                  [ngModel]="draftValue(f.key)"
+                  (ngModelChange)="fieldChange.emit({ key: f.key, value: $event })"
+                  [name]="plugin.id + '-' + f.key"
+                  [attr.data-testid]="'plugin-config-' + f.key"
+                  autocomplete="off"
+                  class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface border border-theme text-xs font-mono text-theme-primary focus:outline-none focus:border-theme-accent"
+                ></textarea>
+              } @else {
+                <input
+                  [type]="f.type === 'password' ? 'password' : 'text'"
+                  [placeholder]="f.placeholder ?? ''"
+                  [ngModel]="draftValue(f.key)"
+                  (ngModelChange)="fieldChange.emit({ key: f.key, value: $event })"
+                  [name]="plugin.id + '-' + f.key"
+                  [attr.data-testid]="'plugin-config-' + f.key"
+                  autocomplete="off"
+                  class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface border border-theme text-sm text-theme-primary focus:outline-none focus:border-theme-accent"
+                />
+              }
               @if (f.help) {
                 <span class="text-[11px] text-theme-muted mt-1 block">{{ f.help }}</span>
               }
