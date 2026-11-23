@@ -25,6 +25,7 @@ export interface PluginConfigField {
   type: PluginConfigFieldType;
   placeholder?: string;
   help?: string;
+  multiline?: boolean;
 }
 
 export interface PluginInfo {

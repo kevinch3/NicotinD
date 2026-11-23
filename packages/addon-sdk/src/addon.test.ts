@@ -77,6 +77,15 @@ describe('addonManifestSchema', () => {
     expect(parsed.compliance?.requiresConsent).toBe(true);
   });
 
+  it('keeps a config field multiline flag (a parse that stripped it would render a one-line input)', () => {
+    const parsed = addonManifestSchema.parse(
+      base({
+        configFields: [{ key: 'cookies', label: 'Cookies', type: 'password', multiline: true }],
+      }),
+    );
+    expect(parsed.configFields?.[0]?.multiline).toBe(true);
+  });
+
   it('accepts an optional url-routing priority', () => {
     const parsed = addonManifestSchema.parse(base({ urlPatterns: ['^https?://'], priority: -10 }));
     expect(parsed.priority).toBe(-10);

@@ -119,6 +119,33 @@ describe('PluginCardComponent — collapsible body', () => {
   });
 });
 
+describe('PluginCardComponent — config fields', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('renders a multiline field as a textarea, so a pasted file keeps its newlines', async () => {
+    const fixture = TestBed.configureTestingModule({
+      imports: [PluginCardComponent],
+      providers: [provideRouter([])],
+    }).createComponent(PluginCardComponent);
+    fixture.componentInstance.plugin = basePlugin({
+      configFields: [
+        { key: 'cookies', label: 'Cookies', type: 'password', multiline: true, help: 'Paste it' },
+        { key: 'format', label: 'Format', type: 'text' },
+      ],
+    });
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    el.querySelector<HTMLButtonElement>('[data-testid="plugin-card-toggle"]')!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const cookies = el.querySelector('[data-testid="plugin-config-cookies"]');
+    expect(cookies?.tagName).toBe('TEXTAREA');
+    expect(el.querySelector('[data-testid="plugin-config-format"]')?.tagName).toBe('INPUT');
+    expect(el.textContent).toContain('Paste it');
+  });
+});
+
 describe('PluginCardComponent — missing-binaries notice', () => {
   // The description/binaries block lives in the collapsible body, so the card
   // must be opened before the notice can be asserted on.

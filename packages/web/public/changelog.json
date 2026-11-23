@@ -1,5 +1,60 @@
 [
   {
+    "version": "0.8.137",
+    "date": "2026-11-22",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.136...v0.8.137",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**library:** get a better copy of a song, keeping its history ([#2062](https://github.com/kevinch3/NicotinD/issues/2062)) ([36665c0](https://github.com/kevinch3/NicotinD/commit/36665c06ba035ca6bd292ad2d9f4d06c9469a68c)), closes [#2032](https://github.com/kevinch3/NicotinD/issues/2032)",
+          "**library:** measure the two replacement paths still waiting on numbers ([#2067](https://github.com/kevinch3/NicotinD/issues/2067)) ([95369ae](https://github.com/kevinch3/NicotinD/commit/95369ae6826da6a3ab333d6cb0adb4d563803f6d)), references [#2061](https://github.com/kevinch3/NicotinD/issues/2061) [#2059](https://github.com/kevinch3/NicotinD/issues/2059) [#2061](https://github.com/kevinch3/NicotinD/issues/2061)",
+          "**web:** a song page at /library/songs/:id, and a share link to it ([#2058](https://github.com/kevinch3/NicotinD/issues/2058)) ([425fa4a](https://github.com/kevinch3/NicotinD/commit/425fa4ac24424fdd3bb3ca4c5833e1038b0a2168)), closes [#2004](https://github.com/kevinch3/NicotinD/issues/2004), references [#2004](https://github.com/kevinch3/NicotinD/issues/2004)"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**covers:** a cover cache write lands before the response, so a purge sticks ([#2064](https://github.com/kevinch3/NicotinD/issues/2064)) ([9492fc3](https://github.com/kevinch3/NicotinD/commit/9492fc353eb49d0bf5064d9afc5afbd9afce97a7)), closes [#2063](https://github.com/kevinch3/NicotinD/issues/2063), references [#1666](https://github.com/kevinch3/NicotinD/issues/1666)",
+          "**library:** the import and URL lanes carry a replaced song's history too ([#2065](https://github.com/kevinch3/NicotinD/issues/2065)) ([ac9dcae](https://github.com/kevinch3/NicotinD/commit/ac9dcaea515e9c11a72d75a68b15c08d0b41fc3d)), references [#2032](https://github.com/kevinch3/NicotinD/issues/2032) [#2061](https://github.com/kevinch3/NicotinD/issues/2061) [#2061](https://github.com/kevinch3/NicotinD/issues/2061)",
+          "**mosaic:** returning home picks up the song that is playing ([#2056](https://github.com/kevinch3/NicotinD/issues/2056)) ([#2057](https://github.com/kevinch3/NicotinD/issues/2057)) ([46567d4](https://github.com/kevinch3/NicotinD/commit/46567d445331b70632eac535a333edb2327cd91d))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.136",
+    "date": "2026-11-20",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.135...v0.8.136",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**mosaic:** the next song takes a tile a knight's move away, and the ring follows ([#2053](https://github.com/kevinch3/NicotinD/issues/2053)) ([38d0c3d](https://github.com/kevinch3/NicotinD/commit/38d0c3dda4026ab639b02901a04264c51bede40f))"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**mosaic:** the Now playing chip brings back the song that is playing ([#2055](https://github.com/kevinch3/NicotinD/issues/2055)) ([34d8b7e](https://github.com/kevinch3/NicotinD/commit/34d8b7e07ed75ded2fd37a8aab630db08c397775)), closes [#2054](https://github.com/kevinch3/NicotinD/issues/2054)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.8.135",
+    "date": "2026-11-19",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.134...v0.8.135",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**downloads:** close a card whose copy the scan dropped for a same-titled song ([#2052](https://github.com/kevinch3/NicotinD/issues/2052)) ([fea6ae7](https://github.com/kevinch3/NicotinD/commit/fea6ae792564e3199e9e9f3ed89b38791166d0f1)), closes [#2051](https://github.com/kevinch3/NicotinD/issues/2051)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.8.134",
     "date": "2026-11-18",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.133...v0.8.134",
@@ -975,46 +1030,6 @@
         "title": "Bug Fixes",
         "items": [
           "**fdroid:** sync the recipe seed version to what's actually on the merge requests ([#1412](https://github.com/kevinch3/NicotinD/issues/1412)) ([44275ab](https://github.com/kevinch3/NicotinD/commit/44275ab8f26a4fa227064cf7dfd967f3c8348596))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.87",
-    "date": "2026-09-25",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.86...v0.8.87",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** disable zoom app-wide so stray taps, pinches and field focus stop zooming ([#1408](https://github.com/kevinch3/NicotinD/issues/1408)) ([ef39bc6](https://github.com/kevinch3/NicotinD/commit/ef39bc6fbb39b0c42ec67509b8e379c1a9f7afe7)), references [#1407](https://github.com/kevinch3/NicotinD/issues/1407)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.86",
-    "date": "2026-09-25",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.85...v0.8.86",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**tv:** two-column player with a feature rail, a time readout and a user/version status line ([#1405](https://github.com/kevinch3/NicotinD/issues/1405)) ([7fd0cae](https://github.com/kevinch3/NicotinD/commit/7fd0cae3bcde3591f7b164d9a5c415cceebaa064)), closes [#1404](https://github.com/kevinch3/NicotinD/issues/1404), references [#438](https://github.com/kevinch3/NicotinD/issues/438)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.8.85",
-    "date": "2026-09-25",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.8.84...v0.8.85",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**analysis:** stop buffering a stderr line per 100 ms of audio in the loudness pass ([#1403](https://github.com/kevinch3/NicotinD/issues/1403)) ([930acee](https://github.com/kevinch3/NicotinD/commit/930acee2d4ed8260eb93955d8bcdb52f39e348fe)), references [#1312](https://github.com/kevinch3/NicotinD/issues/1312)",
-          "**transcode:** carry the cover in the Opus encode instead of a remux after it ([#1402](https://github.com/kevinch3/NicotinD/issues/1402)) ([ee2cfe6](https://github.com/kevinch3/NicotinD/commit/ee2cfe6cc5a93b772fa90369d9461f5b368a170a)), closes [#1305](https://github.com/kevinch3/NicotinD/issues/1305)"
         ]
       }
     ]
