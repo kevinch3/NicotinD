@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.138](https://github.com/kevinch3/NicotinD/compare/v0.8.137...v0.8.138) (2026-11-24)
+
+### Features
+
+* **plugins:** a multiline config field renders a textarea ([#2069](https://github.com/kevinch3/NicotinD/issues/2069)) ([3437490](https://github.com/kevinch3/NicotinD/commit/3437490253b61aeb650c07468d8cc81f15a17e8f)), references [#2068](https://github.com/kevinch3/NicotinD/issues/2068)
 ## [0.8.137](https://github.com/kevinch3/NicotinD/compare/v0.8.136...v0.8.137) (2026-11-22)
 
 ### Features
