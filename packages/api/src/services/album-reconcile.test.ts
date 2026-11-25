@@ -22,6 +22,33 @@ const f = (
 });
 
 describe('chooseFolderKeepers', () => {
+  // #2059: identity is disc + title, so a live take named like the studio
+  // track won the FLAC-first ranking and the studio file was deleted.
+  it('keeps both copies when their durations say they are different recordings', () => {
+    const studio = { ...f('03 - Circus.mp3', 'Circus', 'mp3', 320), duration: 192 };
+    const live = { ...f('03 - Circus (live).flac', 'Circus', 'flac', 900), duration: 251 };
+    const { keptNames, deletedNames, supersededBy } = chooseFolderKeepers([studio, live]);
+    expect(keptNames.sort()).toEqual(['03 - Circus (live).flac', '03 - Circus.mp3']);
+    expect(deletedNames).toEqual([]);
+    // No replacement happened, so nothing is carried onto the other recording.
+    expect(supersededBy).toEqual({});
+  });
+
+  it('still collapses copies within the bound, or when a duration is unknown', () => {
+    const near = chooseFolderKeepers([
+      { ...f('a.mp3', 'Circus', 'mp3', 320), duration: 192 },
+      { ...f('b.flac', 'Circus', 'flac', 900), duration: 201.5 },
+    ]);
+    expect(near.deletedNames).toEqual(['a.mp3']);
+    expect(near.supersededBy).toEqual({ 'a.mp3': 'b.flac' });
+
+    const unknown = chooseFolderKeepers([
+      { ...f('a.mp3', 'Circus', 'mp3', 320), duration: null },
+      { ...f('b.flac', 'Circus', 'flac', 900), duration: 251 },
+    ]);
+    expect(unknown.deletedNames).toEqual(['a.mp3']);
+  });
+
   it('collapses same-track different-filename copies, keeping FLAC', () => {
     const files = [
       f('05_circus.flac', 'Circus', 'flac', 900),
