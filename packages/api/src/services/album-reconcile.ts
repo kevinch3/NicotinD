@@ -18,7 +18,19 @@ export interface ReconcileFile {
   disc?: number | null;
   /** Track number from tags. See `SelectableTrack.trackNumber` (#1089). */
   track?: number | null;
+  /** Seconds, from the file's header. Absent/null means unknown: no guard applies. */
+  duration?: number | null;
 }
+
+/**
+ * Two copies of one (disc, title) whose durations differ by more than this are
+ * taken to be different recordings, a live take beside the studio one, and both
+ * are kept (#2059). Identity here is disc + title only, and this pass deletes,
+ * so a wrong "same" loses a recording while a wrong "different" costs one extra
+ * file that `disk.sameTrackDuplicates` still counts. Matches the `within10s`
+ * bound of `replacementDurations`.
+ */
+export const DIFFERENT_RECORDING_S = 10;
 
 export interface ReconcileResult {
   deletedNames: string[];
@@ -55,11 +67,20 @@ export function chooseFolderKeepers(
   }));
   const selection = selectAlbumTracksDetailed(selectable, canonicalTitles);
   const kept = new Set(selection.kept.map((t) => t.name));
+  const durationOf = new Map(files.map((x) => [x.name, x.duration ?? null]));
+  const supersededBy: Record<string, string> = {};
+  for (const [loser, winner] of selection.supersededBy) {
+    const a = durationOf.get(loser.name);
+    const b = durationOf.get(winner.name);
+    if (a != null && b != null && Math.abs(a - b) > DIFFERENT_RECORDING_S) {
+      kept.add(loser.name);
+      continue;
+    }
+    supersededBy[loser.name] = winner.name;
+  }
   const keptNames: string[] = [];
   const deletedNames: string[] = [];
   for (const x of files) (kept.has(x.name) ? keptNames : deletedNames).push(x.name);
-  const supersededBy: Record<string, string> = {};
-  for (const [loser, winner] of selection.supersededBy) supersededBy[loser.name] = winner.name;
   return { keptNames, deletedNames, supersededBy };
 }
 
@@ -90,6 +111,7 @@ export async function readFolderTracks(dir: string): Promise<ReconcileFile[]> {
     let bitRate = 0;
     let disc: number | null = null;
     let track: number | null = null;
+    let duration: number | null = null;
     try {
       const meta = mm ? await mm.parseFile(abs, { duration: false, skipCovers: true }) : undefined;
       if (meta?.common?.title) title = meta.common.title;
@@ -98,11 +120,14 @@ export async function readFolderTracks(dir: string): Promise<ReconcileFile[]> {
       // here would disagree with it about the identity of the same file.
       disc = meta?.common?.disk?.no ?? null;
       track = trackNoFromParse(meta) ?? null;
+      // Header duration only (`duration: false` skips the full scan): enough to
+      // tell a live take from the studio one, and null when a format lacks it.
+      duration = meta?.format?.duration ?? null;
     } catch {
       // unreadable — fall back to filename stem + 0 bitrate
     }
     if (disc === null && own?.disc !== undefined) disc = own.disc;
-    out.push({ name, title, suffix: ext.slice(1), bitRate, disc, track });
+    out.push({ name, title, suffix: ext.slice(1), bitRate, disc, track, duration });
   }
   return out;
 }
