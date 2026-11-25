@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.139](https://github.com/kevinch3/NicotinD/compare/v0.8.138...v0.8.139) (2026-11-25)
+
+### Bug Fixes
+
+* **library:** the folder reconcile keeps a copy of another length ([#2059](https://github.com/kevinch3/NicotinD/issues/2059)) ([#2071](https://github.com/kevinch3/NicotinD/issues/2071)) ([35eff57](https://github.com/kevinch3/NicotinD/commit/35eff57f8359a735e8290def5187ab31a52bd1a8)), references [#2032](https://github.com/kevinch3/NicotinD/issues/2032)
 ## [0.8.138](https://github.com/kevinch3/NicotinD/compare/v0.8.137...v0.8.138) (2026-11-24)
 
 ### Features
