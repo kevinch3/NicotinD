@@ -483,6 +483,23 @@ describe('PreserveService', () => {
       expect(svc.budget()).toBe(5 * 1024 * 1024 * 1024);
     });
 
+    // #2078: a store that filled under a higher limit stayed there forever.
+    it('lowering the limit trims auto-saved tracks to it, and refreshes the list', async () => {
+      svc.setBudget(10_000);
+      vi.mocked(store.evictAutoLRU).mockClear();
+      svc.setBudget(1_000);
+      await vi.waitFor(() => expect(store.evictAutoLRU).toHaveBeenCalledWith(0, 1_000));
+      await vi.waitFor(() => expect(store.getAll).toHaveBeenCalled());
+    });
+
+    it('raising the limit removes nothing', async () => {
+      svc.setBudget(1_000);
+      vi.mocked(store.evictAutoLRU).mockClear();
+      svc.setBudget(10_000);
+      await Promise.resolve();
+      expect(store.evictAutoLRU).not.toHaveBeenCalled();
+    });
+
     it('rehydrates the budget from localStorage on construction', () => {
       localStorage.setItem('nicotind-preserve-budget', String(UNLIMITED_BUDGET));
       TestBed.resetTestingModule();

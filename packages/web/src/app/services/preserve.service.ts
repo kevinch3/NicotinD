@@ -234,7 +234,16 @@ export class PreserveService {
 
   /** Persist the offline storage budget (bytes). Use UNLIMITED_BUDGET for "no cap". */
   setBudget(bytes: number): void {
+    const lowered = bytes < this.budget();
     this.budget.set(bytes);
+    // A lower limit trims auto-saved tracks to it now (#2078); the person's
+    // own saves are never removed by a limit change.
+    if (lowered) {
+      void this.db
+        .evictAutoLRU(0, bytes)
+        .then(() => this.refreshList())
+        .catch(() => {});
+    }
     try {
       localStorage.setItem(BUDGET_STORAGE_KEY, String(bytes));
     } catch {
