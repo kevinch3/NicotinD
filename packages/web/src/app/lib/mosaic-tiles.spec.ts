@@ -532,6 +532,18 @@ describe('buildOfflineTiles', () => {
     expect(tiles.find((t) => t.kind === 'song')!.coverArt).toBeUndefined();
   });
 
+  // #2072: one tile per saved track froze the iOS PWA for tens of seconds on
+  // going offline — packMosaic is ~quadratic in the tile count.
+  it('draws at most the online song budget, the newest saves, and still counts them all', () => {
+    const many = Array.from({ length: 600 }, (_, i) => meta({ id: `t${i}`, preservedAt: i }));
+    const tiles = buildOfflineTiles(many, '/library');
+    const songs = tiles.filter((t) => t.kind === 'song');
+    expect(songs).toHaveLength(LANE_MIX.songSlots);
+    expect(songs.map((t) => t.key)).toContain('song:t599');
+    expect(songs.map((t) => t.key)).not.toContain('song:t0');
+    expect(tiles.find((t) => t.kind === 'downloads')!.subtitle).toBe('600 on this device');
+  });
+
   it('renders nothing at all when the device holds no downloads', () => {
     // Not even the Downloads tile: a list of nothing is not worth a trip.
     expect(buildOfflineTiles([], '/library')).toEqual([]);

@@ -462,6 +462,9 @@ export function assignSongsToSlots(
  * Sizing has no popularity and no play stats to work with (both are server
  * reads), so it ranks on what the device itself knows: how recently each track
  * was downloaded, plus the usual stable jitter so the field stays varied.
+ *
+ * Only the `LANE_MIX.songSlots` newest saves get a tile; the Downloads tile
+ * still counts them all, and a tap plays the whole downloaded set.
  */
 export function buildOfflineTiles(
   tracks: readonly PreservedTrackMeta[],
@@ -469,13 +472,17 @@ export function buildOfflineTiles(
 ): MosaicTile[] {
   if (tracks.length === 0) return [];
 
-  const byRecency = [...tracks].sort((a, b) => b.preservedAt - a.preservedAt);
+  // why: packMosaic is ~quadratic in tiles; one per saved track froze the iOS
+  // PWA on going offline (#2072). The online song budget, newest saves first.
+  const drawn = [...tracks]
+    .sort((a, b) => b.preservedAt - a.preservedAt)
+    .slice(0, LANE_MIX.songSlots);
   const recency = new Map(
-    byRecency.map((t, i) => [t.id, tracks.length > 1 ? 1 - i / (tracks.length - 1) : 1]),
+    drawn.map((t, i) => [t.id, drawn.length > 1 ? 1 - i / (drawn.length - 1) : 1]),
   );
 
   const k = SCORE_WEIGHTS;
-  const tiles: MosaicTile[] = tracks.map((t) => {
+  const tiles: MosaicTile[] = drawn.map((t) => {
     const key = `song:${t.id}`;
     return {
       key,
