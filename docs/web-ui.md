@@ -1865,6 +1865,20 @@ Three rules, all documented on the helper itself:
 This exercises the real production template/CSS — it only swaps out _how_ the
 input value gets in.
 
+## A reopened iOS app silences the old one
+
+iOS can keep a closed installed PWA's page alive and audible. Reopening the app then starts a second instance beside it, and the old one's audio could not be stopped (#2074). Online the new instance is a controller, and its pause reaches the old one over the playback socket. Offline the command goes to a dead socket, and an instance launched offline never learns the other exists.
+
+`BroadcastChannel` is same-origin and needs no network. On launch the app posts `launched` on `INSTANCE_CHANNEL` (`announceLaunch` in `lib/instance-supersede.ts`, wired in the app initializer), and an instance that hears a newer launch calls `PlayerService.pause()`. A channel never echoes to its sender, so the newcomer does not pause itself.
+
+Only the installed iOS app does this (`supersedesOlderInstances`: an Apple mobile user agent and `isStandaloneDisplay`). It has one window, so a second instance means the first was closed. Browser tabs and desktop windows sit side by side on purpose and are left alone.
+
+It cannot stop an instance whose JavaScript iOS has suspended, or one running a build from before this change; restarting the phone clears those.
+
+Separately, `stopForOffline` clears `isPlaying`: a track refused with "isn't available offline" used to leave the transport showing Pause.
+
+Covered by `instance-supersede.spec.ts` and `ios-ghost-instance.spec.ts` (two pages of one context; a second plain tab is the control).
+
 ## Now Playing waveform + karaoke VFX (issue #643)
 
 Two visual surfaces fed by one precomputed artifact, `GET /api/peaks/:id` → `WaveformData`

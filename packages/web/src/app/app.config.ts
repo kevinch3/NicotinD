@@ -22,6 +22,11 @@ import { BufferingErrorHandler } from './observability/buffering-error-handler';
 import { authInterceptor } from './interceptors/auth.interceptor';
 import { KEEP_SESSION_ON_401 } from './lib/http-context';
 import { isNativeShell, serviceWorkerEnabled } from './lib/platform';
+import {
+  announceLaunch,
+  INSTANCE_CHANNEL,
+  supersedesOlderInstances,
+} from './lib/instance-supersede';
 import { SetupService } from './services/setup.service';
 import { ThemeService } from './services/theme.service';
 import { UserPreferencesService } from './services/user-preferences.service';
@@ -164,6 +169,13 @@ export const appConfig: ApplicationConfig = {
       // that forgets it silently loses radio, which is what stranded the TV
       // tree with a queue that could never replenish (#1127).
       inject(RadioSourceService).install();
+      // A reopened installed iOS app silences the instance it replaces (#2074).
+      if (supersedesOlderInstances() && typeof BroadcastChannel === 'function') {
+        announceLaunch({
+          channel: new BroadcastChannel(INSTANCE_CHANNEL),
+          onSuperseded: () => player.pause(),
+        });
+      }
       // Captured here because the .then() below runs outside the injection
       // context (needed for the deferred-refresh effect).
       const injector = inject(Injector);
