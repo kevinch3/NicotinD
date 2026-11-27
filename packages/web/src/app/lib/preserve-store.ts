@@ -254,6 +254,45 @@ export async function remove(id: string): Promise<void> {
   db.close();
 }
 
+/**
+ * Remove many tracks in one transaction (#2076). `remove` re-reads every row to
+ * decide whether a cover is still shared, so calling it per track is quadratic:
+ * clearing 1927 auto-saved tracks never finished on a phone.
+ */
+export async function removeMany(ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const gone = new Set(ids);
+  const db = await open();
+  const transaction = db.transaction(
+    [TRACKS_STORE, BLOBS_STORE, COVERS_STORE, LYRICS_STORE],
+    'readwrite',
+  );
+  const tracks = transaction.objectStore(TRACKS_STORE);
+  const all = tracks.getAll();
+  all.onsuccess = () => {
+    const metas = all.result as PreservedTrackMeta[];
+    // A cover goes only when no surviving track points at it.
+    const kept = new Set(metas.filter((m) => !gone.has(m.id)).map((m) => coverKeyOf(m)));
+    const dropped = new Set<string>();
+    for (const m of metas) {
+      if (!gone.has(m.id)) continue;
+      tracks.delete(m.id);
+      transaction.objectStore(BLOBS_STORE).delete(m.id);
+      transaction.objectStore(LYRICS_STORE).delete(m.id);
+      const key = coverKeyOf(m);
+      if (key && !kept.has(key) && !dropped.has(key)) {
+        dropped.add(key);
+        transaction.objectStore(COVERS_STORE).delete(key);
+      }
+    }
+  };
+  await new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  db.close();
+}
+
 export async function get(id: string): Promise<PreservedTrackMeta | undefined> {
   const db = await open();
   const result = await tx<PreservedTrackMeta | undefined>(db, TRACKS_STORE, 'readonly', (t) =>
@@ -331,10 +370,10 @@ export async function evictAutoLRU(bytesNeeded: number, budget: number): Promise
 
   for (const track of sorted) {
     if (freed >= target) break;
-    await remove(track.id);
     freed += track.size;
     evicted.push(track.id);
   }
+  await removeMany(evicted);
 
   return evicted;
 }
@@ -364,10 +403,10 @@ export async function evictLRU(bytesNeeded: number, budget: number): Promise<str
 
   for (const track of [...autoSorted, ...userSorted]) {
     if (freed >= target) break;
-    await remove(track.id);
     freed += track.size;
     evicted.push(track.id);
   }
+  await removeMany(evicted);
 
   return evicted;
 }
@@ -375,7 +414,7 @@ export async function evictLRU(bytesNeeded: number, budget: number): Promise<str
 /** Remove every `source === 'auto'` row. Returns the count removed. */
 export async function removeAllAutoPreserved(): Promise<number> {
   const auto = await getAutoPreserved();
-  for (const t of auto) await remove(t.id);
+  await removeMany(auto.map((t) => t.id));
   return auto.length;
 }
 
