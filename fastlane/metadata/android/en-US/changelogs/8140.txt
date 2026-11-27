@@ -1,0 +1,3 @@
+• web: a reopened iOS app silences the instance it replaces (#2075)
+• web: deleting auto-saved tracks finishes on a large offline store (#2077)
+• web: going offline no longer freezes the app on a phone with many saved tracks (#2073)

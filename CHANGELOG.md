@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.140](https://github.com/kevinch3/NicotinD/compare/v0.8.139...v0.8.140) (2026-11-27)
+
+### Bug Fixes
+
+* **web:** a reopened iOS app silences the instance it replaces ([#2075](https://github.com/kevinch3/NicotinD/issues/2075)) ([b77524f](https://github.com/kevinch3/NicotinD/commit/b77524fff3d66315b639b5a9be2ae46106de0449)), closes [#2074](https://github.com/kevinch3/NicotinD/issues/2074)
+* **web:** deleting auto-saved tracks finishes on a large offline store ([#2077](https://github.com/kevinch3/NicotinD/issues/2077)) ([1477cd9](https://github.com/kevinch3/NicotinD/commit/1477cd9123eeb1327a0e533d30778ac434f70224)), closes [#2076](https://github.com/kevinch3/NicotinD/issues/2076)
+* **web:** going offline no longer freezes the app on a phone with many saved tracks ([#2073](https://github.com/kevinch3/NicotinD/issues/2073)) ([28f24fd](https://github.com/kevinch3/NicotinD/commit/28f24fde1ed5ebf9f7c46f48f0e6caffc6e3048a)), closes [#2072](https://github.com/kevinch3/NicotinD/issues/2072)
 ## [0.8.139](https://github.com/kevinch3/NicotinD/compare/v0.8.138...v0.8.139) (2026-11-25)
 
 ### Bug Fixes
