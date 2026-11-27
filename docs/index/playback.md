@@ -59,6 +59,9 @@ One section of [the index](../index.md). Entry shape and caps are unchanged and
   playing element instead of swapping to the standby, and a preserved next track's blob is read ahead so
   `play()` shares a task with `ended`. `isAppleMobileWebKit`, `prepareNext`, `takeNextBlobUrl`.
   → [web-ui.md](../web-ui.md)
+- **A reopened iOS app silences the old one**: the installed iOS app announces each launch on a
+  `BroadcastChannel` and an older instance pauses itself, since offline nothing else reaches it.
+  `announceLaunch`, `supersedesOlderInstances`, `INSTANCE_CHANNEL`. → [web-ui.md](../web-ui.md)
 - **Playback loading feedback (HDD-aware)**: one `buffering` signal (delayed `bufferingVisible`)
   drives spinners, row indicators and the buffered band; every stream URL goes through `streamUrl()`,
   which appends `ngsw-bypass`. Restore-on-load never autoplays — `wasPlaying` is written, not read.

@@ -898,6 +898,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
    */
   private stopForOffline(audio: HTMLAudioElement, title: string): void {
     this.teardownAudio(audio);
+    // Nothing is playing: the transport must not go on showing Pause (#2074).
+    this.player.pause();
     this.toast.show({
       message: this.i18n.t('player.unavailableOffline', { title }),
       kind: 'error',
